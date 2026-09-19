@@ -4,6 +4,8 @@ import com.wanancat.furkin.internal.FurkinMod;
 import com.wanancat.furkin.internal.capability.FurkinCapability;
 import com.wanancat.furkin.internal.capability.FurkinData;
 import com.wanancat.furkin.internal.config.FurkinServerConfig;
+import com.wanancat.furkin.internal.network.FurkinNetwork;
+import com.wanancat.furkin.internal.network.SyncFurkinDataPacket;
 import com.wanancat.furkin.internal.record.FurkinArchiveData;
 import com.wanancat.furkin.internal.record.FurkinArchiveEntry;
 import net.minecraft.nbt.CompoundTag;
@@ -14,6 +16,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.TamableAnimal;
+import net.minecraftforge.network.PacketDistributor;
 
 import java.util.UUID;
 
@@ -186,6 +189,8 @@ public final class FurkinCompanionManager {
         if (living instanceof TamableAnimal tamable) {
             tamable.setTame(true);
             tamable.setOwnerUUID(entry.getOwnerUuid());
+            // 清一次坐定，保证召唤后立即跟随（回灌快照可能带坐定态，这里覆盖；原版右键交互保留）。
+            tamable.setOrderedToSit(false);
         }
 
         // 设置召唤位置：玩家附近。
@@ -198,6 +203,11 @@ public final class FurkinCompanionManager {
         // 置 summoned=true。
         entry.setSummoned(true);
         FurkinArchiveData.get(serverLevel).putEntry(entry);
+
+        // 同步能力数据到客户端。
+        FurkinNetwork.channel().send(
+                PacketDistributor.TRACKING_ENTITY_AND_SELF.with(() -> living),
+                new SyncFurkinDataPacket(living.getId(), data.serializeNBT()));
 
         FurkinMod.LOGGER.info("Furkin summoned: id={} species={} by {}",
                 companionId, species, player.getName().getString());

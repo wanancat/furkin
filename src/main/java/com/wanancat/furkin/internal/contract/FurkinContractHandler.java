@@ -3,15 +3,22 @@ package com.wanancat.furkin.internal.contract;
 import com.wanancat.furkin.api.companion.FurkinSpecies;
 import com.wanancat.furkin.api.companion.FurkinSpeciesRegistry;
 import com.wanancat.furkin.internal.FurkinMod;
+import com.wanancat.furkin.internal.capability.FurkinCapability;
 import com.wanancat.furkin.internal.capability.FurkinData;
+import com.wanancat.furkin.internal.config.FurkinServerConfig;
+import com.wanancat.furkin.internal.network.FurkinNetwork;
+import com.wanancat.furkin.internal.network.SyncFurkinDataPacket;
 import com.wanancat.furkin.internal.record.FurkinArchiveData;
 import com.wanancat.furkin.internal.record.FurkinArchiveEntry;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.TamableAnimal;
 import net.minecraft.world.item.ItemStack;
+import net.minecraftforge.network.PacketDistributor;
 
 import java.util.UUID;
 
@@ -54,6 +61,19 @@ public final class FurkinContractHandler {
             return false;
         }
 
+        // 边界③：活跃上限（契约当场即在场，与召唤共用同一上限，见 FurkinCompanionManager）。
+        if (target.level() instanceof ServerLevel sl
+                && countActive(sl, player.getUUID()) >= FurkinServerConfig.ACTIVE_LIMIT.get()) {
+            FurkinMod.LOGGER.info("Furkin contract blocked: active limit reached for {}",
+                    player.getName().getString());
+            // 反馈：action bar 提示，避免玩家以为「没按到」。
+            player.displayClientMessage(
+                    Component.translatable("furkin.msg.active_limit",
+                            FurkinServerConfig.ACTIVE_LIMIT.get()),
+                    true);
+            return false;
+        }
+
         // 生成宠物身份 UUID（建档主键）。
         UUID companionId = UUID.randomUUID();
         UUID ownerUuid = player.getUUID();
@@ -69,6 +89,8 @@ public final class FurkinContractHandler {
         if (target instanceof TamableAnimal tamable) {
             tamable.setTame(true);
             tamable.setOwnerUUID(ownerUuid);
+            // 清一次坐定，保证契约后立即跟随（原版「右键坐下」交互保留，玩家后续仍可手动让猫坐下）。
+            tamable.setOrderedToSit(false);
         }
 
         // 建档（契约即建档）。
@@ -87,8 +109,30 @@ public final class FurkinContractHandler {
         // 消耗一张契约。
         hand.shrink(1);
 
+        // 同步能力数据到客户端（头顶图标等客户端表现依赖）。
+        FurkinNetwork.channel().send(
+                PacketDistributor.TRACKING_ENTITY_AND_SELF.with(() -> target),
+                new SyncFurkinDataPacket(target.getId(), data.serializeNBT()));
+
         FurkinMod.LOGGER.info("Furkin contracted: {} (id={}) by {}",
                 target.getName().getString(), companionId, player.getName().getString());
         return true;
+    }
+
+    /**
+     * 统计某主人当前「已激活（实体在场）」的绒亲数量。
+     * 契约与召唤共用同一上限，故统计口径与 {@link FurkinCompanionManager#countSummoned} 一致。
+     */
+    private static int countActive(ServerLevel level, UUID ownerUuid) {
+        int count = 0;
+        for (Entity entity : level.getEntities().getAll()) {
+            if (entity instanceof LivingEntity living) {
+                FurkinData d = living.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
+                if (d != null && d.isCompanion() && ownerUuid.equals(d.getOwnerUuid())) {
+                    count++;
+                }
+            }
+        }
+        return count;
     }
 }

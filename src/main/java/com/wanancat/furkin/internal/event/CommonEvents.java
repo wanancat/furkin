@@ -1,16 +1,23 @@
 package com.wanancat.furkin.internal.event;
 
 import com.wanancat.furkin.internal.command.FurkinCommand;
+import com.wanancat.furkin.internal.capability.FurkinCapability;
+import com.wanancat.furkin.internal.capability.FurkinData;
 import com.wanancat.furkin.internal.contract.FurkinCompanionManager;
 import com.wanancat.furkin.internal.contract.FurkinContractHandler;
 import com.wanancat.furkin.internal.item.FurkinContractItem;
+import com.wanancat.furkin.internal.network.FurkinNetwork;
+import com.wanancat.furkin.internal.network.SyncFurkinDataPacket;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraftforge.event.RegisterCommandsEvent;
+import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.network.PacketDistributor;
 
 /**
  * 通用事件处理器（逻辑端共享）。
@@ -26,6 +33,25 @@ public final class CommonEvents {
     @SubscribeEvent
     public static void onRegisterCommands(RegisterCommandsEvent event) {
         FurkinCommand.register(event.getDispatcher());
+    }
+
+    /**
+     * 玩家开始追踪某实体（实体进视野）时，若该实体是绒亲，同步其能力数据给该玩家。
+     * 覆盖「玩家登录 / 进视野 / 新实体生成」所有客户端能力数据缺失场景。
+     */
+    @SubscribeEvent
+    public static void onStartTracking(PlayerEvent.StartTracking event) {
+        Entity target = event.getTarget();
+        if (!(target instanceof LivingEntity living)) {
+            return;
+        }
+        FurkinData data = living.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
+        if (data == null || !data.isCompanion()) {
+            return;
+        }
+        FurkinNetwork.channel().send(
+                PacketDistributor.PLAYER.with(() -> (ServerPlayer) event.getEntity()),
+                new SyncFurkinDataPacket(target.getId(), data.serializeNBT()));
     }
 
     @SubscribeEvent

@@ -4,6 +4,7 @@ import com.mojang.logging.LogUtils;
 import com.wanancat.furkin.internal.capability.FurkinCapability;
 import com.wanancat.furkin.internal.config.FurkinClientConfig;
 import com.wanancat.furkin.internal.config.FurkinServerConfig;
+import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.registry.BuiltinSpecies;
 import com.wanancat.furkin.internal.registry.ModItems;
 import net.minecraftforge.common.capabilities.RegisterCapabilitiesEvent;
@@ -43,6 +44,9 @@ public class FurkinMod {
 
         // 通用设置（内置物种注册等）。
         modBus.addListener(this::onCommonSetup);
+
+        // 网络通道（能力数据服务端 → 客户端同步，供头顶图标等客户端表现读取）。
+        FurkinNetwork.register();
 
         // 数值走 SERVER 类型 TOML（世界级，进服自动同步）—— 设计稿 §5 判据二。
         ModLoadingContext.get().registerConfig(ModConfig.Type.SERVER, FurkinServerConfig.SPEC);

@@ -1,5 +1,6 @@
 {
   "item.furkin.contract": "Furkin Contract",
   "furkin.species.cat": "Cat",
-  "furkin.species.dog": "Dog"
+  "furkin.species.dog": "Dog",
+  "furkin.msg.active_limit": "Active companion limit reached (%s). Dismiss one before contracting another."
 }
