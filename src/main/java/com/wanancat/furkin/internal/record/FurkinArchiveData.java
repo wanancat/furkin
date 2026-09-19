@@ -53,6 +53,11 @@ public final class FurkinArchiveData extends SavedData {
         return entries.get(companionId);
     }
 
+    /** 全部档案条目（只读视图）。 */
+    public java.util.Collection<FurkinArchiveEntry> allEntries() {
+        return entries.values();
+    }
+
     /** 是否存在某身份的档案。 */
     public boolean contains(UUID companionId) {
         return entries.containsKey(companionId);

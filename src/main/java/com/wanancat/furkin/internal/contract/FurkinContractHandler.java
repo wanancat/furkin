@@ -6,6 +6,7 @@ import com.wanancat.furkin.internal.FurkinMod;
 import com.wanancat.furkin.internal.capability.FurkinData;
 import com.wanancat.furkin.internal.record.FurkinArchiveData;
 import com.wanancat.furkin.internal.record.FurkinArchiveEntry;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
@@ -74,9 +75,12 @@ public final class FurkinContractHandler {
         if (target.level() instanceof ServerLevel serverLevel) {
             FurkinArchiveEntry entry = new FurkinArchiveEntry(companionId);
             entry.setOwnerUuid(ownerUuid);
+            entry.setSpecies(target.getType());
             entry.setAlive(true);
             entry.setSummoned(true); // 契约当场实体在场，标记为已召唤。
             entry.setLevel(1);
+            // 实体外观快照：品种 / 毛色等在契约当场就存下，保证召唤后外观一致。
+            entry.setEntitySnapshot(target.saveWithoutId(new CompoundTag()));
             FurkinArchiveData.get(serverLevel).putEntry(entry);
         }
 
