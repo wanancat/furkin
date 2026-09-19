@@ -3,6 +3,7 @@ package com.wanancat.furkin.internal.command;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.wanancat.furkin.internal.contract.FurkinCompanionManager;
+import com.wanancat.furkin.internal.contract.FurkinRecordActionHandler;
 import com.wanancat.furkin.internal.record.FurkinArchiveData;
 import com.wanancat.furkin.internal.record.FurkinArchiveEntry;
 import net.minecraft.ChatFormatting;
@@ -41,6 +42,12 @@ public final class FurkinCommand {
                                 .then(Commands.argument("pet_id", StringArgumentType.word())
                                         .executes(ctx -> forget(ctx.getSource(),
                                                 StringArgumentType.getString(ctx, "pet_id")))))
+                        .then(Commands.literal("rename")
+                                .then(Commands.argument("pet_id", StringArgumentType.word())
+                                        .then(Commands.argument("name", StringArgumentType.greedyString())
+                                                .executes(ctx -> rename(ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "pet_id"),
+                                                        StringArgumentType.getString(ctx, "name"))))))
         );
     }
 
@@ -68,7 +75,7 @@ public final class FurkinCommand {
         return 1;
     }
 
-    /** 列出本人全部绒亲（含身份 UUID 与召唤状态）。条目可点击 → 自动填入召唤命令。 */
+    /** 列出本人全部绒亲。id 可点击 → 直接复制 id（rename / forget / summon 命令共用）。 */
     private static int list(CommandSourceStack src) {
         if (!(src.getEntity() instanceof ServerPlayer player)) {
             return 0;
@@ -84,26 +91,25 @@ public final class FurkinCommand {
                 String speciesStr = entry.getSpecies() == null ? "?"
                         : net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES.getKey(entry.getSpecies()).toString();
                 String nameStr = entry.getName() == null ? "" : entry.getName().getString();
-                String line = entry.getCompanionId()
-                        + "  species=" + speciesStr
+                String idStr = entry.getCompanionId().toString();
+                String rest = "  species=" + speciesStr
                         + "  name=" + nameStr
                         + "  alive=" + entry.isAlive()
                         + "  summoned=" + entry.isSummoned()
                         + "  level=" + entry.getLevel();
 
-                // 存活且未召唤 → 点击自动填入召唤命令（免去手抄 UUID）。
-                if (entry.isAlive() && !entry.isSummoned()) {
-                    String suggest = "/furkin summon " + entry.getCompanionId();
-                    src.sendSuccess(() -> Component.literal("  [SUMMON] " + line)
-                            .setStyle(Style.EMPTY
-                                    .withColor(ChatFormatting.AQUA)
-                                    .withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, suggest))
-                                    .withHoverEvent(new net.minecraft.network.chat.HoverEvent(
-                                            net.minecraft.network.chat.HoverEvent.Action.SHOW_TEXT,
-                                            Component.literal("Click to fill summon command")))), false);
-                } else {
-                    src.sendSuccess(() -> Component.literal("  " + line), false);
-                }
+                // id 组件：点击直接复制 id 本身（原版 copy_to_clipboard），hover 提示。
+                final String prefix = entry.isAlive() && !entry.isSummoned() ? "[SUMMON] " : "  ";
+                src.sendSuccess(() -> Component.literal(prefix)
+                        .append(Component.literal(idStr).withStyle(Style.EMPTY
+                                .withColor(ChatFormatting.AQUA)
+                                .withUnderlined(Boolean.TRUE)
+                                .withClickEvent(new ClickEvent(
+                                        ClickEvent.Action.COPY_TO_CLIPBOARD, idStr))
+                                .withHoverEvent(new net.minecraft.network.chat.HoverEvent(
+                                        net.minecraft.network.chat.HoverEvent.Action.SHOW_TEXT,
+                                        Component.literal("Click to copy ID"))))
+                                .append(Component.literal(rest))), false);
             }
         }
         if (shown == 0) {
@@ -112,7 +118,7 @@ public final class FurkinCommand {
         return 1;
     }
 
-    /** 忘记（删除）一只属于本人的绒亲档案条目（清理旧档 / 孤儿数据用）。 */
+    /** 忘记（解绑）一只属于本人的绒亲。走统一处理器（规则一套，与录内按钮同源）。 */
     private static int forget(CommandSourceStack src, String petIdRaw) {
         if (!(src.getEntity() instanceof ServerPlayer player)) {
             return 0;
@@ -126,23 +132,37 @@ public final class FurkinCommand {
             return 0;
         }
 
-        FurkinArchiveData archive = FurkinArchiveData.get(player.serverLevel());
-        FurkinArchiveEntry entry = archive.getEntry(petId);
-        if (entry == null) {
-            src.sendFailure(Component.literal("No such companion: " + petId));
-            return 0;
+        FurkinRecordActionHandler.Result r = FurkinRecordActionHandler.unbind(player, petId);
+        switch (r) {
+            case OK -> src.sendSuccess(() -> Component.literal("Unbound companion " + petId), false);
+            case NOT_FOUND -> src.sendFailure(Component.literal("No such companion: " + petId));
+            case NOT_OWNER -> src.sendFailure(Component.literal("Not your companion."));
+            default -> src.sendFailure(Component.literal("Unbind failed."));
         }
-        if (!player.getUUID().equals(entry.getOwnerUuid())) {
-            src.sendFailure(Component.literal("Not your companion."));
-            return 0;
-        }
-        if (entry.isSummoned()) {
-            src.sendFailure(Component.literal("Companion is summoned — dismiss it first."));
+        return 1;
+    }
+
+    /** 改名：给一只属于本人的绒亲改名。走统一处理器。 */
+    private static int rename(CommandSourceStack src, String petIdRaw, String name) {
+        if (!(src.getEntity() instanceof ServerPlayer player)) {
             return 0;
         }
 
-        archive.removeEntry(petId);
-        src.sendSuccess(() -> Component.literal("Forgotten companion " + petId), false);
+        UUID petId;
+        try {
+            petId = UUID.fromString(petIdRaw);
+        } catch (IllegalArgumentException e) {
+            src.sendFailure(Component.literal("Invalid pet id: " + petIdRaw));
+            return 0;
+        }
+
+        FurkinRecordActionHandler.Result r = FurkinRecordActionHandler.rename(player, petId, name);
+        switch (r) {
+            case OK -> src.sendSuccess(() -> Component.literal("Renamed companion " + petId), false);
+            case NOT_FOUND -> src.sendFailure(Component.literal("No such companion: " + petId));
+            case NOT_OWNER -> src.sendFailure(Component.literal("Not your companion."));
+            default -> src.sendFailure(Component.literal("Rename failed."));
+        }
         return 1;
     }
 }

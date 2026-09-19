@@ -82,6 +82,16 @@ public final class FurkinNetwork {
                 ConfirmContractPacket::handle,
                 Optional.of(NetworkDirection.PLAY_TO_SERVER)
         );
+
+        // 客户端 → 服务端：绒亲录管理动作（收回 / 解绑 / 改名）。
+        CHANNEL.registerMessage(
+                id++,
+                RecordActionPacket.class,
+                RecordActionPacket::encode,
+                RecordActionPacket::decode,
+                RecordActionPacket::handle,
+                Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        );
     }
 
     /** 暴露通道给包发送方（服务端契约/召唤/收回后广播）。 */

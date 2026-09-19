@@ -1,6 +1,7 @@
 package com.wanancat.furkin.internal.client;
 
 import com.wanancat.furkin.internal.network.FurkinNetwork;
+import com.wanancat.furkin.internal.network.RecordActionPacket;
 import com.wanancat.furkin.internal.network.RecordListPacket;
 import com.wanancat.furkin.internal.network.RequestSummonPacket;
 import net.minecraft.client.Minecraft;
@@ -12,19 +13,23 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 绒亲录列表界面 —— 右键绒亲录物品打开，列出本人「全部」绒亲
- * （含已召唤 / 已收回 / 已死亡，见设计稿 §3.4.1），点「召唤」按状态分流：
- * 未召唤 → 召唤重建实体；已召唤 → 传送到主人身边；已死亡 → 无按钮（走复活流程 M4）。
+ * （含已召唤 / 已收回 / 已死亡，见设计稿 §3.4.1），每条目按状态提供管理动作：
+ * <ul>
+ *   <li>存活 + 未召唤：召唤 / 解绑 / 改名</li>
+ *   <li>存活 + 已召唤：召唤（=传送身边）/ 收回 / 解绑 / 改名</li>
+ *   <li>已死亡：解绑（复活走 M4，不在本界面）</li>
+ * </ul>
  *
- * <p>纯 {@link Screen}（不绑 {@code AbstractContainerMenu}）：本界面无槽位，
- * 仅「展示列表 + 点选召唤」。数据由服务端经 {@link RecordListPacket} 下发，
- * 召唤经 {@link RequestSummonPacket} 上行。</p>
+ * <p>「召唤」按状态分流（未召唤→重建实体；已召唤→传送身边）。管理动作经
+ * {@link RecordActionPacket} 上行，服务端统一走 {@code FurkinRecordActionHandler}（规则一套）。</p>
  *
  * <p><b>端位隔离</b>：本类 {@link OnlyIn}{@code (Dist.CLIENT)}，服务端加载时
- * 方法体被 RuntimeDistCleaner 替换为抛异常，避免「DEDICATED_SERVER 加载 Screen」崩溃。
- * 打开入口统一走 {@link #open(List)} 静态方法，由网络包经 {@code DistExecutor} 间接调用。</p>
+ * 方法体被 RuntimeDistCleaner 替换为抛异常。打开入口统一走 {@link #open(List)}，
+ * 由网络包经 {@code DistExecutor} 间接调用。</p>
  */
 @OnlyIn(Dist.CLIENT)
 public final class FurkinRecordScreen extends Screen {
@@ -32,11 +37,12 @@ public final class FurkinRecordScreen extends Screen {
     /** 列表数据。 */
     private final List<RecordListPacket.Entry> entries;
 
-    /** 滚动偏移（列表过长时用，M1 先做最简：不做滚动，够用）。 */
-    private static final int ITEM_HEIGHT = 24;
+    /** 布局常量（最简临时版，精细布局留 UI 打磨轮）。 */
+    private static final int ITEM_HEIGHT = 26;
     private static final int LIST_TOP = 40;
     private static final int LIST_LEFT = 30;
-    private static final int LIST_WIDTH = 200;
+    /** 名字文字起始 x（按钮在其右侧）。 */
+    private static final int LABEL_X = 40;
 
     public FurkinRecordScreen(List<RecordListPacket.Entry> entries) {
         super(Component.translatable("furkin.screen.record.title"));
@@ -53,19 +59,7 @@ public final class FurkinRecordScreen extends Screen {
         super.init();
         int y = LIST_TOP;
         for (RecordListPacket.Entry entry : entries) {
-            final var id = entry.getCompanionId();
-            // 已死亡 → 无召唤按钮（复活走 M4 流程，不在 M1 提供入口）。
-            if (entry.isAlive()) {
-                Component label = Component.literal(
-                        entry.getSpeciesName() + "  Lv." + entry.getLevel());
-                // 已召唤/未召唤共用「召唤」字样：未召唤→重建实体，已召唤→传送身边（用户定：B+召唤）。
-                Button summonBtn = Button.builder(
-                                Component.translatable("furkin.screen.record.summon"),
-                                btn -> requestSummon(id))
-                        .bounds(LIST_LEFT, y, 60, 20)
-                        .build();
-                addRenderableWidget(summonBtn);
-            }
+            addActionButtons(entry, y);
             y += ITEM_HEIGHT;
         }
 
@@ -76,11 +70,71 @@ public final class FurkinRecordScreen extends Screen {
                 .build());
     }
 
+    /** 按状态为一条目添加管理按钮。 */
+    private void addActionButtons(RecordListPacket.Entry entry, int y) {
+        UUID id = entry.getCompanionId();
+        boolean alive = entry.isAlive();
+        boolean summoned = entry.isSummoned();
+        // 按钮从右往左排，避免文字被遮挡。
+        int btnW = 44;
+        int gap = 3;
+        int right = this.width - 20;
+        int x;
+
+        // 解绑（所有状态都有）。
+        x = right - btnW;
+        addRenderableWidget(Button.builder(
+                        Component.translatable("furkin.screen.record.unbind"),
+                        btn -> requestAction(RecordActionPacket.Action.UNBIND, id, null))
+                .bounds(x, y, btnW, 20).build());
+        right = x - gap;
+
+        // 改名（存活才有）。
+        if (alive) {
+            x = right - btnW;
+            addRenderableWidget(Button.builder(
+                            Component.translatable("furkin.screen.record.rename"),
+                            btn -> openRename(id, entry))
+                    .bounds(x, y, btnW, 20).build());
+            right = x - gap;
+        }
+
+        // 收回（已召唤才有）。
+        if (alive && summoned) {
+            x = right - btnW;
+            addRenderableWidget(Button.builder(
+                            Component.translatable("furkin.screen.record.dismiss"),
+                            btn -> requestAction(RecordActionPacket.Action.DISMISS, id, null))
+                    .bounds(x, y, btnW, 20).build());
+            right = x - gap;
+        }
+
+        // 召唤（存活才有；已召唤时语义为「传送身边」）。
+        if (alive) {
+            x = right - btnW;
+            addRenderableWidget(Button.builder(
+                            Component.translatable("furkin.screen.record.summon"),
+                            btn -> requestSummon(id))
+                    .bounds(x, y, btnW, 20).build());
+        }
+    }
+
     /** 点「召唤」：上行请求召唤包（服务端按状态分流召唤 / 传送）。 */
-    private void requestSummon(java.util.UUID companionId) {
+    private void requestSummon(UUID companionId) {
         FurkinNetwork.channel().sendToServer(new RequestSummonPacket(companionId));
-        // 召唤 / 传送后关闭界面（结果以 action bar / 聊天反馈，界面无需停留）。
         onClose();
+    }
+
+    /** 点「收回 / 解绑 / 改名」：上行管理动作包，服务端统一处理。 */
+    private void requestAction(RecordActionPacket.Action action, UUID companionId, String name) {
+        FurkinNetwork.channel().sendToServer(new RecordActionPacket(action, companionId, name));
+        onClose();
+    }
+
+    /** 打开改名输入框（预填当前名字）。 */
+    private void openRename(UUID companionId, RecordListPacket.Entry entry) {
+        String current = entry.hasName() ? entry.getName() : "";
+        RenameScreen.open(companionId, current);
     }
 
     /** 列表条目显示名：有自定义名用名字，否则回退物种名。 */
@@ -113,13 +167,13 @@ public final class FurkinRecordScreen extends Screen {
         // 标题。
         gui.drawCenteredString(this.font, this.title, this.width / 2, 15, 0xFFFFFF);
 
-        // 列表：物种名 + 等级 + 状态标记 + 召唤按钮。
-        int y = LIST_TOP + 5;
+        // 列表文字：名字 + 等级 + 状态标记（按钮由 init 添加，独立渲染）。
+        int y = LIST_TOP + 3;
         for (RecordListPacket.Entry entry : entries) {
             gui.drawString(this.font,
                     entryLabel(entry).append(Component.literal("  Lv." + entry.getLevel()))
                             .append(stateSuffix(entry)),
-                    LIST_LEFT + 70, y, 0xFFFFFF);
+                    LABEL_X, y, 0xFFFFFF);
             y += ITEM_HEIGHT;
         }
 

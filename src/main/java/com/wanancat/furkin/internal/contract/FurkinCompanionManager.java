@@ -189,8 +189,20 @@ public final class FurkinCompanionManager {
         if (living instanceof TamableAnimal tamable) {
             tamable.setTame(true);
             tamable.setOwnerUUID(entry.getOwnerUuid());
-            // 清一次坐定，保证召唤后立即跟随（回灌快照可能带坐定态，这里覆盖；原版右键交互保留）。
+            // 清坐定 + 坐姿：坐定意图（orderedToSit）与坐姿渲染 flag（sittingPose）是两个状态，
+            // 快照回灌只恢复意图，姿势 flag 若不清会「坐着滑行」。
             tamable.setOrderedToSit(false);
+            tamable.setInSittingPose(false);
+        }
+
+        // 名字回灌：快照里的 CustomName 是改名前的旧值，需按档案 name 覆盖
+        // （未召唤时改名只更新了档案字段，没更新快照，故召唤后强制覆盖一次）。
+        if (entry.getName() != null) {
+            living.setCustomName(entry.getName());
+            living.setCustomNameVisible(true);
+        } else {
+            living.setCustomName(null);
+            living.setCustomNameVisible(false);
         }
 
         // 设置召唤位置：玩家附近。
@@ -262,9 +274,10 @@ public final class FurkinCompanionManager {
         double dz = Math.cos(Math.toRadians(player.getYRot())) * 1.5;
         target.teleportTo(player.getX() + dx, player.getY(), player.getZ() + dz);
 
-        // 唤醒跟随：清坐定，保证传送后立即跟随。
+        // 唤醒跟随：清坐定 + 坐姿，保证传送后立即跟随且不残留坐姿。
         if (target instanceof TamableAnimal tamable) {
             tamable.setOrderedToSit(false);
+            tamable.setInSittingPose(false);
         }
 
         FurkinMod.LOGGER.info("Furkin teleported: id={} to {}",
