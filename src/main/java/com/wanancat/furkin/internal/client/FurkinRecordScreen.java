@@ -167,11 +167,14 @@ public final class FurkinRecordScreen extends Screen {
         // 标题。
         gui.drawCenteredString(this.font, this.title, this.width / 2, 15, 0xFFFFFF);
 
-        // 列表文字：名字 + 等级 + 状态标记（按钮由 init 添加，独立渲染）。
+        // 列表文字：名字 + 等级 + 经验 + 技能点 + 状态标记（按钮由 init 添加，独立渲染）。
         int y = LIST_TOP + 3;
         for (RecordListPacket.Entry entry : entries) {
             gui.drawString(this.font,
-                    entryLabel(entry).append(Component.literal("  Lv." + entry.getLevel()))
+                    entryLabel(entry)
+                            .append(Component.literal("  Lv." + entry.getLevel()))
+                            .append(Component.literal("  经验 " + entry.getXp()))
+                            .append(Component.literal("  技能点 " + entry.getSkillPoints()))
                             .append(stateSuffix(entry)),
                     LABEL_X, y, 0xFFFFFF);
             y += ITEM_HEIGHT;

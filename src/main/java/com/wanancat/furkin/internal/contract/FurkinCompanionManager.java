@@ -77,8 +77,10 @@ public final class FurkinCompanionManager {
             return false;
         }
 
-        // 快照写录：等级 / 技能 / 装备（装备 M3 起填充，这里保证结构就位）。
+        // 快照写录：等级 / 经验 / 技能点 / 技能 / 装备（装备 M3 起填充，这里保证结构就位）。
         entry.setLevel(data.getLevel());
+        entry.setXp(data.getXp());
+        entry.setSkillPoints(data.getSkillPoints());
         entry.setSkillSnapshot(data.serializeNBT().getCompound("skill_levels"));
         // 物种补写：旧档（加 species 字段前契约的）在此自愈——实体在场时物种必然可得。
         if (entry.getSpecies() == null) {
@@ -172,7 +174,8 @@ public final class FurkinCompanionManager {
         data.setCompanionId(companionId);
         data.setOwnerUuid(entry.getOwnerUuid());
         data.setLevel(entry.getLevel());
-        data.setXp(0); // 经验由 M2 成长系统接管，此处快照不含 xp（录里未存）。
+        data.setXp(entry.getXp()); // M2：经验从档案恢复（旧档 xp 默认 0）。
+        data.setSkillPoints(entry.getSkillPoints()); // M2：技能点从档案恢复。
         data.setState(FurkinState.COMPANION);
         // 技能快照读回（M2 起填充具体技能）。
         if (entry.getSkillSnapshot() != null && !entry.getSkillSnapshot().isEmpty()) {

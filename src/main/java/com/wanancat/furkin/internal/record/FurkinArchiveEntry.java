@@ -45,6 +45,12 @@ public final class FurkinArchiveEntry {
     /** 等级快照。 */
     private int level;
 
+    /** 经验快照（M2 起：升级溢出后的剩余经验，收回 / 召唤时与能力对象互转）。 */
+    private int xp;
+
+    /** 可用技能点快照（M2 起：升级得点，收回 / 召唤时与能力对象互转）。 */
+    private int skillPoints;
+
     /** 技能快照（NBT 形态，M2 起填充具体技能）。 */
     private CompoundTag skillSnapshot;
 
@@ -63,6 +69,8 @@ public final class FurkinArchiveEntry {
         this.alive = true;
         this.summoned = false;
         this.level = 1;
+        this.xp = 0;
+        this.skillPoints = 0;
         this.skillSnapshot = new CompoundTag();
         this.equipmentSnapshot = new CompoundTag();
         this.entitySnapshot = new CompoundTag();
@@ -113,6 +121,22 @@ public final class FurkinArchiveEntry {
         this.level = level;
     }
 
+    public int getXp() {
+        return xp;
+    }
+
+    public void setXp(int xp) {
+        this.xp = xp;
+    }
+
+    public int getSkillPoints() {
+        return skillPoints;
+    }
+
+    public void setSkillPoints(int skillPoints) {
+        this.skillPoints = skillPoints;
+    }
+
     public CompoundTag getSkillSnapshot() {
         return skillSnapshot;
     }
@@ -158,6 +182,8 @@ public final class FurkinArchiveEntry {
         tag.putBoolean("alive", alive);
         tag.putBoolean("summoned", summoned);
         tag.putInt("level", level);
+        tag.putInt("xp", xp);
+        tag.putInt("skill_points", skillPoints);
         tag.put("skill_snapshot", skillSnapshot);
         tag.put("equipment_snapshot", equipmentSnapshot);
         tag.put("entity_snapshot", entitySnapshot);
@@ -179,6 +205,9 @@ public final class FurkinArchiveEntry {
         entry.alive = tag.getBoolean("alive");
         entry.summoned = tag.getBoolean("summoned");
         entry.level = tag.getInt("level");
+        // 兼容旧档：xp / skill_points 是 M2 新增字段，旧档无则默认 0。
+        entry.xp = tag.contains("xp") ? tag.getInt("xp") : 0;
+        entry.skillPoints = tag.contains("skill_points") ? tag.getInt("skill_points") : 0;
         entry.skillSnapshot = tag.getCompound("skill_snapshot");
         entry.equipmentSnapshot = tag.getCompound("equipment_snapshot");
         entry.entitySnapshot = tag.getCompound("entity_snapshot");

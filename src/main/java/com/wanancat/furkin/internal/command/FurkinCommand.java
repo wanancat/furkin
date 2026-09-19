@@ -1,9 +1,13 @@
 package com.wanancat.furkin.internal.command;
 
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.wanancat.furkin.internal.capability.FurkinCapability;
+import com.wanancat.furkin.internal.capability.FurkinData;
 import com.wanancat.furkin.internal.contract.FurkinCompanionManager;
 import com.wanancat.furkin.internal.contract.FurkinRecordActionHandler;
+import com.wanancat.furkin.internal.growth.FurkinGrowth;
 import com.wanancat.furkin.internal.record.FurkinArchiveData;
 import com.wanancat.furkin.internal.record.FurkinArchiveEntry;
 import net.minecraft.ChatFormatting;
@@ -12,7 +16,10 @@ import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 
 import java.util.UUID;
 
@@ -48,6 +55,12 @@ public final class FurkinCommand {
                                                 .executes(ctx -> rename(ctx.getSource(),
                                                         StringArgumentType.getString(ctx, "pet_id"),
                                                         StringArgumentType.getString(ctx, "name"))))))
+                        .then(Commands.literal("addexp")
+                                .then(Commands.argument("pet_id", StringArgumentType.word())
+                                        .then(Commands.argument("amount", IntegerArgumentType.integer())
+                                                .executes(ctx -> addExp(ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "pet_id"),
+                                                        IntegerArgumentType.getInteger(ctx, "amount"))))))
         );
     }
 
@@ -96,7 +109,9 @@ public final class FurkinCommand {
                         + "  name=" + nameStr
                         + "  alive=" + entry.isAlive()
                         + "  summoned=" + entry.isSummoned()
-                        + "  level=" + entry.getLevel();
+                        + "  level=" + entry.getLevel()
+                        + "  xp=" + entry.getXp()
+                        + "  skillPoints=" + entry.getSkillPoints();
 
                 // id 组件：点击直接复制 id 本身（原版 copy_to_clipboard），hover 提示。
                 final String prefix = entry.isAlive() && !entry.isSummoned() ? "[SUMMON] " : "  ";
@@ -164,5 +179,72 @@ public final class FurkinCommand {
             default -> src.sendFailure(Component.literal("Rename failed."));
         }
         return 1;
+    }
+
+    /** 加经验：给一只在场绒亲加经验（调试 / 验收用，验证升级链）。 */
+    private static int addExp(CommandSourceStack src, String petIdRaw, int amount) {
+        if (!(src.getEntity() instanceof ServerPlayer player)) {
+            return 0;
+        }
+
+        UUID petId;
+        try {
+            petId = UUID.fromString(petIdRaw);
+        } catch (IllegalArgumentException e) {
+            src.sendFailure(Component.literal("Invalid pet id: " + petIdRaw));
+            return 0;
+        }
+
+        // 校验归属（先查档案确认是本人的）。
+        FurkinArchiveData archive = FurkinArchiveData.get(player.serverLevel());
+        FurkinArchiveEntry entry = archive.getEntry(petId);
+        if (entry == null) {
+            src.sendFailure(Component.literal("No such companion: " + petId));
+            return 0;
+        }
+        if (!player.getUUID().equals(entry.getOwnerUuid())) {
+            src.sendFailure(Component.literal("Not your companion."));
+            return 0;
+        }
+        if (!entry.isSummoned()) {
+            src.sendFailure(Component.literal("Companion is not summoned — summon it first."));
+            return 0;
+        }
+
+        // 找在场实体。
+        LivingEntity target = findLivingByCompanionId(player.serverLevel(), petId);
+        if (target == null) {
+            src.sendFailure(Component.literal("Companion entity not found in world."));
+            return 0;
+        }
+
+        FurkinData before = target.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
+        int oldLevel = before == null ? 0 : before.getLevel();
+
+        boolean leveled = FurkinGrowth.addXp(target, amount);
+
+        FurkinData after = target.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
+        int newLevel = after == null ? oldLevel : after.getLevel();
+        int newXp = after == null ? 0 : after.getXp();
+        int sp = after == null ? 0 : after.getSkillPoints();
+
+        src.sendSuccess(() -> Component.literal(
+                "Added " + amount + " xp to " + petId
+                        + " -> Lv." + newLevel + " (xp=" + newXp + ", skillPoints=" + sp + ")"
+                        + (leveled ? " [LEVEL UP]" : "")), false);
+        return 1;
+    }
+
+    /** 在世界里按 companionId 查找在场绒亲实体。 */
+    private static LivingEntity findLivingByCompanionId(ServerLevel level, UUID companionId) {
+        for (Entity entity : level.getEntities().getAll()) {
+            if (entity instanceof LivingEntity living) {
+                FurkinData data = living.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
+                if (data != null && companionId.equals(data.getCompanionId())) {
+                    return living;
+                }
+            }
+        }
+        return null;
     }
 }

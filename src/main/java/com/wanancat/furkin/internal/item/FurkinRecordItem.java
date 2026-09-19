@@ -65,7 +65,8 @@ public class FurkinRecordItem extends Item {
                         ? null
                         : entry.getName().getString();
                 list.add(new RecordListPacket.Entry(
-                        entry.getCompanionId(), speciesKey, entry.getLevel(), name,
+                        entry.getCompanionId(), speciesKey, entry.getLevel(),
+                        entry.getXp(), entry.getSkillPoints(), name,
                         entry.isSummoned(), entry.isAlive()));
             }
         }

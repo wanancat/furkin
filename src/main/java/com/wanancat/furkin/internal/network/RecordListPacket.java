@@ -20,11 +20,15 @@ import java.util.function.Supplier;
  */
 public final class RecordListPacket {
 
-    /** 列表单条（身份 UUID + 物种本地化 key + 等级 + 名字 + 生命/召唤状态）。 */
+    /** 列表单条（身份 UUID + 物种本地化 key + 等级 + 经验 + 技能点 + 名字 + 生命/召唤状态）。 */
     public static final class Entry {
         private final UUID companionId;
         private final String speciesName;
         private final int level;
+        /** 经验（M2 起：升级溢出后的剩余经验）。 */
+        private final int xp;
+        /** 可用技能点（M2 起：升级得点）。 */
+        private final int skillPoints;
         /** 宠物名字（可空；空则界面回退显示物种名）。 */
         private final String name;
         /** 是否已召唤（实体在场）。 */
@@ -32,11 +36,13 @@ public final class RecordListPacket {
         /** 是否存活（false = 已死亡待复活）。 */
         private final boolean alive;
 
-        public Entry(UUID companionId, String speciesName, int level, String name,
-                     boolean summoned, boolean alive) {
+        public Entry(UUID companionId, String speciesName, int level, int xp, int skillPoints,
+                     String name, boolean summoned, boolean alive) {
             this.companionId = companionId;
             this.speciesName = speciesName;
             this.level = level;
+            this.xp = xp;
+            this.skillPoints = skillPoints;
             this.name = name;
             this.summoned = summoned;
             this.alive = alive;
@@ -52,6 +58,14 @@ public final class RecordListPacket {
 
         public int getLevel() {
             return level;
+        }
+
+        public int getXp() {
+            return xp;
+        }
+
+        public int getSkillPoints() {
+            return skillPoints;
         }
 
         public String getName() {
@@ -90,6 +104,8 @@ public final class RecordListPacket {
             buf.writeUUID(e.companionId);
             buf.writeUtf(e.speciesName);
             buf.writeVarInt(e.level);
+            buf.writeVarInt(e.xp);
+            buf.writeVarInt(e.skillPoints);
             buf.writeUtf(e.name == null ? "" : e.name);
             buf.writeBoolean(e.summoned);
             buf.writeBoolean(e.alive);
@@ -103,10 +119,13 @@ public final class RecordListPacket {
             UUID id = buf.readUUID();
             String species = buf.readUtf();
             int level = buf.readVarInt();
+            int xp = buf.readVarInt();
+            int skillPoints = buf.readVarInt();
             String name = buf.readUtf();
             boolean summoned = buf.readBoolean();
             boolean alive = buf.readBoolean();
-            list.add(new Entry(id, species, level, name.isEmpty() ? null : name, summoned, alive));
+            list.add(new Entry(id, species, level, xp, skillPoints,
+                    name.isEmpty() ? null : name, summoned, alive));
         }
         return new RecordListPacket(list);
     }
