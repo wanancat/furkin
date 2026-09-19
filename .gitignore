@@ -1,0 +1,39 @@
+# ---- Eclipse ----
+bin
+*.launch
+.settings
+.metadata
+.classpath
+.project
+
+# ---- IntelliJ IDEA ----
+out
+*.ipr
+*.iws
+*.iml
+.idea
+
+# ---- Gradle ----
+build
+.gradle
+**/build/
+
+# ---- Minecraft runtime ----
+run
+run-data
+run-server
+logs
+*.log
+
+# ---- Forge MDK leftovers ----
+forge*changelog.txt
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+*.swp
+
+# ---- Misc ----
+*.jar
+!gradle-wrapper.jar
+mcmodsrepo
