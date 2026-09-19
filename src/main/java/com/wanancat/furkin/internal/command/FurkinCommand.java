@@ -3,8 +3,14 @@ package com.wanancat.furkin.internal.command;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.suggestion.SuggestionProvider;
+import com.mojang.brigadier.suggestion.Suggestions;
+import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import com.wanancat.furkin.internal.capability.FurkinCapability;
 import com.wanancat.furkin.internal.capability.FurkinData;
+import com.wanancat.furkin.internal.contract.FurkinCombatMode;
+import com.wanancat.furkin.internal.contract.FurkinCombatModeHandler;
 import com.wanancat.furkin.internal.contract.FurkinCompanionManager;
 import com.wanancat.furkin.internal.contract.FurkinRecordActionHandler;
 import com.wanancat.furkin.internal.growth.FurkinGrowth;
@@ -21,6 +27,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 
+import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -33,6 +40,19 @@ public final class FurkinCommand {
 
     private FurkinCommand() {
     }
+
+    /** mode 参数的建议器：列出四档，按已输入前缀过滤。 */
+    private static final SuggestionProvider<CommandSourceStack> MODE_SUGGESTIONS =
+            (CommandContext<CommandSourceStack> ctx, SuggestionsBuilder builder) -> {
+                String input = builder.getRemaining().toLowerCase(Locale.ROOT);
+                for (FurkinCombatMode mode : FurkinCombatMode.values()) {
+                    String name = mode.name().toLowerCase(Locale.ROOT);
+                    if (name.startsWith(input)) {
+                        builder.suggest(name);
+                    }
+                }
+                return builder.buildFuture();
+            };
 
     /** 注册命令。 */
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
@@ -61,6 +81,13 @@ public final class FurkinCommand {
                                                 .executes(ctx -> addExp(ctx.getSource(),
                                                         StringArgumentType.getString(ctx, "pet_id"),
                                                         IntegerArgumentType.getInteger(ctx, "amount"))))))
+                        .then(Commands.literal("mode")
+                                .then(Commands.argument("pet_id", StringArgumentType.word())
+                                        .then(Commands.argument("mode", StringArgumentType.word())
+                                                .suggests(MODE_SUGGESTIONS)
+                                                .executes(ctx -> setMode(ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "pet_id"),
+                                                        StringArgumentType.getString(ctx, "mode"))))))
         );
     }
 
@@ -232,6 +259,39 @@ public final class FurkinCommand {
                 "Added " + amount + " xp to " + petId
                         + " -> Lv." + newLevel + " (xp=" + newXp + ", skillPoints=" + sp + ")"
                         + (leveled ? " [LEVEL UP]" : "")), false);
+        return 1;
+    }
+
+    /** 切换战斗模式：follow / passive / protect / aggressive。 */
+    private static int setMode(CommandSourceStack src, String petIdRaw, String modeRaw) {
+        if (!(src.getEntity() instanceof ServerPlayer player)) {
+            return 0;
+        }
+
+        UUID petId;
+        try {
+            petId = UUID.fromString(petIdRaw);
+        } catch (IllegalArgumentException e) {
+            src.sendFailure(Component.literal("Invalid pet id: " + petIdRaw));
+            return 0;
+        }
+
+        FurkinCombatMode mode = FurkinCombatMode.parse(modeRaw);
+        if (mode == null) {
+            src.sendFailure(Component.literal(
+                    "Invalid mode: " + modeRaw + " (use follow / passive / protect / aggressive)"));
+            return 0;
+        }
+
+        FurkinCombatModeHandler.Result r = FurkinCombatModeHandler.setMode(player, petId, mode);
+        switch (r) {
+            case OK -> src.sendSuccess(() -> Component.literal(
+                    "Combat mode set to " + mode.name() + " for " + petId), false);
+            case NOT_FOUND -> src.sendFailure(Component.literal("No such companion: " + petId));
+            case NOT_OWNER -> src.sendFailure(Component.literal("Not your companion."));
+            case NOT_SUMMONED -> src.sendFailure(Component.literal("Companion is not summoned — summon it first."));
+            default -> src.sendFailure(Component.literal("Set mode failed."));
+        }
         return 1;
     }
 

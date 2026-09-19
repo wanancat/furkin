@@ -15,6 +15,7 @@
   "furkin.msg.unbind_failed": "Unbind failed (not found / not owner)",
   "furkin.msg.renamed": "Renamed",
   "furkin.msg.rename_failed": "Rename failed (not found / not owner / invalid name)",
+  "furkin.msg.level_up": "%s leveled up to Lv.%s",
   "furkin.screen.record.title": "Furkin Record",
   "furkin.screen.record.summon": "Summon",
   "furkin.screen.record.dismiss": "Dismiss",

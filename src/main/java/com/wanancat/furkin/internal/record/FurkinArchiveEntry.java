@@ -1,5 +1,6 @@
 package com.wanancat.furkin.internal.record;
 
+import com.wanancat.furkin.internal.contract.FurkinCombatMode;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -63,6 +64,9 @@ public final class FurkinArchiveEntry {
     /** 宠物名字（契约时命名 / 命名牌改名，可空；为空时列表显示物种名）。 */
     private Component name;
 
+    /** 战斗模式（四档，收回 / 召唤时与能力对象互转，保证跨召唤记忆）。 */
+    private FurkinCombatMode combatMode;
+
     public FurkinArchiveEntry(UUID companionId) {
         this.companionId = companionId;
         this.species = null;
@@ -75,6 +79,7 @@ public final class FurkinArchiveEntry {
         this.equipmentSnapshot = new CompoundTag();
         this.entitySnapshot = new CompoundTag();
         this.name = null;
+        this.combatMode = FurkinCombatMode.FOLLOW;
     }
 
     public UUID getCompanionId() {
@@ -169,6 +174,14 @@ public final class FurkinArchiveEntry {
         this.name = name;
     }
 
+    public FurkinCombatMode getCombatMode() {
+        return combatMode;
+    }
+
+    public void setCombatMode(FurkinCombatMode combatMode) {
+        this.combatMode = combatMode == null ? FurkinCombatMode.FOLLOW : combatMode;
+    }
+
     /** 序列化为 NBT。 */
     public CompoundTag serializeNBT() {
         CompoundTag tag = new CompoundTag();
@@ -190,6 +203,7 @@ public final class FurkinArchiveEntry {
         if (name != null) {
             tag.putString("name", Component.Serializer.toJson(name));
         }
+        tag.putString("combat_mode", combatMode.name());
         return tag;
     }
 
@@ -214,6 +228,10 @@ public final class FurkinArchiveEntry {
         if (tag.contains("name")) {
             entry.name = Component.Serializer.fromJson(tag.getString("name"));
         }
+        // 兼容旧档：combat_mode 是 M2 战斗模式新增字段，旧档无则默认 FOLLOW。
+        entry.combatMode = tag.contains("combat_mode")
+                ? FurkinCombatMode.valueOf(tag.getString("combat_mode"))
+                : FurkinCombatMode.FOLLOW;
         return entry;
     }
 }

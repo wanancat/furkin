@@ -182,7 +182,7 @@ public final class FurkinRecordActionHandler {
         return Component.literal(name.trim());
     }
 
-    /** 摘掉绒亲数据层：身份 / 状态 / 技能 / 等级清空，TamableAnimal 清 TAME 与主人，清 CustomName。 */
+    /** 摘掉绒亲数据层：身份 / 状态 / 技能 / 等级 / 战斗模式清空，TamableAnimal 清 TAME 与主人，清 CustomName。 */
     private static void clearFurkinLayer(LivingEntity target) {
         FurkinData data = target.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
         if (data != null) {
@@ -192,10 +192,12 @@ public final class FurkinRecordActionHandler {
             data.setXp(0);
             data.setSkillPoints(0);
             data.getSkillLevels().clear();
+            data.setCombatMode(FurkinCombatMode.FOLLOW);
             data.setState(FurkinState.WILD);
         }
 
-        // 清原版驯服归属（回落野生）。
+        // 清原版驯服归属（回落野生）。注意：不动 targetSelector / goalSelector ——
+        // 解绑 = 回落「普通动物」，原版 AI 自行接管（狗原版会自己挂攻击目标）。
         if (target instanceof TamableAnimal tamable) {
             tamable.setTame(false);
             tamable.setOwnerUUID(null);

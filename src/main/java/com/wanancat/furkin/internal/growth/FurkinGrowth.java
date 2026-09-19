@@ -8,6 +8,7 @@ import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.network.SyncFurkinDataPacket;
 import com.wanancat.furkin.internal.record.FurkinArchiveData;
 import com.wanancat.furkin.internal.record.FurkinArchiveEntry;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
@@ -76,6 +77,9 @@ public final class FurkinGrowth {
         int level = data.getLevel();
         boolean leveledUp = false;
 
+        // 主人解析一次（升级提示用；可能 null —— 主人离线但宠物仍在场时）。
+        ServerPlayer owner = resolveOwner(companion);
+
         // 溢出循环：经验够升一级就升一级，直到不够为止。
         while (xp >= xpNeededForNextLevel(level)) {
             xp -= xpNeededForNextLevel(level);
@@ -85,7 +89,17 @@ public final class FurkinGrowth {
 
             // 触发升级事件（每级一次）。
             MinecraftForge.EVENT_BUS.post(new FurkinLevelUpEvent(
-                    companion, resolveOwner(companion), level - 1, level));
+                    companion, owner, level - 1, level));
+
+            // 升级 Action Bar 提示（「X 升到了 Lv.N」）—— 只在主人在线时发。
+            if (owner != null) {
+                Component name = companion.hasCustomName()
+                        ? companion.getCustomName()
+                        : Component.translatable(companion.getType().getDescriptionId());
+                owner.displayClientMessage(
+                        Component.translatable("furkin.msg.level_up", name, level),
+                        true);
+            }
         }
 
         data.setXp(xp);

@@ -127,6 +127,7 @@ public final class FurkinContractHandler {
         data.setLevel(1);
         data.setXp(0);
         data.setState(FurkinState.COMPANION);
+        data.setCombatMode(FurkinCombatMode.FOLLOW); // 默认跟随（不参战），玩家切档后记忆。
 
         // 对 TamableAnimal 的额外动作：置 TAME=true（不撤销，有意接受的白送）。
         if (target instanceof TamableAnimal tamable) {
@@ -134,6 +135,8 @@ public final class FurkinContractHandler {
             tamable.setOwnerUUID(ownerUuid);
             // 清一次坐定，保证契约后立即跟随（原版「右键坐下」交互保留，玩家后续仍可手动让猫坐下）。
             tamable.setOrderedToSit(false);
+            // 应用战斗模式（默认 FOLLOW = 清掉攻击目标，不参战）。
+            FurkinCombatMode.FOLLOW.applyTo(tamable);
         }
 
         // 名字：留空回退物种名（本地化 key 渲染前的默认名）。这里存的是「名字」而非 key。

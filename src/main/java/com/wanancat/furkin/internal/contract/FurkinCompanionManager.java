@@ -176,6 +176,7 @@ public final class FurkinCompanionManager {
         data.setLevel(entry.getLevel());
         data.setXp(entry.getXp()); // M2：经验从档案恢复（旧档 xp 默认 0）。
         data.setSkillPoints(entry.getSkillPoints()); // M2：技能点从档案恢复。
+        data.setCombatMode(entry.getCombatMode()); // M2：战斗模式从档案恢复（跨召唤记忆）。
         data.setState(FurkinState.COMPANION);
         // 技能快照读回（M2 起填充具体技能）。
         if (entry.getSkillSnapshot() != null && !entry.getSkillSnapshot().isEmpty()) {
@@ -196,6 +197,8 @@ public final class FurkinCompanionManager {
             // 快照回灌只恢复意图，姿势 flag 若不清会「坐着滑行」。
             tamable.setOrderedToSit(false);
             tamable.setInSittingPose(false);
+            // 应用战斗模式（从档案恢复，跨召唤记忆）。
+            data.getCombatMode().applyTo(tamable);
         }
 
         // 名字回灌：快照里的 CustomName 是改名前的旧值，需按档案 name 覆盖

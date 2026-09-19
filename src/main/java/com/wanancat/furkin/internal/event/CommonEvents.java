@@ -3,23 +3,34 @@ package com.wanancat.furkin.internal.event;
 import com.wanancat.furkin.internal.command.FurkinCommand;
 import com.wanancat.furkin.internal.capability.FurkinCapability;
 import com.wanancat.furkin.internal.capability.FurkinData;
+import com.wanancat.furkin.internal.config.FurkinServerConfig;
 import com.wanancat.furkin.internal.contract.FurkinCompanionManager;
 import com.wanancat.furkin.internal.contract.FurkinContractHandler;
+import com.wanancat.furkin.internal.growth.CombatParticipationTracker;
 import com.wanancat.furkin.internal.growth.FurkinFeeding;
+import com.wanancat.furkin.internal.growth.FurkinGrowth;
 import com.wanancat.furkin.internal.item.FurkinContractItem;
 import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.network.SyncFurkinDataPacket;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.event.RegisterCommandsEvent;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.entity.living.LivingDeathEvent;
+import net.minecraftforge.event.entity.living.LivingHurtEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.network.PacketDistributor;
+
+import java.util.Map;
+import java.util.UUID;
 
 /**
  * 通用事件处理器（逻辑端共享）。
@@ -113,5 +124,89 @@ public final class CommonEvents {
             event.setCancellationResult(InteractionResult.SUCCESS);
             event.setCanceled(true);
         }
+    }
+
+    // ===== 战斗经验（§3.2 口径 A）：登记伤害 → 死亡结算 =====
+
+    /**
+     * 目标受伤：登记「攻击者」进该目标的参与者表，累计伤害。
+     * 攻击者可能是绒亲本人、玩家、或其它来源；是否发经验在死亡结算时再判定。
+     */
+    @SubscribeEvent
+    public static void onLivingHurt(LivingHurtEvent event) {
+        // 只在服务端处理。
+        if (event.getEntity().level().isClientSide()) {
+            return;
+        }
+        LivingEntity target = event.getEntity();
+        DamageSource source = event.getSource();
+        if (source == null) {
+            return;
+        }
+        // 攻击者可能不是 LivingEntity（如箭矢、环境），但只登记「直接实体」即可：
+        // 绒亲近战攻击时 getEntity() 返回绒亲本身。
+        Entity sourceEntity = source.getEntity();
+        if (!(sourceEntity instanceof LivingEntity attacker)) {
+            return;
+        }
+        CombatParticipationTracker.recordDamage(target, attacker, event.getAmount());
+    }
+
+    /**
+     * 目标死亡：结算战斗经验。口径 A —— 每个参与过伤害的绒亲各拿
+     * 目标原版经验 × {@code COMBAT_XP_MULTIPLIER}。
+     */
+    @SubscribeEvent
+    public static void onLivingDeath(LivingDeathEvent event) {
+        LivingEntity target = event.getEntity();
+        if (target.level().isClientSide() || !(target.level() instanceof ServerLevel serverLevel)) {
+            return;
+        }
+
+        Map<UUID, Float> participants = CombatParticipationTracker.takeAndClear(target);
+        if (participants.isEmpty()) {
+            return;
+        }
+
+        // 原版经验值（玩家击杀该生物可得的经验）。
+        int baseXp = target.getExperienceReward();
+        if (baseXp <= 0) {
+            return;
+        }
+        int xpPerCompanion = (int) Math.round(baseXp * FurkinServerConfig.COMBAT_XP_MULTIPLIER.get());
+        if (xpPerCompanion <= 0) {
+            return;
+        }
+
+        // 对每个参与者：若是某玩家本人的在场绒亲，给该绒亲发经验。
+        for (UUID attackerId : participants.keySet()) {
+            Entity entity = serverLevel.getEntity(attackerId);
+            if (!(entity instanceof LivingEntity attacker)) {
+                continue;
+            }
+            if (!attacker.isAlive()) {
+                continue;
+            }
+            var data = attacker.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
+            if (data == null || !data.isCompanion()) {
+                continue;
+            }
+            // 找到主人（可能离线 → 跳过该绒亲，主人不在时战斗经验静默丢弃，可接受）。
+            ServerPlayer owner = serverLevel.getServer().getPlayerList()
+                    .getPlayer(data.getOwnerUuid());
+            if (owner == null) {
+                continue;
+            }
+            FurkinGrowth.addXp(attacker, xpPerCompanion);
+        }
+    }
+
+    /** 服务端 tick 兜底：清理脱离战斗超时的追踪记录，防止残留。 */
+    @SubscribeEvent
+    public static void onServerTick(TickEvent.ServerTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) {
+            return;
+        }
+        CombatParticipationTracker.tickCleanup();
     }
 }

@@ -1,5 +1,6 @@
 package com.wanancat.furkin.internal.capability;
 
+import com.wanancat.furkin.internal.contract.FurkinCombatMode;
 import com.wanancat.furkin.internal.contract.FurkinState;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
@@ -35,6 +36,8 @@ public final class FurkinData {
     private int skillPoints;
     private final Map<ResourceLocation, Integer> skillLevels;
     private FurkinState state;
+    /** 战斗模式（四档：跟随 / 被动 / 保护 / 主动）。 */
+    private FurkinCombatMode combatMode;
 
     /** 连续进食计数（递减收益防刷，运行时状态，不持久化到档案）。 */
     private int feedCount;
@@ -49,6 +52,7 @@ public final class FurkinData {
         this.skillPoints = 0;
         this.skillLevels = new HashMap<>();
         this.state = FurkinState.WILD;
+        this.combatMode = FurkinCombatMode.FOLLOW;
         this.feedCount = 0;
         this.lastFeedMillis = 0;
     }
@@ -105,6 +109,15 @@ public final class FurkinData {
         this.state = state;
     }
 
+    /** 战斗模式（四档）。 */
+    public FurkinCombatMode getCombatMode() {
+        return combatMode;
+    }
+
+    public void setCombatMode(FurkinCombatMode combatMode) {
+        this.combatMode = combatMode == null ? FurkinCombatMode.FOLLOW : combatMode;
+    }
+
     /** 连续进食计数（递减收益防刷）。 */
     public int getFeedCount() {
         return feedCount;
@@ -143,6 +156,7 @@ public final class FurkinData {
         tag.putInt("xp", xp);
         tag.putInt("skill_points", skillPoints);
         tag.putString("state", state.name());
+        tag.putString("combat_mode", combatMode.name());
 
         CompoundTag skills = new CompoundTag();
         for (Map.Entry<ResourceLocation, Integer> e : skillLevels.entrySet()) {
@@ -162,6 +176,9 @@ public final class FurkinData {
         this.xp = tag.getInt("xp");
         this.skillPoints = tag.getInt("skill_points");
         this.state = FurkinState.valueOf(tag.getString("state"));
+        this.combatMode = tag.contains("combat_mode")
+                ? FurkinCombatMode.valueOf(tag.getString("combat_mode"))
+                : FurkinCombatMode.FOLLOW; // 旧档缺省 FOLLOW。
 
         this.skillLevels.clear();
         CompoundTag skills = tag.getCompound("skill_levels");
@@ -180,6 +197,7 @@ public final class FurkinData {
         copy.skillPoints = this.skillPoints;
         copy.skillLevels.putAll(this.skillLevels);
         copy.state = this.state;
+        copy.combatMode = this.combatMode;
         copy.feedCount = this.feedCount;
         copy.lastFeedMillis = this.lastFeedMillis;
         return copy;

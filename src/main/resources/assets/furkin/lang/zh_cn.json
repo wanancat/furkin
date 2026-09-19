@@ -15,6 +15,7 @@
   "furkin.msg.unbind_failed": "解绑失败（不存在 / 非本人）",
   "furkin.msg.renamed": "已改名",
   "furkin.msg.rename_failed": "改名失败（不存在 / 非本人 / 名字无效）",
+  "furkin.msg.level_up": "%s 升到了 Lv.%s",
   "furkin.screen.record.title": "绒亲录",
   "furkin.screen.record.summon": "召唤",
   "furkin.screen.record.dismiss": "收回",
