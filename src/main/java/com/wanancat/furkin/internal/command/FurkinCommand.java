@@ -114,8 +114,8 @@ public final class FurkinCommand {
                         + "  skillPoints=" + entry.getSkillPoints();
 
                 // id 组件：点击直接复制 id 本身（原版 copy_to_clipboard），hover 提示。
-                final String prefix = entry.isAlive() && !entry.isSummoned() ? "[SUMMON] " : "  ";
-                src.sendSuccess(() -> Component.literal(prefix)
+                // （旧设计的 [SUMMON] 前缀已删：id 改为复制后它不再对应任何行为，且 summoned= 字段已表达状态。）
+                src.sendSuccess(() -> Component.literal("  ")
                         .append(Component.literal(idStr).withStyle(Style.EMPTY
                                 .withColor(ChatFormatting.AQUA)
                                 .withUnderlined(Boolean.TRUE)

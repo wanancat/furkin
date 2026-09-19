@@ -5,6 +5,7 @@ import com.wanancat.furkin.internal.capability.FurkinCapability;
 import com.wanancat.furkin.internal.capability.FurkinData;
 import com.wanancat.furkin.internal.contract.FurkinCompanionManager;
 import com.wanancat.furkin.internal.contract.FurkinContractHandler;
+import com.wanancat.furkin.internal.growth.FurkinFeeding;
 import com.wanancat.furkin.internal.item.FurkinContractItem;
 import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.network.SyncFurkinDataPacket;
@@ -12,6 +13,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
@@ -68,6 +70,27 @@ public final class CommonEvents {
         if (!(event.getTarget() instanceof LivingEntity target)) {
             return;
         }
+
+        // ===== 进食通道（§3.2）：手持可食用食物 + 目标是本人契约且在场的绒亲 → 接管喂食 =====
+        FurkinData targetData = target.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
+        boolean isOwnCompanion = targetData != null
+                && targetData.isCompanion()
+                && player.getUUID().equals(targetData.getOwnerUuid());
+
+        if (isOwnCompanion && !(player.getMainHandItem().getItem() instanceof FurkinContractItem)) {
+            ItemStack held = player.getMainHandItem();
+            if (FurkinFeeding.isEdibleFood(held, target)) {
+                // 已确认（R11 实测）：EntityInteract 时序在 mobInteract 之前，
+                // setCanceled(true) 能干净取消原版喂食（求偶/吃鱼均被压住）。
+                boolean fed = FurkinFeeding.feed(player, target, held);
+                if (fed) {
+                    event.setCancellationResult(InteractionResult.SUCCESS);
+                    event.setCanceled(true);
+                }
+                return;
+            }
+        }
+        // ===== 进食通道结束 =====
 
         // 手持绒亲契约才触发契约 / 收回。
         if (!(player.getMainHandItem().getItem() instanceof FurkinContractItem)) {

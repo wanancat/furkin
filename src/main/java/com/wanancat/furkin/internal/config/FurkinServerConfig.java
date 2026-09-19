@@ -36,6 +36,16 @@ public class FurkinServerConfig {
             .comment("Feeding experience multiplier for companions.", "Design intent: 1.0.")
             .defineInRange("feedingXpMultiplier", 1.0, 0.0, 100.0);
 
+    /** 递减收益：连续进食每多一档，收益递减的幅度（0–1）。默认 0.1（每档 -10%）。 */
+    public static final ForgeConfigSpec.DoubleValue DIMINISH_STEP = BUILDER
+            .comment("Diminishing returns: how much experience multiplier drops per consecutive feed.", "Design intent: 0.1 (each feed -10%, floor 0.1).")
+            .defineInRange("diminishStep", 0.1, 0.0, 1.0);
+
+    /** 递减收益恢复时间（秒）：停喂这么久，进食计数回落 1 档。默认 30。 */
+    public static final ForgeConfigSpec.IntValue DIMINISH_RECOVERY_SECONDS = BUILDER
+            .comment("Diminishing returns: seconds without feeding to recover one step.", "Design intent: 30.")
+            .defineInRange("diminishRecoverySeconds", 30, 1, Integer.MAX_VALUE);
+
     // ===== 复活 =====
 
     /** 复活冷却时长（秒）。具体数值 M5 平衡时定，占位 600。 */

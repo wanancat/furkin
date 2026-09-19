@@ -36,6 +36,11 @@ public final class FurkinData {
     private final Map<ResourceLocation, Integer> skillLevels;
     private FurkinState state;
 
+    /** 连续进食计数（递减收益防刷，运行时状态，不持久化到档案）。 */
+    private int feedCount;
+    /** 上次进食时间戳（毫秒），用于递减收益的「停喂恢复」。 */
+    private long lastFeedMillis;
+
     public FurkinData() {
         this.companionId = null;
         this.ownerUuid = null;
@@ -44,6 +49,8 @@ public final class FurkinData {
         this.skillPoints = 0;
         this.skillLevels = new HashMap<>();
         this.state = FurkinState.WILD;
+        this.feedCount = 0;
+        this.lastFeedMillis = 0;
     }
 
     public UUID getCompanionId() {
@@ -96,6 +103,24 @@ public final class FurkinData {
 
     public void setState(FurkinState state) {
         this.state = state;
+    }
+
+    /** 连续进食计数（递减收益防刷）。 */
+    public int getFeedCount() {
+        return feedCount;
+    }
+
+    public void setFeedCount(int feedCount) {
+        this.feedCount = feedCount;
+    }
+
+    /** 上次进食时间戳（毫秒）。 */
+    public long getLastFeedMillis() {
+        return lastFeedMillis;
+    }
+
+    public void setLastFeedMillis(long lastFeedMillis) {
+        this.lastFeedMillis = lastFeedMillis;
     }
 
     /** 是否已契约（COMPANION 或 FALLEN 都算「已进入伴侣体系」）。 */
@@ -155,6 +180,8 @@ public final class FurkinData {
         copy.skillPoints = this.skillPoints;
         copy.skillLevels.putAll(this.skillLevels);
         copy.state = this.state;
+        copy.feedCount = this.feedCount;
+        copy.lastFeedMillis = this.lastFeedMillis;
         return copy;
     }
 
