@@ -42,6 +42,46 @@ public final class FurkinNetwork {
                 SyncFurkinDataPacket::handle,
                 Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         );
+
+        // 服务端 → 客户端：绒亲录列表（打开界面）。
+        CHANNEL.registerMessage(
+                id++,
+                RecordListPacket.class,
+                RecordListPacket::encode,
+                RecordListPacket::decode,
+                RecordListPacket::handle,
+                Optional.of(NetworkDirection.PLAY_TO_CLIENT)
+        );
+
+        // 客户端 → 服务端：请求召唤。
+        CHANNEL.registerMessage(
+                id++,
+                RequestSummonPacket.class,
+                RequestSummonPacket::encode,
+                RequestSummonPacket::decode,
+                RequestSummonPacket::handle,
+                Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        );
+
+        // 服务端 → 客户端：请求为待契约实体命名（契约第一步）。
+        CHANNEL.registerMessage(
+                id++,
+                RequestContractNamePacket.class,
+                RequestContractNamePacket::encode,
+                RequestContractNamePacket::decode,
+                RequestContractNamePacket::handle,
+                Optional.of(NetworkDirection.PLAY_TO_CLIENT)
+        );
+
+        // 客户端 → 服务端：命名确认，真正落契约（契约第二步）。
+        CHANNEL.registerMessage(
+                id++,
+                ConfirmContractPacket.class,
+                ConfirmContractPacket::encode,
+                ConfirmContractPacket::decode,
+                ConfirmContractPacket::handle,
+                Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        );
     }
 
     /** 暴露通道给包发送方（服务端契约/召唤/收回后广播）。 */

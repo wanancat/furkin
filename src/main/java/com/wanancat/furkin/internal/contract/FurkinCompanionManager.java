@@ -215,6 +215,77 @@ public final class FurkinCompanionManager {
     }
 
     /**
+     * 传送一只「已召唤（实体在场）」的绒亲到主人身边，并唤醒跟随。
+     *
+     * <p>与 {@link #summon} 的区别：不新增活跃数、不重建实体，仅对在场实体做位置挪移。
+     * 故<b>不查活跃上限</b>。语义对应绒亲录里「已召唤条目点召唤 = 传送到身边」。</p>
+     *
+     * @param player      主人
+     * @param companionId 宠物身份 UUID
+     * @return 是否成功传送
+     */
+    public static boolean teleportToOwner(ServerPlayer player, UUID companionId) {
+        if (!(player.level() instanceof ServerLevel serverLevel)) {
+            return false;
+        }
+
+        // 从档案确认主人与生命状态。
+        FurkinArchiveData archive = FurkinArchiveData.get(serverLevel);
+        FurkinArchiveEntry entry = archive.getEntry(companionId);
+        if (entry == null) {
+            return false;
+        }
+        if (entry.getOwnerUuid() == null || !entry.getOwnerUuid().equals(player.getUUID())) {
+            return false;
+        }
+        if (!entry.isAlive()) {
+            return false;
+        }
+        if (!entry.isSummoned()) {
+            // 未召唤（不在场）→ 走 summon，不在此处理。
+            return false;
+        }
+
+        // 找到在场实体：遍历世界按 companionId 匹配能力对象。
+        LivingEntity target = findLivingByCompanionId(serverLevel, companionId);
+        if (target == null) {
+            // 档案标记已召唤但实体不在场（数据不一致）→ 自愈：改回未召唤。
+            entry.setSummoned(false);
+            archive.putEntry(entry);
+            FurkinMod.LOGGER.warn("Furkin teleport: entity missing for id={}, marked dismissed",
+                    companionId);
+            return false;
+        }
+
+        // 传送：绕到玩家朝向正前方一格（避免与玩家重叠）。
+        double dx = -Math.sin(Math.toRadians(player.getYRot())) * 1.5;
+        double dz = Math.cos(Math.toRadians(player.getYRot())) * 1.5;
+        target.teleportTo(player.getX() + dx, player.getY(), player.getZ() + dz);
+
+        // 唤醒跟随：清坐定，保证传送后立即跟随。
+        if (target instanceof TamableAnimal tamable) {
+            tamable.setOrderedToSit(false);
+        }
+
+        FurkinMod.LOGGER.info("Furkin teleported: id={} to {}",
+                companionId, player.getName().getString());
+        return true;
+    }
+
+    /** 在世界里按 companionId 查找在场绒亲实体。 */
+    private static LivingEntity findLivingByCompanionId(ServerLevel level, UUID companionId) {
+        for (Entity entity : level.getEntities().getAll()) {
+            if (entity instanceof LivingEntity living) {
+                FurkinData data = living.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
+                if (data != null && companionId.equals(data.getCompanionId())) {
+                    return living;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
      * 统计某主人的当前已召唤（实体在场）绒亲数量。
      */
     private static int countSummoned(ServerLevel level, UUID ownerUuid) {

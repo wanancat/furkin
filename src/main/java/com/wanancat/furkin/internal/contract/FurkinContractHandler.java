@@ -36,12 +36,20 @@ public final class FurkinContractHandler {
     }
 
     /**
-     * 尝试契约。成功返回 true（契约已消耗），失败返回 false（契约未消耗）。
+     * 尝试契约（第一步：边界校验 + 请求命名）。
+     *
+     * <p>成功通过所有边界校验后，<b>不立刻落契约</b>，而是发
+     * {@link com.wanancat.furkin.internal.network.RequestContractNamePacket} 请求客户端
+     * 弹命名框。玩家确认后经
+     * {@link com.wanancat.furkin.internal.network.ConfirmContractPacket} 回调
+     * {@link #executeContract} 真正落契约。</p>
+     *
+     * <p>返回 true 表示「已发出命名请求」（契约尚未落地），false 表示「边界不通过，无动作」。</p>
      *
      * @param player  发起契约的玩家（主人）
      * @param target  被契约的实体
      * @param hand    契约物品所在堆叠
-     * @return 是否成功契约
+     * @return 是否已发出命名请求
      */
     public static boolean tryContract(ServerPlayer player, LivingEntity target, ItemStack hand) {
         // 边界①：不在注册表内 → 不响应、不消耗。
@@ -74,6 +82,41 @@ public final class FurkinContractHandler {
             return false;
         }
 
+        // 边界全部通过 → 请求命名（不消耗契约，契约在命名确认后落）。
+        FurkinNetwork.channel().send(
+                PacketDistributor.PLAYER.with(() -> player),
+                new com.wanancat.furkin.internal.network.RequestContractNamePacket(target.getId()));
+        return true;
+    }
+
+    /**
+     * 真正执行契约（第二步：命名确认后回调）。
+     *
+     * <p>由 {@code ConfirmContractPacket} 在服务端调用。此时边界已在前置校验通过，
+     * 但为防御性，仍复检一遍关键边界（能力存在 / 未契约 / 活跃上限）。</p>
+     *
+     * @param player 主人
+     * @param target 被契约实体
+     * @param hand   契约物品堆叠
+     * @param name   玩家输入的名字（空串 = 留空，回退物种名）
+     */
+    public static void executeContract(ServerPlayer player, LivingEntity target, ItemStack hand, String name) {
+        FurkinData data = target.getCapability(
+                com.wanancat.furkin.internal.capability.FurkinCapability.FURKIN_DATA).orElse(null);
+        if (data == null || data.isCompanion()) {
+            return;
+        }
+
+        // 防御性复检活跃上限（正常情况下前置已拦，这里兜底）。
+        if (target.level() instanceof ServerLevel sl
+                && countActive(sl, player.getUUID()) >= FurkinServerConfig.ACTIVE_LIMIT.get()) {
+            player.displayClientMessage(
+                    Component.translatable("furkin.msg.active_limit",
+                            FurkinServerConfig.ACTIVE_LIMIT.get()),
+                    true);
+            return;
+        }
+
         // 生成宠物身份 UUID（建档主键）。
         UUID companionId = UUID.randomUUID();
         UUID ownerUuid = player.getUUID();
@@ -93,6 +136,9 @@ public final class FurkinContractHandler {
             tamable.setOrderedToSit(false);
         }
 
+        // 名字：留空回退物种名（本地化 key 渲染前的默认名）。这里存的是「名字」而非 key。
+        Component petName = resolveName(name, target);
+
         // 建档（契约即建档）。
         if (target.level() instanceof ServerLevel serverLevel) {
             FurkinArchiveEntry entry = new FurkinArchiveEntry(companionId);
@@ -103,7 +149,17 @@ public final class FurkinContractHandler {
             entry.setLevel(1);
             // 实体外观快照：品种 / 毛色等在契约当场就存下，保证召唤后外观一致。
             entry.setEntitySnapshot(target.saveWithoutId(new CompoundTag()));
+            // 名字：非物种名的自定义名才写入档案（空串→物种名，不写冗余）。
+            if (!isSpeciesName(petName)) {
+                entry.setName(petName);
+            }
             FurkinArchiveData.get(serverLevel).putEntry(entry);
+        }
+
+        // 给实体本身也设置 CustomName（头顶显示 / 命名牌一致性）。
+        if (petName != null && !petName.getString().isEmpty()) {
+            target.setCustomName(petName);
+            target.setCustomNameVisible(true);
         }
 
         // 消耗一张契约。
@@ -116,7 +172,25 @@ public final class FurkinContractHandler {
 
         FurkinMod.LOGGER.info("Furkin contracted: {} (id={}) by {}",
                 target.getName().getString(), companionId, player.getName().getString());
-        return true;
+    }
+
+    /**
+     * 解析宠物名：输入为空串 → 回退物种显示名；否则用玩家输入。
+     */
+    private static Component resolveName(String name, LivingEntity target) {
+        if (name != null && !name.trim().isEmpty()) {
+            return Component.literal(name.trim());
+        }
+        // 回退物种显示名（可读名）。
+        return Component.translatable(FurkinSpeciesRegistry.byEntityType(target.getType())
+                .map(FurkinSpecies::getNameKey)
+                .orElseGet(() -> target.getType().getDescriptionId()));
+    }
+
+    /** 判断一个名字是否为「物种默认名」（本地化组件），用于决定是否写入档案。 */
+    private static boolean isSpeciesName(Component name) {
+        // 名字是 translatable 组件即视为「物种默认名」（未被玩家自定义）。
+        return name.getContents() instanceof net.minecraft.network.chat.contents.TranslatableContents;
     }
 
     /**

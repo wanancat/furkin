@@ -1,6 +1,7 @@
 package com.wanancat.furkin.internal.record;
 
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
 import net.minecraftforge.registries.ForgeRegistries;
@@ -53,6 +54,9 @@ public final class FurkinArchiveEntry {
     /** 实体外观快照（原版实体 saveWithoutId 的 NBT：品种 / 毛色 / 坐定 / 跟随等，召唤 / 复活重建时回灌）。 */
     private CompoundTag entitySnapshot;
 
+    /** 宠物名字（契约时命名 / 命名牌改名，可空；为空时列表显示物种名）。 */
+    private Component name;
+
     public FurkinArchiveEntry(UUID companionId) {
         this.companionId = companionId;
         this.species = null;
@@ -62,6 +66,7 @@ public final class FurkinArchiveEntry {
         this.skillSnapshot = new CompoundTag();
         this.equipmentSnapshot = new CompoundTag();
         this.entitySnapshot = new CompoundTag();
+        this.name = null;
     }
 
     public UUID getCompanionId() {
@@ -132,6 +137,14 @@ public final class FurkinArchiveEntry {
         this.entitySnapshot = entitySnapshot;
     }
 
+    public Component getName() {
+        return name;
+    }
+
+    public void setName(Component name) {
+        this.name = name;
+    }
+
     /** 序列化为 NBT。 */
     public CompoundTag serializeNBT() {
         CompoundTag tag = new CompoundTag();
@@ -148,6 +161,9 @@ public final class FurkinArchiveEntry {
         tag.put("skill_snapshot", skillSnapshot);
         tag.put("equipment_snapshot", equipmentSnapshot);
         tag.put("entity_snapshot", entitySnapshot);
+        if (name != null) {
+            tag.putString("name", Component.Serializer.toJson(name));
+        }
         return tag;
     }
 
@@ -166,6 +182,9 @@ public final class FurkinArchiveEntry {
         entry.skillSnapshot = tag.getCompound("skill_snapshot");
         entry.equipmentSnapshot = tag.getCompound("equipment_snapshot");
         entry.entitySnapshot = tag.getCompound("entity_snapshot");
+        if (tag.contains("name")) {
+            entry.name = Component.Serializer.fromJson(tag.getString("name"));
+        }
         return entry;
     }
 }

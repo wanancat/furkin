@@ -83,8 +83,10 @@ public final class FurkinCommand {
                 shown++;
                 String speciesStr = entry.getSpecies() == null ? "?"
                         : net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES.getKey(entry.getSpecies()).toString();
+                String nameStr = entry.getName() == null ? "" : entry.getName().getString();
                 String line = entry.getCompanionId()
                         + "  species=" + speciesStr
+                        + "  name=" + nameStr
                         + "  alive=" + entry.isAlive()
                         + "  summoned=" + entry.isSummoned()
                         + "  level=" + entry.getLevel();

@@ -1,6 +1,22 @@
 {
   "item.furkin.contract": "绒亲契约",
+  "item.furkin.record": "绒亲录",
   "furkin.species.cat": "猫",
   "furkin.species.dog": "狗",
-  "furkin.msg.active_limit": "活跃绒亲已达上限（%s），请先收回一只再契约"
+  "furkin.species.unknown": "未知",
+  "furkin.msg.active_limit": "活跃绒亲已达上限（%s），请先收回一只再契约",
+  "furkin.msg.summoned": "已召唤绒亲",
+  "furkin.msg.summon_failed": "召唤失败（不存在 / 非本人 / 已死亡 / 已在场 / 活跃上限）",
+  "furkin.msg.teleported": "已将绒亲传送到身边",
+  "furkin.msg.teleport_failed": "传送失败（不存在 / 非本人 / 已死亡 / 未召唤）",
+  "furkin.screen.record.title": "绒亲录",
+  "furkin.screen.record.summon": "召唤",
+  "furkin.screen.record.close": "关闭",
+  "furkin.screen.record.empty": "你还没有契约任何绒亲",
+  "furkin.screen.record.state_summoned": "[在场]",
+  "furkin.screen.record.state_dead": "[已亡]",
+  "furkin.screen.contract_name.title": "为绒亲命名",
+  "furkin.screen.contract_name.hint": "输入名字（留空使用物种名）",
+  "furkin.screen.contract_name.confirm": "确认",
+  "furkin.screen.contract_name.cancel": "取消"
 }
