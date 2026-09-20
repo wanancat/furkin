@@ -13,6 +13,7 @@ import com.wanancat.furkin.internal.record.FurkinArchiveEntry;
 import com.wanancat.furkin.internal.skill.Skill;
 import com.wanancat.furkin.internal.skill.SkillEffectApplier;
 import com.wanancat.furkin.internal.skill.SkillRegistry;
+import com.wanancat.furkin.internal.skill.SkillTree;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -310,13 +311,18 @@ public final class FurkinRecordActionHandler {
                 continue;
             }
             int current = skillLevels.getOrDefault(skill.getId(), 0);
+            // 未满足的前置：按「升到 current + 1」算，与 SkillProgress 实际提交的 targetLevel 同口径。
+            // 已满级的技能也会算出结果，但客户端在满级行不显示前置区（那里显示「满级」更相关）。
+            List<SkillTree.Requirement> unmet = SkillRegistry.tree()
+                    .unmetRequirements(skill.getId(), skillLevels, current + 1);
             views.add(new OpenFurkinScreenPacket.SkillView(
                     skill.getId().toString(),
                     skill.getNameKey(),
                     skill.getDescriptionKey(),
                     skill.getMaxLevel(),
                     skill.getCost(),
-                    current));
+                    current,
+                    unmet));
         }
 
         FurkinNetwork.channel().send(

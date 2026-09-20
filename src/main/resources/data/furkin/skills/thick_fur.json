@@ -1,0 +1,20 @@
+{
+  "id": "furkin:thick_fur",
+  "name": "furkin.skill.thick_fur",
+  "description": "furkin.skill.thick_fur.desc",
+  "tier": 2,
+  "requires": [],
+  "maxLevel": 5,
+  "cost": 1,
+  "species": [],
+  "effects": [
+    {
+      "type": "furkin:attribute",
+      "params": {
+        "attribute": "minecraft:generic.armor",
+        "amount": 1.0,
+        "operation": "addition"
+      }
+    }
+  ]
+}

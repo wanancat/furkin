@@ -422,8 +422,8 @@ public final class SkillPassiveDispatcher {
             if (nextAt == null) {
                 int interval = spec.intervalForLevel(level);
                 data.getCooldowns().put(entry.getKey(), now + interval);
-                FurkinMod.LOGGER.info("Furkin harvest: {} level={} armed, first yield in {} ticks",
-                        entry.getKey().getPath(), level, interval);
+                FurkinMod.LOGGER.info("Furkin harvest: [{}] {} level={} armed, first yield in {} ticks",
+                        companionTag(companion), entry.getKey().getPath(), level, interval);
                 continue;
             }
             if (now < nextAt) {
@@ -448,8 +448,8 @@ public final class SkillPassiveDispatcher {
         ItemStack leftover = data.getPouch().addItem(produced);
         ResourceLocation producedId = ForgeRegistries.ITEMS.getKey(produced.getItem());
         if (leftover.isEmpty()) {
-            FurkinMod.LOGGER.info("Furkin harvest: {} level={} produced {} x{} into pouch",
-                    skillId.getPath(), level, producedId, produced.getCount());
+            FurkinMod.LOGGER.info("Furkin harvest: [{}] {} level={} produced {} x{} into pouch",
+                    companionTag(companion), skillId.getPath(), level, producedId, produced.getCount());
             return;
         }
         int stored = produced.getCount() - leftover.getCount();
@@ -460,8 +460,8 @@ public final class SkillPassiveDispatcher {
         // 自相矛盾的数（实测踩到：分支明明进去了，数量却是 0）。
         int dropped = leftover.getCount();
         PouchDrop.dropStacks(companion, List.of(leftover));
-        FurkinMod.LOGGER.info("Furkin harvest: {} level={} produced {} (stored {}, dropped {} on ground)",
-                skillId.getPath(), level, producedId, stored, dropped);
+        FurkinMod.LOGGER.info("Furkin harvest: [{}] {} level={} produced {} (stored {}, dropped {} on ground)",
+                companionTag(companion), skillId.getPath(), level, producedId, stored, dropped);
     }
 
     // ===== 周期侧：拾荒 =====
@@ -526,9 +526,23 @@ public final class SkillPassiveDispatcher {
             } else {
                 ground.setCount(remaining.getCount());
             }
-            FurkinMod.LOGGER.info("Furkin forager: picked up {} x{} into pouch (left {} on ground)",
-                    ForgeRegistries.ITEMS.getKey(ground.getItem()), moved, remaining.getCount());
+            FurkinMod.LOGGER.info("Furkin forager: [{}] picked up {} x{} into pouch (left {} on ground)",
+                    companionTag(companion), ForgeRegistries.ITEMS.getKey(ground.getItem()), moved, remaining.getCount());
         }
+    }
+
+    /**
+     * 日志用的宠物标识：**名字 + uuid 前 8 位**。
+     *
+     * <p>产出 / 拾荒日志原先只印技能与物品，不带归属 —— 两只宠物同时开工时分不清是谁
+     * 产的那一条。2026-09-21 排查「洗点后仍有产出」时就卡在这里：日志上一个停了一个没停，
+     * 但看不出停的是哪只（乌狸答复「我有操作过狗的洗点」，才判出继续产的是猫）。</p>
+     *
+     * <p>名字给人看（游戏里叫什么就是什么），uuid 前缀给脚本看 —— 名字可重复、可改名，
+     * 只有 uuid 是稳的。</p>
+     */
+    private static String companionTag(LivingEntity companion) {
+        return companion.getName().getString() + "/" + companion.getUUID().toString().substring(0, 8);
     }
 
     // ===== 周期侧：低血进食 =====

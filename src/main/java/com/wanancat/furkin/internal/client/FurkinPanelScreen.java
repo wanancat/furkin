@@ -5,6 +5,8 @@ import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.network.OpenFurkinScreenPacket;
 import com.wanancat.furkin.internal.network.ResetSkillsPacket;
 import com.wanancat.furkin.internal.network.UnlockSkillPacket;
+import com.wanancat.furkin.internal.skill.SkillTree;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractScrollWidget;
@@ -19,9 +21,11 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -326,15 +330,45 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
         this.renderBackground(gui);
         super.render(gui, mouseX, mouseY, partialTick);
 
-        // 技能行只放得下名字与等级，描述改走悬停 tooltip。
+        // 技能行只放得下名字与等级，描述改走悬停 tooltip；前置不满足时一并说明缺什么。
         if (this.menu.getActiveTab() == TAB_SKILLS) {
             int index = skillRowIndexAt(mouseX, mouseY);
             if (index >= 0) {
-                gui.renderTooltip(this.font,
-                        Component.translatable(this.skills.get(index).getDescriptionKey()),
-                        mouseX, mouseY);
+                // 多行 tooltip 必须走「List + Optional」那个重载：`renderTooltip(Font, List<? extends
+                // FormattedCharSequence>, int, int)` 收的不是 Component 列表（javap 核实）。
+                gui.renderTooltip(this.font, skillTooltip(this.skills.get(index)),
+                        Optional.empty(), mouseX, mouseY);
             }
         }
+    }
+
+    /**
+     * 组一条技能行的悬停提示：描述 + （未满足时）前置清单。
+     *
+     * <p>只在<b>前置未满足</b>时追加前置区。理由：面板顶部已经写着当前技能点，
+     * 「点数不够」玩家能从屏幕上推出来；而「差哪条前置」是屏幕上<b>推不出来</b>的信息 ——
+     * 不写出来，玩家只能看到一个灰按钮和一堆不知道为什么点不动的行。满级行同理不显示
+     * 前置（那里「满级」才是相关的失效原因）。</p>
+     */
+    private List<Component> skillTooltip(OpenFurkinScreenPacket.SkillView skill) {
+        List<Component> lines = new ArrayList<>();
+        lines.add(Component.translatable(skill.getDescriptionKey()));
+        if (skill.isMaxed() || skill.isPrereqMet()) {
+            return lines;
+        }
+        lines.add(Component.empty());
+        lines.add(Component.translatable("furkin.screen.furkin.requires").withStyle(ChatFormatting.GRAY));
+        for (SkillTree.Requirement req : skill.getUnmet()) {
+            // requiredLevel 为 1 时（解锁前置 / 门限目标级为 1）说「需先学会」比「达到 Lv.1」顺口。
+            String key = req.requiredLevel() <= 1
+                    ? "furkin.screen.furkin.require_unlock"
+                    : "furkin.screen.furkin.require_level";
+            lines.add(Component.translatable(key,
+                    Component.translatable(req.nameKey()),
+                    Component.literal(String.valueOf(req.requiredLevel())))
+                    .withStyle(ChatFormatting.RED));
+        }
+        return lines;
     }
 
     @Override
@@ -428,7 +462,9 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
 
         boolean maxed = skill.isMaxed();
         boolean affordable = this.skillPoints >= skill.getCost();
-        boolean enabled = !maxed && affordable;
+        // 前置不满足时按钮置灰 —— 与服务端的准入判据同源（unmet 由 SkillTree 算出下发），
+        // 所以「这里能点」和「服务端会放行」不会各说各话。
+        boolean enabled = !maxed && affordable && skill.isPrereqMet();
 
         if (hoveredRow) {
             gui.fill(left, y, right, y + rowHeight, 0x22FFFFFF);
