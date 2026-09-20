@@ -48,12 +48,20 @@ public class FurkinServerConfig {
 
     // ===== 随身行囊（D5 / D7）=====
 
-    /** 随身行囊每级格数（D5：9 → 18 → 27）。0 = 行囊完全关闭；容器侧另有 256 格硬上限。 */
+    /**
+     * 随身行囊每级格数（D5：9 → 18 → 27）。0 = 行囊完全关闭。
+     *
+     * <p><b>上限为什么收到 18</b>：行囊界面用原版 {@code generic_54.png} 绘制，
+     * 该纹理最多画 6 行 = 54 格；三级 × 18 = 54 格刚好用满。上限留在 64 会允许配出
+     * 「格子存在但界面上够不到」的状态，故把「配置能写出的值」与「界面能显示的范围」对齐。
+     * 容器侧另有一层 256 格硬上限，防的是内部异常膨胀，与界面无关。</p>
+     */
     public static final ForgeConfigSpec.IntValue POUCH_SLOTS_PER_LEVEL = BUILDER
             .comment("Travel pouch slots granted per travel_pouch level.",
                     "Design intent: 9 (Lv1 = 9, Lv2 = 18, Lv3 = 27).",
-                    "0 disables the pouch entirely; the container also hard-caps at 256 slots.")
-            .defineInRange("pouchSlotsPerLevel", 9, 0, 64);
+                    "Upper bound 18 keeps three levels within the 6 rows (54 slots) the vanilla container texture can draw.",
+                    "0 disables the pouch entirely.")
+            .defineInRange("pouchSlotsPerLevel", 9, 0, 18);
 
     // ===== 复活 =====
 

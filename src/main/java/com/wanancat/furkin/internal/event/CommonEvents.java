@@ -113,12 +113,12 @@ public final class CommonEvents {
         }
         // ===== 进食通道结束 =====
 
-        // 潜行 + 右键 + 手持非契约 → 打开绒亲界面（本人契约绒亲，看技能面板）。
+        // 潜行 + 右键 + 手持非契约 → 打开绒亲面板（本人契约绒亲，技能 / 行囊 / 装备三页签）。
         // （手持契约时的潜行右键是「收回」，见下；这里只处理非契约物品。）
         if (player.isShiftKeyDown()
                 && !(player.getMainHandItem().getItem() instanceof FurkinContractItem)
                 && isOwnCompanion) {
-            if (FurkinRecordActionHandler.openFurkinScreen(player, target)) {
+            if (FurkinRecordActionHandler.openPanel(player, target)) {
                 event.setCancellationResult(InteractionResult.SUCCESS);
                 event.setCanceled(true);
             }

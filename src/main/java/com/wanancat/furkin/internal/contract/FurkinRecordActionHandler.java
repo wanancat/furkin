@@ -3,6 +3,8 @@ package com.wanancat.furkin.internal.contract;
 import com.wanancat.furkin.internal.FurkinMod;
 import com.wanancat.furkin.internal.capability.FurkinCapability;
 import com.wanancat.furkin.internal.capability.FurkinData;
+import com.wanancat.furkin.internal.inventory.FurkinInventory;
+import com.wanancat.furkin.internal.menu.FurkinPouchMenu;
 import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.network.OpenFurkinScreenPacket;
 import com.wanancat.furkin.internal.network.SyncFurkinDataPacket;
@@ -15,9 +17,11 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.TamableAnimal;
+import net.minecraftforge.network.NetworkHooks;
 import net.minecraftforge.network.PacketDistributor;
 
 import java.util.ArrayList;
@@ -176,14 +180,24 @@ public final class FurkinRecordActionHandler {
     }
 
     /**
-     * 打开某只绒亲的界面（技能面板），下发 {@link OpenFurkinScreenPacket}。
+     * 打开某只绒亲的面板（潜行 + 右键本人契约绒亲触发）。
      *
-     * <p>潜行 + 右键本人契约绒亲（手持非契约物品）触发。组装该只的名字 / 技能点 /
-     * 可见技能快照（按物种过滤 + 当前等级），客户端开屏即渲染。</p>
+     * <p>两步，顺序不可颠倒：</p>
+     * <ol>
+     *   <li>下发技能快照（{@link OpenFurkinScreenPacket}）；</li>
+     *   <li>打开容器菜单（{@link NetworkHooks#openScreen}）。</li>
+     * </ol>
      *
-     * @return 是否成功下发（非本人 / 不存在 / 未召唤返回 false）。
+     * <p>先发快照的原因：客户端一收到菜单包就会立刻建屏，屏内 {@code init} 时若技能数据
+     * 还没到就只能是空列表。反过来不成立 —— 快照先到时客户端会缓存（见
+     * {@code FurkinPanelScreen.onSkillData}），屏后建也能套用。</p>
+     *
+     * <p>行囊格数随菜单下发：它是「config × travel_pouch 等级」的派生值，
+     * 客户端不同步技能等级、算不出来，只能由服务端告知。</p>
+     *
+     * @return 是否成功打开（非本人 / 不存在 / 未契约返回 false）。
      */
-    public static boolean openFurkinScreen(ServerPlayer player, LivingEntity target) {
+    public static boolean openPanel(ServerPlayer player, LivingEntity target) {
         FurkinData data = target.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
         if (data == null || !data.isCompanion()) {
             return false;
@@ -192,14 +206,47 @@ public final class FurkinRecordActionHandler {
         if (companionId == null || !player.getUUID().equals(data.getOwnerUuid())) {
             return false;
         }
-        return sendScreenPacket(player, target, companionId);
+
+        // ① 技能快照。
+        sendSkillData(player, target, companionId);
+
+        // ② 容器菜单。
+        openMenu(player, target, data, companionId);
+        return true;
     }
 
     /**
-     * 刷新某只绒亲界面（加点 / 洗点后回传最新技能点与等级）。
+     * 打开 / 重开容器菜单（{@link #openPanel} 与 {@link #refreshScreen} 共用同一套规则）。
      *
-     * <p>按 companionId 定位在场实体，组装最新 {@link OpenFurkinScreenPacket} 回发。
-     * 客户端若正开着同一只界面则原地刷新，否则忽略。</p>
+     * <p>服务端拿真容器（走 {@code MenuProvider} 闭包直接持有），客户端只拿格数占位 ——
+     * 行囊格数是「config × travel_pouch 等级」的派生值，客户端不同步技能等级、算不出来。</p>
+     */
+    private static void openMenu(ServerPlayer player, LivingEntity target,
+                                 FurkinData data, UUID companionId) {
+        FurkinInventory pouch = data.getPouch();
+        NetworkHooks.openScreen(player,
+                new SimpleMenuProvider(
+                        (windowId, inv, p) -> new FurkinPouchMenu(windowId, inv, pouch, companionId, target),
+                        Component.translatable("furkin.screen.furkin.title")),
+                buf -> {
+                    // ⚠️ 写入顺序必须与 FurkinPouchMenu.fromNetwork 的读取顺序一致。
+                    buf.writeVarInt(pouch.getContainerSize());
+                    buf.writeUUID(companionId);
+                });
+    }
+
+    /**
+     * 刷新某只绒亲面板（加点 / 洗点后回传最新技能点与等级；行囊格数变了则重开菜单）。
+     *
+     * <p>技能数据本身走 {@link OpenFurkinScreenPacket} 原地刷新即可。但<b>行囊格数是槽位布局的
+     * 输入</b>：{@code Slot.x} / {@code Slot.y} 是 final，菜单建好后再无法原地增删槽位，玩家背包
+     * 的位置也跟着行囊行数走。故格数一变必须重开菜单 —— 否则升级后切回行囊页仍是旧格数、
+     * 洗点后也不回收（乌狸 2026-09-21 反馈的 3 条症状同源）。</p>
+     *
+     * <p>重开是安全的：Forge 的 {@code NetworkHooks.openScreen} 内部走
+     * {@code ServerPlayer.doCloseContainer()}（<b>不发</b>关闭包，客户端不会闪一格玩家背包），
+     * 客户端随后由 OpenContainer 消息直接换屏；当前页由客户端自己记住（见
+     * {@code FurkinPanelScreen#lastTab}），不会被弹回默认页。</p>
      *
      * @return 是否成功回发（实体不存在 / 非本人返回 false）。
      */
@@ -213,11 +260,23 @@ public final class FurkinRecordActionHandler {
                 || !player.getUUID().equals(data.getOwnerUuid())) {
             return false;
         }
-        return sendScreenPacket(player, target, companionId);
+
+        // 先回快照：客户端会无条件缓存（见 FurkinPanelScreen.onSkillData），重开出的新屏要用。
+        boolean sent = sendSkillData(player, target, companionId);
+
+        int pouchSlots = data.getPouch().getContainerSize();
+        if (player.containerMenu instanceof FurkinPouchMenu open
+                && companionId.equals(open.getCompanionId())
+                && open.getPouchSlots() != pouchSlots) {
+            FurkinMod.LOGGER.info("Furkin panel reopened: id={} pouch {} -> {} slots",
+                    companionId, open.getPouchSlots(), pouchSlots);
+            openMenu(player, target, data, companionId);
+        }
+        return sent;
     }
 
-    /** 组装并回发开屏包（open 与 refresh 共用，保证规则一套）。 */
-    private static boolean sendScreenPacket(ServerPlayer player, LivingEntity target, UUID companionId) {
+    /** 组装并回发技能快照（打开与刷新共用，保证规则一套）。 */
+    private static boolean sendSkillData(ServerPlayer player, LivingEntity target, UUID companionId) {
         FurkinData data = target.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
         if (data == null) {
             return false;

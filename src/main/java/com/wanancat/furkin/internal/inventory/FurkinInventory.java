@@ -141,8 +141,19 @@ public class FurkinInventory implements Container {
         return slot >= 0 && slot < items.size() ? items.get(slot) : ItemStack.EMPTY;
     }
 
+    /**
+     * 取出部分物品。
+     *
+     * <p><b>越界一律当空</b>（与 {@link #getItem} 同口径）：缩容后菜单的槽位布局会短暂
+     * 指向已不存在的格子（重开菜单需要一个网络往返），而官方
+     * {@code ContainerHelper} 内部是直接 {@code list.get(slot)} —— 会抛
+     * {@code IndexOutOfBoundsException} 炸掉服务端。容器层是最后一道防线，这里兜住。</p>
+     */
     @Override
     public ItemStack removeItem(int slot, int amount) {
+        if (slot < 0 || slot >= items.size()) {
+            return ItemStack.EMPTY;
+        }
         ItemStack removed = ContainerHelper.removeItem(items, slot, amount);
         if (!removed.isEmpty()) {
             setChanged();
@@ -150,8 +161,12 @@ public class FurkinInventory implements Container {
         return removed;
     }
 
+    /** 取出整格（不触发变更通知）；越界当空，理由同 {@link #removeItem}。 */
     @Override
     public ItemStack removeItemNoUpdate(int slot) {
+        if (slot < 0 || slot >= items.size()) {
+            return ItemStack.EMPTY;
+        }
         return ContainerHelper.takeItem(items, slot);
     }
 

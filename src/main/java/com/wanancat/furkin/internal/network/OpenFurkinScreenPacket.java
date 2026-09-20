@@ -1,6 +1,6 @@
 package com.wanancat.furkin.internal.network;
 
-import com.wanancat.furkin.internal.client.FurkinScreen;
+import com.wanancat.furkin.internal.client.FurkinPanelScreen;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.DistExecutor;
@@ -12,11 +12,16 @@ import java.util.UUID;
 import java.util.function.Supplier;
 
 /**
- * 服务端 → 客户端：打开绒亲界面（技能面板）。
+ * 服务端 → 客户端：绒亲面板的技能快照。
  *
  * <p>携带该只绒亲的身份、显示名、当前技能点，以及「该物种可见技能」的快照
  * （id / 名称 key / 描述 key / maxLevel / cost / 当前等级）。客户端不依赖服务端技能树，
- * 开屏即渲染。</p>
+ * 屏一建就能渲染。</p>
+ *
+ * <p><b>为什么不塞进 Menu</b>：技能列表是变长结构，{@code ContainerData} 是
+ * {@code int[]} 装不下；而这条「加点 / 洗点后刷新」的链路已经跑通，不必改动。
+ * 面板打开走另一条链路（{@code NetworkHooks.openScreen} + {@code FurkinPouchMenu}），
+ * 两条包谁先到不保证 —— 客户端由 {@code FurkinPanelScreen.onSkillData} 统一收口并做缓存兜底。</p>
  */
 public final class OpenFurkinScreenPacket {
 
@@ -134,7 +139,7 @@ public final class OpenFurkinScreenPacket {
     public static void handle(OpenFurkinScreenPacket packet, Supplier<NetworkEvent.Context> ctxSupplier) {
         NetworkEvent.Context ctx = ctxSupplier.get();
         ctx.enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT,
-                () -> () -> FurkinScreen.open(packet)));
+                () -> () -> FurkinPanelScreen.onSkillData(packet)));
         ctx.setPacketHandled(true);
     }
 }
