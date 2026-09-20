@@ -152,6 +152,9 @@ public final class SkillProgress {
                 }
                 data.setSkillPoints(data.getSkillPoints() + refund);
                 data.getSkillLevels().clear();
+                // 技能已清空 ⇒ 其产出节拍记录随之作废。不清的话，玩家重学该技能时那条过期
+                // 记录会立刻命中，绕过「首次只布计时、不产出」的保证（症状 = 刚学就产一份）。
+                SkillPassiveDispatcher.clearPeriodicTimers(data);
                 // 容量是 travel_pouch 等级的派生值：技能清空后归 0（缩容），被挤出的物品
                 // 倒在宠物脚下（D6「只在场才有包裹」）—— 容器层不提供静默吞物品的路径。
                 PouchDrop.dropStacks(target, data.resizePouchToLevel());

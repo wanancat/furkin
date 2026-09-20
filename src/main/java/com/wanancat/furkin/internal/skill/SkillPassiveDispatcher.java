@@ -4,7 +4,9 @@ import com.wanancat.furkin.api.companion.FurkinSpeciesRegistry;
 import com.wanancat.furkin.internal.FurkinMod;
 import com.wanancat.furkin.internal.capability.FurkinCapability;
 import com.wanancat.furkin.internal.capability.FurkinData;
+import com.wanancat.furkin.internal.inventory.PouchDrop;
 import com.wanancat.furkin.internal.registry.ModMobEffects;
+import com.wanancat.furkin.internal.skill.harvest.HarvestSpec;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -17,10 +19,13 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.event.entity.living.LivingAttackEvent;
 import net.minecraftforge.event.entity.living.LivingHurtEvent;
+import net.minecraftforge.registries.ForgeRegistries;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -45,8 +50,12 @@ import java.util.UUID;
  *       取消即整个受击作废，连音效闪帧一并压掉）。</li>
  *   <li>{@link #onCompanionHurt} —— 受害侧晚段（九命猫免死；{@code LivingHurtEvent}，
  *       需要改写伤害量，只能在这一层）。</li>
- *   <li>{@link #onServerTick} —— 周期侧（守夜者夜视、群猎战术叠层）。</li>
+ *   <li>{@link #onServerTick} —— 周期侧（守夜者夜视、群猎战术叠层、凭空产出）。</li>
  * </ul>
+ *
+ * <p><b>路由方式的两分</b>：逻辑各自独特的被动（流血 / 闪避 / 免死 / 夜视 / 群猎）按
+ * {@code skillId} 显式 {@code if}；而「同一套逻辑 + 不同参数」的产出类走数据驱动
+ * （{@link HarvestSpec}），谁声明谁生效 —— 新增一条产出技能不需要改本类。</p>
  */
 public final class SkillPassiveDispatcher {
 
@@ -293,6 +302,7 @@ public final class SkillPassiveDispatcher {
         }
         updateNightWatch(companion, data, levels);
         updatePackTactics(companion, levels);
+        updateHarvest(companion, data, levels);
     }
 
     /**
@@ -353,6 +363,142 @@ public final class SkillPassiveDispatcher {
             FurkinMod.LOGGER.info("Furkin passive: pack_tactics level={} stacks={} bonus={} (was {})",
                     level, stacks, bonus, previousBonus);
         }
+    }
+
+    /**
+     * 凭空产出 —— 定时往行囊里塞东西（藏骨本能 / 捕鱼天赋）。
+     *
+     * <p><b>为什么这一段是「遍历」而不是像其余被动那样「按 id 显式 if」</b>：流血 / 闪避 /
+     * 免死 / 群猎各自一套独特逻辑，路由到具体方法是必要的；而产出是<b>同一套逻辑 + 不同参数</b>，
+     * 按 id 写成 if 链等于把「配了几条产出技能」硬编码进代码。这里改成「谁声明了产出规格
+     * 就执行谁」（规格见 {@link HarvestSpec}），新增一条产出技能只写 JSON、不改 Java。</p>
+     *
+     * <p><b>「仅在场计时」为什么天然成立</b>（决策 D12）：本方法只被 {@link #onServerTick} 的
+     * <b>在场实体</b>遍历调用 —— 绒亲被收回时实体已不在世界里，根本走不到这里。唯一要补的是
+     * 「收回期间服务器时钟仍在走」这个细节，由 {@link #resetPeriodicTimers} 在召唤时抹平。</p>
+     *
+     * <p><b>首次见到一条产出技能时不产出</b>（计时表里没有该键 = 刚解锁）：只把计时布下，
+     * 产出一律等满一个间隔。这样「解锁」与「召唤」两条入口就是同一个口径 ——
+     * 无论从哪条路进入产出状态，都要走完一个完整间隔才出货，不存在任何形式的「补产」。</p>
+     */
+    private static void updateHarvest(LivingEntity companion, FurkinData data,
+                                      Map<ResourceLocation, Integer> levels) {
+        long now = companion.level().getGameTime();
+        for (Map.Entry<ResourceLocation, Integer> entry : levels.entrySet()) {
+            int level = entry.getValue();
+            if (level <= 0) {
+                continue;
+            }
+            HarvestSpec spec = HarvestSpec.of(entry.getKey()).orElse(null);
+            if (spec == null) {
+                continue;
+            }
+            // 计时存的是「下次可产的绝对 game time」。
+            // 注意这里必须把「键不存在」与「时间未到」分开判：若像原先那样
+            // getOrDefault(id, 0L)，缺键会取到 0 —— 一个早于任何 now 的时间戳 ——
+            // 于是「从未产出过」被当成「早该产了」，技能刚解锁那一刻就白送一份，
+            // 与 resetPeriodicTimers（召唤时只推后、不补产）的口径正好相反。
+            Long nextAt = data.getCooldowns().get(entry.getKey());
+            if (nextAt == null) {
+                int interval = spec.intervalForLevel(level);
+                data.getCooldowns().put(entry.getKey(), now + interval);
+                FurkinMod.LOGGER.info("Furkin harvest: {} level={} armed, first yield in {} ticks",
+                        entry.getKey().getPath(), level, interval);
+                continue;
+            }
+            if (now < nextAt) {
+                continue;
+            }
+            data.getCooldowns().put(entry.getKey(), now + spec.intervalForLevel(level));
+            produceHarvest(companion, data, entry.getKey(), level, spec);
+        }
+    }
+
+    /**
+     * 产出一份物品进行囊；行囊装不下的部分<b>掉在绒亲脚下</b>。
+     *
+     * <p>为什么溢出要落地而不是丢弃 / 跳过：行囊只有 9~27 格、极易装满，而玩家看不见
+     * 「本该产出的东西」—— 静默吞掉等于让他白白亏掉收益且无从察觉。原版对「容器装不下」
+     * 的标准处置同样是落地（{@code Inventory#add} 返回剩余，由调用方 drop）。</p>
+     */
+    private static void produceHarvest(LivingEntity companion, FurkinData data,
+                                       ResourceLocation skillId, int level, HarvestSpec spec) {
+        ItemStack produced = spec.roll(companion.getRandom());
+        // addItem 返回「装不下的剩余」；填得下时为空栈。
+        ItemStack leftover = data.getPouch().addItem(produced);
+        ResourceLocation producedId = ForgeRegistries.ITEMS.getKey(produced.getItem());
+        if (leftover.isEmpty()) {
+            FurkinMod.LOGGER.info("Furkin harvest: {} level={} produced {} x{} into pouch",
+                    skillId.getPath(), level, producedId, produced.getCount());
+            return;
+        }
+        int stored = produced.getCount() - leftover.getCount();
+        // ⚠️ 「掉几个」必须在调用 dropStacks **之前**读出来。
+        // 官方 Containers.dropItemStack 内部是 `while (!stack.isEmpty()) stack.split(...)` ——
+        // 它会把传入的栈 split 空（原版对「掉落」的契约就是*消耗*调用方给的那个栈）。
+        // 在它之后再读 leftover.getCount() 恒为 0，日志会印成「stored 0, dropped 0」这种
+        // 自相矛盾的数（实测踩到：分支明明进去了，数量却是 0）。
+        int dropped = leftover.getCount();
+        PouchDrop.dropStacks(companion, List.of(leftover));
+        FurkinMod.LOGGER.info("Furkin harvest: {} level={} produced {} (stored {}, dropped {} on ground)",
+                skillId.getPath(), level, producedId, stored, dropped);
+    }
+
+    // ===== 周期计时的重置 =====
+
+    /**
+     * 重置该绒亲的<b>周期型被动计时</b>（召唤时调用）。
+     *
+     * <p><b>为什么必须有这一步</b>（把决策 D12「仅在场才计时」做成严格的）：产出计时存在
+     * {@code getCooldowns()} 里、语义是「下次可产的<b>绝对</b> game time」。绒亲被收回时实体
+     * 消失、本分发器不再 tick 它，但<b>服务器时钟照走</b> —— 若不管，收回 10 分钟后再召唤，
+     * 那一刻 {@code now} 早已越过记下的时刻，于是「一回来就凭空冒出一个」，
+     * 等于补发了不在场期间攒下的产出。把计时整体推后一个完整间隔，语义就干净了。</p>
+     *
+     * <p>与 {@link #updateHarvest} 的「缺键只布计时」是<b>同一口径</b>：解锁与召唤两条入口
+     * 都不补产，产出永远要等满一个完整间隔。</p>
+     *
+     * <p>不必在<b>收回</b>侧做对称处理：收回之后实体不复存在，下一次进入「在场」必经召唤。</p>
+     *
+     * @param companion 刚召唤出来的绒亲
+     * @param data      其能力数据（召唤时已挂好）
+     */
+    public static void resetPeriodicTimers(LivingEntity companion, FurkinData data) {
+        if (companion == null || data == null) {
+            return;
+        }
+        long now = companion.level().getGameTime();
+        for (Map.Entry<ResourceLocation, Integer> entry : data.getSkillLevels().entrySet()) {
+            int level = entry.getValue();
+            if (level <= 0) {
+                continue;
+            }
+            HarvestSpec spec = HarvestSpec.of(entry.getKey()).orElse(null);
+            if (spec != null) {
+                data.getCooldowns().put(entry.getKey(), now + spec.intervalForLevel(level));
+            }
+        }
+    }
+
+    /**
+     * 清除该绒亲的<b>周期型被动计时</b>（洗点时调用，与 {@link #resetPeriodicTimers} 对称）。
+     *
+     * <p><b>为什么必须清</b>：计时表与技能等级是<b>两套独立状态</b>。洗点把等级清零后，技能已
+     * 不存在，但这些记录会留成<b>孤儿</b> —— 玩家重新学回来时，那个时刻多半早已过去，于是
+     * 「刚学就又立刻产一份」，正好绕过 {@link #updateHarvest} 里「首次只布计时、不产出」的保证。
+     * 换句话说：只要还存在一条「等级为 0、但计时表里有过期记录」的路径，那条保证就是漏的。</p>
+     *
+     * <p><b>只清产出类，不动免死冷却</b>：九命猫的冷却表意是「免死不能连发」的防作弊闸，
+     * 不是节拍；洗点若一并清掉，玩家就能用一次洗点换一次即时免死 —— 那是漏洞不是修复。
+     * 判据 = 「谁有产出规格」（{@link HarvestSpec}），有规格的才清。</p>
+     *
+     * @param data 被洗点的绒亲能力数据
+     */
+    public static void clearPeriodicTimers(FurkinData data) {
+        if (data == null) {
+            return;
+        }
+        data.getCooldowns().keySet().removeIf(id -> HarvestSpec.of(id).isPresent());
     }
 
     // ===== 工具 =====

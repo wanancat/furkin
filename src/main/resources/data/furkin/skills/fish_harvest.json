@@ -1,0 +1,23 @@
+{
+  "id": "furkin:fish_harvest",
+  "name": "furkin.skill.fish_harvest",
+  "description": "furkin.skill.fish_harvest.desc",
+  "tier": 2,
+  "requires": ["furkin:travel_pouch"],
+  "maxLevel": 3,
+  "cost": 1,
+  "species": ["furkin:cat"],
+  "effects": [
+    {
+      "type": "furkin:passive",
+      "params": {
+        "trigger": "tick",
+        "harvest": {
+          "interval": [1200, 800, 600],
+          "items": ["minecraft:cod", "minecraft:salmon"],
+          "count": 1
+        }
+      }
+    }
+  ]
+}

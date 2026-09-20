@@ -1,6 +1,7 @@
 package com.wanancat.furkin.internal.skill;
 
 import com.wanancat.furkin.internal.FurkinMod;
+import com.wanancat.furkin.internal.skill.harvest.HarvestSpec;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.SimplePreparableReloadListener;
 import net.minecraft.util.profiling.ProfilerFiller;
@@ -33,6 +34,9 @@ public final class SkillRegistry {
         SkillTree tree = new SkillTree();
         SkillLoader.load(manager, tree);
         TREE.set(tree);
+        // 产出规格是从技能 JSON 解析并缓存的（见 HarvestSpec），树换新后旧解析结果必须作废，
+        // 否则数据包改过的间隔 / 物品池要等到重启才生效。
+        HarvestSpec.invalidateCache();
     }
 
     /** 构建一个资源重载监听器，注册到模组加载时的事件。 */

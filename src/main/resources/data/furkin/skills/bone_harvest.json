@@ -1,0 +1,23 @@
+{
+  "id": "furkin:bone_harvest",
+  "name": "furkin.skill.bone_harvest",
+  "description": "furkin.skill.bone_harvest.desc",
+  "tier": 2,
+  "requires": ["furkin:travel_pouch"],
+  "maxLevel": 3,
+  "cost": 1,
+  "species": ["furkin:dog"],
+  "effects": [
+    {
+      "type": "furkin:passive",
+      "params": {
+        "trigger": "tick",
+        "harvest": {
+          "interval": [1200, 800, 600],
+          "items": ["minecraft:bone"],
+          "count": 1
+        }
+      }
+    }
+  ]
+}

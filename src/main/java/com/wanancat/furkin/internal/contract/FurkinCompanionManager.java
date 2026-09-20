@@ -10,6 +10,7 @@ import com.wanancat.furkin.internal.network.SyncFurkinDataPacket;
 import com.wanancat.furkin.internal.record.FurkinArchiveData;
 import com.wanancat.furkin.internal.record.FurkinArchiveEntry;
 import com.wanancat.furkin.internal.skill.SkillEffectApplier;
+import com.wanancat.furkin.internal.skill.SkillPassiveDispatcher;
 import com.wanancat.furkin.internal.skill.SkillRegistry;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
@@ -236,6 +237,10 @@ public final class FurkinCompanionManager {
         // 或旧档快照带回了超格物品，多出来的部分在此掉落。放在加入世界之后，
         // 是为了让落点取到实体的真实位置（前面 moveTo 尚未生效于世界坐标）。
         PouchDrop.dropStacks(living, data.resizePouchToLevel());
+
+        // 周期型被动（凭空产出）的计时从此刻重新起算：收回期间服务器时钟照走，而 D12 要的是
+        // 「仅在场才计时」—— 不重置的话，收回久了再召唤会立刻补产一个。同在实体入世之后。
+        SkillPassiveDispatcher.resetPeriodicTimers(living, data);
 
         // 置 summoned=true。
         entry.setSummoned(true);
