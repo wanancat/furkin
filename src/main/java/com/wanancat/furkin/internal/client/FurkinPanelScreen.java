@@ -8,6 +8,7 @@ import com.wanancat.furkin.internal.network.UnlockSkillPacket;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractScrollWidget;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.ConfirmScreen;
@@ -84,7 +85,32 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
     private static final int TAB_MARGIN = 8;
 
     private static final int SKILL_BUTTON_WIDTH = 22;
-    private static final int SKILL_BUTTON_HEIGHT = 12;
+    private static final int SKILL_BUTTON_HEIGHT = 14;
+
+    /**
+     * 行内「+1」按钮直接借<b>官方按钮贴图</b>绘制（{@code widgets.png}），不再自绘色块。
+     *
+     * <p><b>为什么自绘会突兀</b>：原来用 {@code fill} 画的是自选青绿，它是整屏唯一不跟资源包的
+     * 色块 —— 旁边的页签 / 洗点按钮都是官方 {@code Button}，玩家换 GUI 包后两者立刻分家。</p>
+     *
+     * <p><b>参数照抄 {@code AbstractButton.renderWidget} 的字节码实参</b>：
+     * {@code (20, 4, 200, 20, 0, v)} = 横向切片 20 / 纵向切片 4 / 贴图 200×20 / u=0 / v 见下。
+     * 官方 {@code blitNineSliced} 内部先做 {@code min(切片, 尺寸/2)} 降级，故 22×14 这种远小于
+     * 200×20 的小按钮也能拼出正常的左右圆角，不需要为素材把按钮做宽。</p>
+     */
+    private static final int BUTTON_SLICE_X = 20;
+    private static final int BUTTON_SLICE_Y = 4;
+    private static final int BUTTON_TEX_WIDTH = 200;
+    private static final int BUTTON_TEX_HEIGHT = 20;
+
+    /** 官方按钮三态在贴图里的 v 偏移（{@code AbstractButton.getTextureY()} = 46 + state × 20）。 */
+    private static final int BUTTON_V_DISABLED = 46;
+    private static final int BUTTON_V_NORMAL = 66;
+    private static final int BUTTON_V_HOVER = 86;
+
+    /** 按钮文字色 —— 与 {@code AbstractWidget.getFGColor()} 同源（可用白 / 禁用灰）。 */
+    private static final int COLOR_BUTTON_TEXT = 0xFFFFFF;
+    private static final int COLOR_BUTTON_TEXT_OFF = 0xA0A0A0;
     /** 技能名与等级文本之间的固定间距 —— 保证等级列左对齐成一条竖线。 */
     private static final int SKILL_LEVEL_COLUMN = 74;
 
@@ -96,6 +122,16 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
      * 故列表要主动右缩 8px 把这 8px 让出来，否则滚动条会压在面板边框上。</p>
      */
     private static final int SCROLLBAR_WIDTH = 8;
+
+    /**
+     * 行内「+1」按钮与列表右缘（也就是官方滚动条的左缘）之间的间隙。
+     *
+     * <p>滚动条画在列表控件右缘之外、8px 宽（见 {@link #SCROLLBAR_WIDTH} 与
+     * {@code AbstractScrollWidget.renderScrollBar}）。按钮若也锚在列表右缘，两者必然
+     * 零间隙贴死，视觉上按钮像被滚动条切掉一截（乌狸 2026-09-21 反馈）。右收 6px 后
+     * 两者分开，<b>滚动条本身位置不动</b>。</p>
+     */
+    private static final int BUTTON_RIGHT_INSET = 6;
 
     /**
      * 行高区间：条目少时宽松（撑满可用区），条目多时收紧到 {@value #ROW_HEIGHT_MIN} 为止。
@@ -111,10 +147,6 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
     private static final int COLOR_LABEL = 0x404040;
     private static final int COLOR_HINT = 0x707070;
     private static final int COLOR_MAXED = 0x2E7D32;
-    private static final int COLOR_BUTTON = 0xFF4E625E;
-    private static final int COLOR_BUTTON_HOVER = 0xFF6E8C86;
-    private static final int COLOR_BUTTON_OFF = 0xFFBFBFBF;
-    private static final int COLOR_BUTTON_BORDER = 0xFF3A4644;
 
     private final UUID companionId;
 
@@ -411,13 +443,20 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
         gui.drawString(this.font, levelText, left + SKILL_LEVEL_COLUMN, textY,
                 maxed ? COLOR_MAXED : COLOR_HINT, false);
 
-        int bx = right - SKILL_BUTTON_WIDTH;
+        // 按钮左缘走共用出口（见 buttonLeft）：渲染与命中必须同源，且已右收留出滚动条间隙。
+        int bx = buttonLeft();
         int by = y + (rowHeight - SKILL_BUTTON_HEIGHT) / 2;
-        int bg = enabled ? (hoveredButton ? COLOR_BUTTON_HOVER : COLOR_BUTTON) : COLOR_BUTTON_OFF;
-        gui.fill(bx, by, bx + SKILL_BUTTON_WIDTH, by + SKILL_BUTTON_HEIGHT, bg);
-        gui.renderOutline(bx, by, SKILL_BUTTON_WIDTH, SKILL_BUTTON_HEIGHT, COLOR_BUTTON_BORDER);
+        // 三态直接映射到官方贴图行：不可用 → 禁用行，悬停 → 高亮行，其余 → 普通行。
+        int textureV = enabled
+                ? (hoveredButton ? BUTTON_V_HOVER : BUTTON_V_NORMAL)
+                : BUTTON_V_DISABLED;
+        gui.blitNineSliced(AbstractWidget.WIDGETS_LOCATION, bx, by,
+                SKILL_BUTTON_WIDTH, SKILL_BUTTON_HEIGHT,
+                BUTTON_SLICE_X, BUTTON_SLICE_Y, BUTTON_TEX_WIDTH, BUTTON_TEX_HEIGHT,
+                0, textureV);
         gui.drawCenteredString(this.font, Component.literal("+1"),
-                bx + SKILL_BUTTON_WIDTH / 2, by + 2, enabled ? 0xFFFFFF : 0xFF6E6E6E);
+                bx + SKILL_BUTTON_WIDTH / 2, by + (SKILL_BUTTON_HEIGHT - 8) / 2,
+                enabled ? COLOR_BUTTON_TEXT : COLOR_BUTTON_TEXT_OFF);
     }
 
     // ===== 交互 =====
@@ -577,6 +616,18 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
     }
 
     /**
+     * 行内「+1」按钮的左缘 —— <b>渲染与命中判定的唯一坐标出口</b>。
+     *
+     * <p>这两处必须共用同一次计算：各自算一遍时，任何一处改动漏了另一处，就会出现
+     * 「看得见却点不到」（或反过来）的错位，且不改代码根本看不出来。故只留这一个方法。</p>
+     *
+     * @see #BUTTON_RIGHT_INSET
+     */
+    private int buttonLeft() {
+        return listLeft() + listWidth() - SKILL_BUTTON_WIDTH - BUTTON_RIGHT_INSET;
+    }
+
+    /**
      * 行高：条目少时撑满可用区（上限 {@value #ROW_HEIGHT_MAX}），多了就收到
      * {@value #ROW_HEIGHT_MIN} 为止，再放不下由 {@link SkillListWidget} 滚动。
      */
@@ -606,7 +657,7 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
 
     /** 该行的「+1」按钮是否被鼠标压住（纯几何，不含可点性判断）。 */
     private boolean buttonHit(double mouseX, double mouseY, int index) {
-        int bx = listLeft() + listWidth() - SKILL_BUTTON_WIDTH;
+        int bx = buttonLeft();
         int by = rowScreenY(index) + (rowHeight() - SKILL_BUTTON_HEIGHT) / 2;
         return mouseX >= bx && mouseX < bx + SKILL_BUTTON_WIDTH
                 && mouseY >= by && mouseY < by + SKILL_BUTTON_HEIGHT;
