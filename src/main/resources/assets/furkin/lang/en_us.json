@@ -31,6 +31,8 @@
   "furkin.skill.night_watch.desc": "Grants the owner Night Vision when nearby at night",
   "furkin.skill.pack_tactics": "Pack Tactics",
   "furkin.skill.pack_tactics.desc": "+10% / +15% / +20% Attack per nearby canine ally (stacks up to 3)",
+  "furkin.skill.travel_pouch": "Travel Pouch",
+  "furkin.skill.travel_pouch.desc": "+9 pouch slots per level (9 → 18 → 27)",
   "furkin.effect.bleeding": "Bleeding",
   "furkin.msg.skill_unlocked": "Skill unlocked: %s",
   "furkin.msg.skill_not_found": "No such companion",

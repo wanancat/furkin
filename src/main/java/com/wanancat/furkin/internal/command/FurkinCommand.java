@@ -15,6 +15,7 @@ import com.wanancat.furkin.internal.contract.FurkinCombatModeHandler;
 import com.wanancat.furkin.internal.contract.FurkinCompanionManager;
 import com.wanancat.furkin.internal.contract.FurkinRecordActionHandler;
 import com.wanancat.furkin.internal.growth.FurkinGrowth;
+import com.wanancat.furkin.internal.inventory.FurkinInventory;
 import com.wanancat.furkin.internal.record.FurkinArchiveData;
 import com.wanancat.furkin.internal.record.FurkinArchiveEntry;
 import com.wanancat.furkin.internal.skill.Skill;
@@ -32,6 +33,9 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraftforge.registries.ForgeRegistries;
 
 import java.util.Locale;
 import java.util.UUID;
@@ -120,6 +124,23 @@ public final class FurkinCommand {
                                 .then(Commands.argument("pet_id", StringArgumentType.word())
                                         .executes(ctx -> inspect(ctx.getSource(),
                                                 StringArgumentType.getString(ctx, "pet_id")))))
+                        .then(Commands.literal("pouch")
+                                .then(Commands.argument("pet_id", StringArgumentType.word())
+                                        // clear 必须注册在 item 参数之前：Brigadier 按注册顺序逐个试子节点，
+                                        // 参数节点对任意输入都能解析成功，若排在前面会把 "clear" 吃成物品 id
+                                        // （解析为 minecraft:clear → Unknown item）。
+                                        .then(Commands.literal("clear")
+                                                .executes(ctx -> pouchClear(ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "pet_id"))))
+                                        .then(Commands.argument("item", ResourceLocationArgument.id())
+                                                .executes(ctx -> pouchAdd(ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "pet_id"),
+                                                        ResourceLocationArgument.getId(ctx, "item"), 1))
+                                                .then(Commands.argument("count", IntegerArgumentType.integer(1, 6400))
+                                                        .executes(ctx -> pouchAdd(ctx.getSource(),
+                                                                StringArgumentType.getString(ctx, "pet_id"),
+                                                                ResourceLocationArgument.getId(ctx, "item"),
+                                                                IntegerArgumentType.getInteger(ctx, "count")))))))
         );
     }
 
@@ -418,6 +439,12 @@ public final class FurkinCommand {
         int level = data == null ? 0 : data.getLevel();
         int skillPoints = data == null ? 0 : data.getSkillPoints();
 
+        FurkinInventory pouch = data == null ? null : data.getPouch();
+        int pouchSlots = pouch == null ? 0 : pouch.getContainerSize();
+        int[] usage = pouchUsage(pouch);
+        final int usedSlots = usage[0];
+        final int pouchTotal = usage[1];
+
         src.sendSuccess(() -> Component.literal(
                 "Inspect " + petId
                         + "  Lv." + level
@@ -425,7 +452,127 @@ public final class FurkinCommand {
         src.sendSuccess(() -> Component.literal(String.format(
                 "  attack=%.2f  maxHealth=%.2f (cur=%.2f)  armor=%.2f  speed=%.3f",
                 attack, maxHealth, currentHealth, armor, speed)), false);
+        src.sendSuccess(() -> Component.literal(
+                "  pouch=" + pouchSlots + " slots (used=" + usedSlots + ", total=" + pouchTotal + ")"), false);
         return 1;
+    }
+
+    /**
+     * 调试 / 验收入口：往某只在场绒亲的行囊里塞物品。
+     *
+     * <p>走容器的 {@link FurkinInventory#addItem} —— 与将来「凭空产出」「拾荒」技能是同一个入口，
+     * 所以这条命令验到的堆叠 / 满仓行为，就是那些技能会遇到的行为。</p>
+     */
+    private static int pouchAdd(CommandSourceStack src, String petIdRaw, ResourceLocation itemId, int count) {
+        if (!(src.getEntity() instanceof ServerPlayer player)) {
+            return 0;
+        }
+
+        UUID petId;
+        try {
+            petId = UUID.fromString(petIdRaw);
+        } catch (IllegalArgumentException e) {
+            src.sendFailure(Component.literal("Invalid pet id: " + petIdRaw));
+            return 0;
+        }
+
+        Item item = ForgeRegistries.ITEMS.getValue(itemId);
+        if (item == null) {
+            src.sendFailure(Component.literal("Unknown item: " + itemId));
+            return 0;
+        }
+
+        LivingEntity target = findLivingByCompanionId(player.serverLevel(), petId);
+        if (target == null) {
+            src.sendFailure(Component.literal("Companion entity not found in world (summon it first)."));
+            return 0;
+        }
+        FurkinData data = target.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
+        if (data == null) {
+            src.sendFailure(Component.literal("Companion data missing."));
+            return 0;
+        }
+
+        FurkinInventory pouch = data.getPouch();
+        ItemStack leftover = pouch.addItem(new ItemStack(item, count));
+
+        int slots = pouch.getContainerSize();
+        int[] usage = pouchUsage(pouch);
+        final int usedSlots = usage[0];
+        final int pouchTotal = usage[1];
+        final int leftoverCount = leftover.getCount();
+
+        src.sendSuccess(() -> Component.literal(
+                "Pouch " + petId + "  slots=" + slots + "  used=" + usedSlots + "  total=" + pouchTotal
+                        + (leftoverCount > 0 ? "  leftover=" + leftoverCount + " (no room)" : "")), false);
+        return 1;
+    }
+
+    /**
+     * 清空某只在场绒亲的行囊（调试 / 验收用：回到空仓状态重测堆叠）。
+     *
+     * <p>走容器的 {@link FurkinInventory#clearContent()}（= 官方 {@code Container#clearContent}），
+     * 不清格数、不动其他字段，只把物品倒空。输出带清空前的用量，便于确认倒掉了什么。</p>
+     */
+    private static int pouchClear(CommandSourceStack src, String petIdRaw) {
+        if (!(src.getEntity() instanceof ServerPlayer player)) {
+            return 0;
+        }
+
+        UUID petId;
+        try {
+            petId = UUID.fromString(petIdRaw);
+        } catch (IllegalArgumentException e) {
+            src.sendFailure(Component.literal("Invalid pet id: " + petIdRaw));
+            return 0;
+        }
+
+        LivingEntity target = findLivingByCompanionId(player.serverLevel(), petId);
+        if (target == null) {
+            src.sendFailure(Component.literal("Companion entity not found in world (summon it first)."));
+            return 0;
+        }
+        FurkinData data = target.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
+        if (data == null) {
+            src.sendFailure(Component.literal("Companion data missing."));
+            return 0;
+        }
+
+        FurkinInventory pouch = data.getPouch();
+        int[] before = pouchUsage(pouch);
+        final int wasUsed = before[0];
+        final int wasTotal = before[1];
+        final int slots = pouch.getContainerSize();
+        pouch.clearContent();
+
+        src.sendSuccess(() -> Component.literal(
+                "Pouch cleared: " + petId + "  slots=" + slots
+                        + "  removed=" + wasTotal + " items from " + wasUsed + " slots"), false);
+        return 1;
+    }
+
+    /**
+     * 行囊占用统计：返回 {@code [非空格子数, 物品总量]}；容器为 {@code null} 时全 0。
+     *
+     * <p>为什么要两个数：{@code used} 只说明占了几格，看不出格子里的堆叠是否合法。
+     * 两者合读才能一眼判读 —— 例：塞 600 根骨头，正常结果应是
+     * {@code slots=18 used=9 total=576 leftover=24}（9 格 × 64 + 剩 24 装不下）；
+     * 若出现 {@code used=1 total=600} 就是「整堆压进一格」的老 bug 复发。</p>
+     */
+    private static int[] pouchUsage(FurkinInventory pouch) {
+        if (pouch == null) {
+            return new int[]{0, 0};
+        }
+        int used = 0;
+        int total = 0;
+        for (int i = 0; i < pouch.getContainerSize(); i++) {
+            ItemStack stack = pouch.getItem(i);
+            if (!stack.isEmpty()) {
+                used++;
+                total += stack.getCount();
+            }
+        }
+        return new int[]{used, total};
     }
 
     /** 读某实体的指定属性当前值；无该属性时返回 0。 */

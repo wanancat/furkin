@@ -1,7 +1,9 @@
 package com.wanancat.furkin.internal.capability;
 
+import com.wanancat.furkin.internal.FurkinMod;
 import com.wanancat.furkin.internal.contract.FurkinCombatMode;
 import com.wanancat.furkin.internal.contract.FurkinState;
+import com.wanancat.furkin.internal.inventory.FurkinInventory;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 
@@ -46,6 +48,20 @@ public final class FurkinData {
 
     /** 技能冷却（技能 id → 冷却结束的 world game time）。**入档持久化**，跨会话保留。 */
     private final Map<ResourceLocation, Long> cooldowns = new HashMap<>();
+
+    /** 随身行囊技能 id —— 行囊格数由它的当前等级决定。 */
+    private static final ResourceLocation TRAVEL_POUCH =
+            new ResourceLocation(FurkinMod.MODID, "travel_pouch");
+    /** 随身行囊每级格数（设计稿 D5：9 → 18 → 27）。批 2 第 2 步迁入 server config（D7）。 */
+    private static final int POUCH_SLOTS_PER_LEVEL = 9;
+
+    /**
+     * 随身行囊容器（只在场有效）。
+     *
+     * <p>格数是<b>派生值</b>（= travel_pouch 等级 × 每级格数），故容器内不另存格数 ——
+     * 实体加载与加点时各刷一次（见 {@link #refreshPouchSize()}）。</p>
+     */
+    private final FurkinInventory pouch = new FurkinInventory(0);
 
     public FurkinData() {
         this.companionId = null;
@@ -144,6 +160,26 @@ public final class FurkinData {
         return cooldowns;
     }
 
+    /** 随身行囊容器（格数由 travel_pouch 等级决定，见 {@link #refreshPouchSize()}）。 */
+    public FurkinInventory getPouch() {
+        return pouch;
+    }
+
+    /**
+     * 按 travel_pouch 当前等级刷新行囊容量（加点后 / 实体加载时调用）。
+     *
+     * <p><b>只扩不缩</b>：扩容不产生溢出，可直接做。缩容（洗点 / 降级）会把已有物品挤出容器，
+     * 其处置策略（掉落到地上）属批 2 第 2 步，故此处刻意不缩 —— 绝不在容器层留一条
+     * 「静默吞物品」的路径。</p>
+     */
+    public void refreshPouchSize() {
+        int level = skillLevels.getOrDefault(TRAVEL_POUCH, 0);
+        int target = Math.max(0, level) * POUCH_SLOTS_PER_LEVEL;
+        if (target > pouch.getContainerSize()) {
+            pouch.resize(target);
+        }
+    }
+
     /** 是否已契约（COMPANION 或 FALLEN 都算「已进入伴侣体系」）。 */
     public boolean isCompanion() {
         return state == FurkinState.COMPANION || state == FurkinState.FALLEN;
@@ -179,6 +215,11 @@ public final class FurkinData {
             cooldownsTag.putLong(e.getKey().toString(), e.getValue());
         }
         tag.put("cooldowns", cooldownsTag);
+
+        // 随身行囊：物品随实体 NBT 走（宠物退游戏 / 区块卸载重载都不丢）。
+        // 注意与「收回 / 死亡」的区别 —— 那两条路径会先清空并掉落物品再存快照（D6），
+        // 否则快照里的 ForgeCaps 会把行囊原样回灌。
+        tag.put("pouch", pouch.createTag());
         return tag;
     }
 
@@ -208,9 +249,21 @@ public final class FurkinData {
         for (String key : cooldownsTag.getAllKeys()) {
             this.cooldowns.put(new ResourceLocation(key), cooldownsTag.getLong(key));
         }
+
+        // 随身行囊：**先按等级定容量，再读物品**。
+        // ContainerHelper.loadAllItems 对越界 Slot 是静默跳过（不报错），顺序颠倒会让
+        // 高编号格子里的物品被无声吞掉。旧档无此键时读到空 tag，等价于空行囊。
+        refreshPouchSize();
+        this.pouch.fromTag(tag.getCompound("pouch"));
     }
 
-    /** 数据深拷贝（用于存档快照 / 网络同步）。 */
+    /**
+     * 数据深拷贝（用于存档快照 / 网络同步）。
+     *
+     * <p><b>刻意不复制行囊物品</b>：按 D6「行囊只在场」，物品不随档案 / 快照走。
+     * 容器内容另有两条独立通路（实体 NBT 持久化、Menu 增量同步），都不经过本拷贝；
+     * 若在这里复制，网络包会白白背上最多 27 格物品的 NBT。</p>
+     */
     public FurkinData copy() {
         FurkinData copy = new FurkinData();
         copy.companionId = this.companionId;

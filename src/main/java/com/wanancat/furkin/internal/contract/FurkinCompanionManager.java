@@ -195,6 +195,10 @@ public final class FurkinCompanionManager {
         // 重新 apply，否则收回再召唤后属性加成丢失。
         SkillEffectApplier.applyAll(living, SkillRegistry.tree(), data.getSkillLevels());
 
+        // 行囊容量是「travel_pouch 等级的派生值」，必须与技能等级同步重算：
+        // 上面刚把技能等级从档案回灌，若此处不算，升级过的绒亲收回再召唤后行囊会变回 0 格。
+        data.refreshPouchSize();
+
         // 对 TamableAnimal 的额外动作：置 TAME（与契约同路径）。
         if (living instanceof TamableAnimal tamable) {
             tamable.setTame(true);

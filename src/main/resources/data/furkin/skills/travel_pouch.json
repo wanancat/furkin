@@ -1,0 +1,11 @@
+{
+  "id": "furkin:travel_pouch",
+  "name": "furkin.skill.travel_pouch",
+  "description": "furkin.skill.travel_pouch.desc",
+  "tier": 1,
+  "requires": [],
+  "maxLevel": 3,
+  "cost": 1,
+  "species": [],
+  "effects": []
+}

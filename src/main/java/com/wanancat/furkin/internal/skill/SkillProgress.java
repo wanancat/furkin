@@ -108,6 +108,10 @@ public final class SkillProgress {
         data.getSkillLevels().put(skillId, newLevel);
         SkillEffectApplier.applySkill(target, tree, skillId, newLevel);
 
+        // 行囊格数是「invested 等级的派生值」，投了 travel_pouch 就即时刷新容量
+        // （只扩不缩，故此处安全；缩容与超格掉落属批 2 第 2 步）。
+        data.refreshPouchSize();
+
         // 回写档案（技能快照 + 技能点），使收回/召唤跨实体持久化一致。
         syncToArchive(target, data, archive, entry);
 

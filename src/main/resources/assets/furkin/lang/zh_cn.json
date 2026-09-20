@@ -31,6 +31,8 @@
   "furkin.skill.night_watch.desc": "夜晚靠近主人时使其获得夜视效果",
   "furkin.skill.pack_tactics": "群猎战术",
   "furkin.skill.pack_tactics.desc": "附近每存在 1 只友方狗队友 +10% / +15% / +20% 攻击（最多叠 3 层）",
+  "furkin.skill.travel_pouch": "随身行囊",
+  "furkin.skill.travel_pouch.desc": "每级 +9 格（9 → 18 → 27）",
   "furkin.effect.bleeding": "流血",
   "furkin.msg.skill_unlocked": "已加点 %s",
   "furkin.msg.skill_not_found": "不存在该绒亲",
