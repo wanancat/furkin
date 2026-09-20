@@ -44,6 +44,9 @@ public final class FurkinData {
     /** 上次进食时间戳（毫秒），用于递减收益的「停喂恢复」。 */
     private long lastFeedMillis;
 
+    /** 技能冷却（技能 id → 冷却结束的 world game time）。运行时状态，不持久化。 */
+    private final Map<ResourceLocation, Long> cooldowns = new HashMap<>();
+
     public FurkinData() {
         this.companionId = null;
         this.ownerUuid = null;
@@ -136,6 +139,11 @@ public final class FurkinData {
         this.lastFeedMillis = lastFeedMillis;
     }
 
+    /** 技能冷却表（技能 id → 冷却结束的 world game time）。运行时状态，不持久化。 */
+    public Map<ResourceLocation, Long> getCooldowns() {
+        return cooldowns;
+    }
+
     /** 是否已契约（COMPANION 或 FALLEN 都算「已进入伴侣体系」）。 */
     public boolean isCompanion() {
         return state == FurkinState.COMPANION || state == FurkinState.FALLEN;
@@ -200,6 +208,7 @@ public final class FurkinData {
         copy.combatMode = this.combatMode;
         copy.feedCount = this.feedCount;
         copy.lastFeedMillis = this.lastFeedMillis;
+        copy.cooldowns.putAll(this.cooldowns);
         return copy;
     }
 

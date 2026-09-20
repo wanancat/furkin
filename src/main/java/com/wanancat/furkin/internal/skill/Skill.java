@@ -6,6 +6,7 @@ import net.minecraft.resources.ResourceLocation;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 技能定义 —— 单个技能条目的数据模型（设计稿 §3.2）。
@@ -36,6 +37,9 @@ public final class Skill {
     /** 等级门限：指向某个前置技能，本技能可升到的最高等级 = 该前置技能的当前等级（可空，表示无此约束）。 */
     private final ResourceLocation levelGate;
 
+    /** 前置等级要求：前置技能 id → 该前置必须达到的最低等级（可空，表示无固定等级门槛）。 */
+    private final Map<ResourceLocation, Integer> requiresLevel;
+
     /** 可升级级数：1=单级（默认），-1=无限，正整数=多级。 */
     private final int maxLevel;
 
@@ -53,6 +57,7 @@ public final class Skill {
                  String descriptionKey,
                  int tier,
                  List<ResourceLocation> requires,
+                 Map<ResourceLocation, Integer> requiresLevel,
                  ResourceLocation levelGate,
                  int maxLevel,
                  int cost,
@@ -63,6 +68,7 @@ public final class Skill {
         this.descriptionKey = descriptionKey;
         this.tier = tier;
         this.requires = requires == null ? Collections.emptyList() : requires;
+        this.requiresLevel = requiresLevel == null ? Collections.emptyMap() : requiresLevel;
         this.levelGate = levelGate;
         this.maxLevel = maxLevel;
         this.cost = cost;
@@ -93,6 +99,11 @@ public final class Skill {
     /** 等级门限前置技能；{@code null} = 无等级跟随约束。 */
     public ResourceLocation getLevelGate() {
         return levelGate;
+    }
+
+    /** 前置等级要求（前置技能 id → 最低等级）；空 = 无固定等级门槛。 */
+    public Map<ResourceLocation, Integer> getRequiresLevel() {
+        return requiresLevel;
     }
 
     public int getMaxLevel() {

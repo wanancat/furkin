@@ -1,0 +1,21 @@
+{
+  "id": "furkin:nine_lives",
+  "name": "furkin.skill.nine_lives",
+  "description": "furkin.skill.nine_lives.desc",
+  "tier": 2,
+  "requires": ["furkin:nimble_grace"],
+  "requiresLevel": {
+    "furkin:nimble_grace": 3
+  },
+  "maxLevel": 1,
+  "cost": 1,
+  "species": ["furkin:cat"],
+  "effects": [
+    {
+      "type": "furkin:passive",
+      "params": {
+        "trigger": "hurt"
+      }
+    }
+  ]
+}

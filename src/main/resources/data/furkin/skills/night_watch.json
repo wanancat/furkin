@@ -1,0 +1,18 @@
+{
+  "id": "furkin:night_watch",
+  "name": "furkin.skill.night_watch",
+  "description": "furkin.skill.night_watch.desc",
+  "tier": 1,
+  "requires": [],
+  "maxLevel": 1,
+  "cost": 1,
+  "species": ["furkin:cat"],
+  "effects": [
+    {
+      "type": "furkin:passive",
+      "params": {
+        "trigger": "tick"
+      }
+    }
+  ]
+}

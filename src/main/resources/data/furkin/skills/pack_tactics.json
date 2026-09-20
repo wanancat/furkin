@@ -1,0 +1,19 @@
+{
+  "id": "furkin:pack_tactics",
+  "name": "furkin.skill.pack_tactics",
+  "description": "furkin.skill.pack_tactics.desc",
+  "tier": 2,
+  "requires": ["furkin:sharp_fang"],
+  "levelGate": "furkin:sharp_fang",
+  "maxLevel": 3,
+  "cost": 1,
+  "species": ["furkin:dog"],
+  "effects": [
+    {
+      "type": "furkin:passive",
+      "params": {
+        "trigger": "tick"
+      }
+    }
+  ]
+}

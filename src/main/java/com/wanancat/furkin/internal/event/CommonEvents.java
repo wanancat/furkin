@@ -1,5 +1,6 @@
 package com.wanancat.furkin.internal.event;
 
+import com.wanancat.furkin.internal.FurkinMod;
 import com.wanancat.furkin.internal.command.FurkinCommand;
 import com.wanancat.furkin.internal.capability.FurkinCapability;
 import com.wanancat.furkin.internal.capability.FurkinData;
@@ -13,8 +14,11 @@ import com.wanancat.furkin.internal.growth.FurkinGrowth;
 import com.wanancat.furkin.internal.item.FurkinContractItem;
 import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.network.SyncFurkinDataPacket;
+import com.wanancat.furkin.internal.record.FurkinArchiveData;
+import com.wanancat.furkin.internal.record.FurkinArchiveEntry;
 import com.wanancat.furkin.internal.skill.SkillPassiveDispatcher;
 import com.wanancat.furkin.internal.skill.SkillRegistry;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
@@ -25,6 +29,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.event.AddReloadListenerEvent;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.entity.living.LivingAttackEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.living.LivingHurtEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
@@ -145,7 +150,25 @@ public final class CommonEvents {
     // ===== 战斗经验（§3.2 口径 A）：登记伤害 → 死亡结算 =====
 
     /**
-     * 目标受伤：登记「攻击者」进该目标的参与者表，累计伤害。
+     * 攻击（最早段）：绒亲受害侧被动的最早位点。
+     *
+     * <p><b>为什么必须有这一层</b>：取消 {@code LivingHurtEvent} 只作废伤害量，而受击的
+     * 变红闪帧与音效在 {@code hurt()} 更早的段落里已经播出去了（实机表现：明明闪避了，
+     * 宠物仍全身变红 + 惨叫）。{@code LivingAttackEvent} 在 {@code hurt()} 入口触发，
+     * 取消后整个受击流程直接返回，才叫「干净地闪掉」。故闪避走这一层；
+     * 免死留在 {@link #onLivingHurt}（它需要改写伤害量，只能走晚段）。</p>
+     */
+    @SubscribeEvent
+    public static void onLivingAttack(LivingAttackEvent event) {
+        if (event.getEntity().level().isClientSide()) {
+            return;
+        }
+        // 受害侧早段被动（灵巧身法闪避）：闪避成立则整个受击作废（无伤害 / 无音效 / 无闪帧）。
+        SkillPassiveDispatcher.onCompanionAttacked(event.getEntity(), event);
+    }
+
+    /**
+     * 目标受伤：先跑受害侧被动（九命猫免死），再登记「攻击者」进该目标的参与者表并累计伤害。
      * 攻击者可能是绒亲本人、玩家、或其它来源；是否发经验在死亡结算时再判定。
      */
     @SubscribeEvent
@@ -159,6 +182,27 @@ public final class CommonEvents {
         if (source == null) {
             return;
         }
+
+        // ===== 临时验收探针（定位受害侧被动不触发，定案后移除）=====
+        // 用来区分两种可能：① 事件根本没到绒亲身上；② 事件到了但技能等级读成 0。
+        FurkinData probe = target.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
+        if (probe != null && probe.isCompanion()) {
+            FurkinMod.LOGGER.info(
+                    "Furkin probe: hurt on companion id={} amount={} health={} attacker={} levels={}",
+                    probe.getCompanionId(), event.getAmount(), target.getHealth(),
+                    source.getEntity() == null ? "none" : source.getEntity().getType().toString(),
+                    probe.getSkillLevels());
+        }
+
+        // 受害侧被动（九命猫免死）——必须早于下面的「有实体攻击者」守卫：
+        // 摔落 / 虚空这类伤害没有实体来源，若先过守卫就永远进不来，九命猫护不住摔死。
+        // （灵巧身法闪避不在这里 —— 它在更早的 onLivingAttack，取消后整个受击流程直接返回。）
+        SkillPassiveDispatcher.onCompanionHurt(target, event);
+        if (event.isCanceled()) {
+            // 兜底：本事件被其它来源取消时，同样不登记伤害、不触发攻击侧被动。
+            return;
+        }
+
         // 攻击者可能不是 LivingEntity（如箭矢、环境），但只登记「直接实体」即可：
         // 绒亲近战攻击时 getEntity() 返回绒亲本身。
         Entity sourceEntity = source.getEntity();
@@ -172,7 +216,7 @@ public final class CommonEvents {
     }
 
     /**
-     * 目标死亡：结算战斗经验。口径 A —— 每个参与过伤害的绒亲各拿
+     * 目标死亡：绒亲先落「已亡」态，再结算战斗经验。口径 A —— 每个参与过伤害的绒亲各拿
      * 目标原版经验 × {@code COMBAT_XP_MULTIPLIER}。
      */
     @SubscribeEvent
@@ -181,6 +225,9 @@ public final class CommonEvents {
         if (target.level().isClientSide() || !(target.level() instanceof ServerLevel serverLevel)) {
             return;
         }
+
+        // 绒亲自身死亡 → 档案落「已亡 + 已收回」（必须先于下面的参与者早退，否则空参与者时会被跳过）。
+        markFallenIfCompanion(target, serverLevel);
 
         Map<UUID, Float> participants = CombatParticipationTracker.takeAndClear(target);
         if (participants.isEmpty()) {
@@ -220,13 +267,57 @@ public final class CommonEvents {
         }
     }
 
-    /** 服务端 tick 兜底：清理脱离战斗超时的追踪记录，防止残留。 */
+    /**
+     * 绒亲死亡 → 档案落「已亡 + 已收回」。
+     *
+     * <p><b>为什么必须有这一步</b>：绒亲实体死亡后会被世界移除，但档案条目的
+     * {@code alive} / {@code summoned} 不会自动变化 —— 不落态就会出现「录里显示在场、
+     * 点收回却报未在场」的错位。死亡快照（等级 / 经验 / 技能 / 外观）一并写录，
+     * 供 M4 复活（FALLEN → COMPANION）按同一身份 UUID 重建。</p>
+     *
+     * <p>复活流程归 M4，本方法只落死亡态，不做任何玩家提示。</p>
+     */
+    private static void markFallenIfCompanion(LivingEntity target, ServerLevel serverLevel) {
+        FurkinData data = target.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
+        if (data == null || !data.isCompanion()) {
+            return;
+        }
+        UUID companionId = data.getCompanionId();
+        if (companionId == null) {
+            return;
+        }
+        FurkinArchiveData archive = FurkinArchiveData.get(serverLevel);
+        FurkinArchiveEntry entry = archive.getEntry(companionId);
+        if (entry == null) {
+            return;
+        }
+
+        // 死亡快照：与收回同口径，保证等级 / 经验 / 技能不因死亡丢失。
+        entry.setLevel(data.getLevel());
+        entry.setXp(data.getXp());
+        entry.setSkillPoints(data.getSkillPoints());
+        entry.setSkillSnapshot(data.serializeNBT().getCompound("skill_levels"));
+        entry.setEntitySnapshot(target.saveWithoutId(new CompoundTag()));
+        if (entry.getSpecies() == null) {
+            entry.setSpecies(target.getType());
+        }
+        entry.setAlive(false);
+        entry.setSummoned(false); // 实体随死亡被移除，不再是「在场」。
+        archive.putEntry(entry);
+
+        FurkinMod.LOGGER.info("Furkin fallen: id={} species={}", companionId, target.getType());
+    }
+
+    /** 服务端 tick 兜底：清理脱离战斗超时的追踪记录，防止残留；并驱动周期被动。 */
     @SubscribeEvent
     public static void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.END) {
             return;
         }
         CombatParticipationTracker.tickCleanup();
+
+        // 周期被动（守夜者夜视 / 群猎战术叠层等）——分发器内部按 20 tick 节流。
+        SkillPassiveDispatcher.onServerTick(event.getServer());
     }
 
     /**

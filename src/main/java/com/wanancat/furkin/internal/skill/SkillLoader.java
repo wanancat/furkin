@@ -13,6 +13,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -84,6 +85,13 @@ public final class SkillLoader {
             }
         }
 
+        Map<ResourceLocation, Integer> requiresLevel = new LinkedHashMap<>();
+        if (root.has("requiresLevel") && root.get("requiresLevel").isJsonObject()) {
+            for (Map.Entry<String, JsonElement> e : root.getAsJsonObject("requiresLevel").entrySet()) {
+                requiresLevel.put(new ResourceLocation(e.getKey()), e.getValue().getAsInt());
+            }
+        }
+
         ResourceLocation levelGate = null;
         if (root.has("levelGate") && !root.get("levelGate").isJsonNull()) {
             levelGate = new ResourceLocation(root.get("levelGate").getAsString());
@@ -107,6 +115,7 @@ public final class SkillLoader {
             }
         }
 
-        return new Skill(id, nameKey, descriptionKey, tier, requires, levelGate, maxLevel, cost, effects, species);
+        return new Skill(id, nameKey, descriptionKey, tier, requires, requiresLevel,
+                levelGate, maxLevel, cost, effects, species);
     }
 }

@@ -37,6 +37,8 @@ public final class SkillTree {
      * <p>规则：</p>
      * <ul>
      *   <li>{@code requires} 列表里每一项都至少投过 1 级（解锁前置）。</li>
+     *   <li>若声明了 {@code requiresLevel}，则其中每个前置技能的当前等级必须 ≥ 声明的最低等级
+     *       （固定等级门槛，如「九命猫需灵巧身法 Lv.3」）。</li>
      *   <li>若声明了 {@code levelGate}，则该前置技能的当前等级必须 ≥ 目标等级
      *       （等级门限：本技能可升到的最高等级 = 门限前置的当前等级）。</li>
      * </ul>
@@ -54,6 +56,13 @@ public final class SkillTree {
             Integer level = skillLevels.get(req);
             // 前置技能至少投过 1 级即视为满足（解锁前置）。
             if (level == null || level < 1) {
+                return false;
+            }
+        }
+        // 固定等级门槛：声明的前置技能必须达到各自的最低等级。
+        for (Map.Entry<ResourceLocation, Integer> req : skill.getRequiresLevel().entrySet()) {
+            Integer level = skillLevels.get(req.getKey());
+            if (level == null || level < req.getValue()) {
                 return false;
             }
         }
