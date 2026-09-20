@@ -306,7 +306,8 @@ public final class FurkinRecordActionHandler {
 
         Map<ResourceLocation, Integer> skillLevels = data.getSkillLevels();
         List<OpenFurkinScreenPacket.SkillView> views = new ArrayList<>();
-        for (Skill skill : SkillRegistry.tree().all()) {
+        // 展示顺序走 ordered()（先主干、后物种分支），不用 all() 的加载顺序。
+        for (Skill skill : SkillRegistry.tree().ordered()) {
             if (!skill.availableTo(speciesId)) {
                 continue;
             }

@@ -5,6 +5,7 @@ import net.minecraft.resources.ResourceLocation;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +33,32 @@ public final class SkillTree {
     public Collection<Skill> all() {
         return Collections.unmodifiableCollection(byId.values());
     }
+
+    /**
+     * 面板展示用的稳定顺序 —— <b>先主干、后物种分支</b>。
+     *
+     * <p>背景（2026-09-21 乌狸定）：{@link #all()} 的顺序是资源加载顺序，不保证稳定；
+     * 面板直接按它渲染时主干与分支技能会交错，看起来没有条理。此处显式排序：</p>
+     * <ol>
+     *   <li>主干（{@code species} 为空）整体排在所有物种分支之前；</li>
+     *   <li>同一组内按 {@code tier} 升序 —— {@code tier} 字段从本版起真正参与排序；</li>
+     *   <li>仍相同则按技能 id 字典序，消除加载顺序带来的不确定性。</li>
+     * </ol>
+     *
+     * <p>注意面板在服务端已按物种过滤，所以一只猫看到的是「主干 + 猫分支」、
+     * 一只狗看到的是「主干 + 狗分支」，猫狗分支不会同时出现。</p>
+     */
+    public List<Skill> ordered() {
+        List<Skill> ordered = new ArrayList<>(byId.values());
+        ordered.sort(DISPLAY_ORDER);
+        return ordered;
+    }
+
+    /** 展示顺序：主干优先 → tier 升序 → id 字典序。 */
+    private static final Comparator<Skill> DISPLAY_ORDER =
+            Comparator.comparingInt((Skill s) -> s.getSpecies().isEmpty() ? 0 : 1)
+                    .thenComparingInt(Skill::getTier)
+                    .thenComparing(s -> s.getId().toString());
 
     /**
      * 判断某技能升到目标等级的前置是否已满足。

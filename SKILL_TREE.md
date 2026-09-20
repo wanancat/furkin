@@ -54,7 +54,7 @@ Certain skills also unlock the **Travel Pouch** — a carry-along inventory for 
 | --------------------- | ---- | ---- | --------------------------- | -------------- |
 | `furkin:nimble_grace` | 灵巧身法 | 3    | 每级 +8% 闪避概率                 | —              |
 | `furkin:nine_lives`   | 九命猫  | 1    | 受到致命伤害时触发不死图腾效果（冷却10分钟） | `nimble_grace` Lv.3 |
-| `furkin:fish_harvest` | 捕鱼天赋 | 3    | 每 60 / 40 / 30s 凭空产 1 生鱼进背包 | `travel_pouch` |
+| `furkin:fish_harvest` | 捕鱼天赋 | 3    | 每 60 / 40 / 30s 凭空产 1 生鱼进背包（仅在场时计时） | `travel_pouch` |
 | `furkin:night_watch`  | 守夜者  | 1    | 夜晚在主人 16 格内时，使主人获得夜视效果 | —              |
 
 **English**
@@ -63,7 +63,7 @@ Certain skills also unlock the **Travel Pouch** — a carry-along inventory for 
 | --------------------- | ------------ | --------- | ----------------------------------------------------- | -------------- |
 | `furkin:nimble_grace` | Nimble Grace | 3         | +8% dodge chance per level                            | —              |
 | `furkin:nine_lives`   | Nine Lives   | 1         | Triggers the Totem of Undying effect on a fatal blow (10 min cooldown) | `nimble_grace` Lv.3 |
-| `furkin:fish_harvest` | Fish Harvest | 3         | Produce 1 raw fish into the pouch every 60 / 40 / 30s | `travel_pouch` |
+| `furkin:fish_harvest` | Fish Harvest | 3         | Produce 1 raw fish into the pouch every 60 / 40 / 30s (ticks only while summoned) | `travel_pouch` |
 | `furkin:night_watch`  | Night Watch  | 1         | Grants the owner Night Vision when within 16 blocks at night | —              |
 
 ### 狗分支 / Dog Branch（`furkin:dog`）
@@ -74,7 +74,7 @@ Certain skills also unlock the **Travel Pouch** — a carry-along inventory for 
 | ---------------------- | ---- | ---- | ------------------------------------------- | -------------- |
 | `furkin:bleeding_bite` | 流血撕咬 | 3    | 攻击附加流血效果：每秒 1/2/3 点伤害，持续 4 秒（亡灵免疫） | `sharp_fang`（等级跟随）   |
 | `furkin:pack_tactics`  | 群猎战术 | 3    | 附近每存在1只友方狗队友 +10% / +15% / +20% 攻击（最多叠 3 层） | `sharp_fang`（等级跟随）   |
-| `furkin:bone_harvest`  | 藏骨本能 | 3    | 每 60 / 40 / 30s 凭空产 1 骨头进背包                 | `travel_pouch` |
+| `furkin:bone_harvest`  | 藏骨本能 | 3    | 每 60 / 40 / 30s 凭空产 1 骨头进背包（仅在场时计时）                 | `travel_pouch` |
 
 **English**
 
@@ -82,7 +82,7 @@ Certain skills also unlock the **Travel Pouch** — a carry-along inventory for 
 | ---------------------- | ------------- | --------- | ------------------------------------------------------------------------------------------------------- | -------------- |
 | `furkin:bleeding_bite` | Bleeding Bite | 3         | Attacks apply Bleeding effect: 1/2/3 damage per second for 4 seconds (undead immune) | `sharp_fang` (level follows)   |
 | `furkin:pack_tactics`  | Pack Tactics  | 3         | +10% / +15% / +20% Attack per nearby canine ally (stacks up to 3)                                       | `sharp_fang` (level follows)   |
-| `furkin:bone_harvest`  | Bone Harvest  | 3         | Produce 1 bone into the pouch every 60 / 40 / 30s                                                       | `travel_pouch` |
+| `furkin:bone_harvest`  | Bone Harvest  | 3         | Produce 1 bone into the pouch every 60 / 40 / 30s (ticks only while summoned)                                                       | `travel_pouch` |
 
 ### 待定技能 / Planned（未定稿，暂未开放 / not yet finalized）
 
@@ -131,7 +131,7 @@ Skills are **data-driven**; each skill maps to one JSON config file (`data/furki
 | `id`          | 字符串   | 文件名                    | 技能标识（含命名空间，如 `furkin:sharp_fang`）     |
 | `name`        | 字符串   | `furkin.skill.<id 路径>` | 显示名本地化 key                            |
 | `description` | 字符串   | `name + ".desc"`       | 描述本地化 key                             |
-| `tier`        | 整数    | 1                      | 层级（树上位置，越大越靠后）                        |
+| `tier`        | 整数    | 1                      | 层级（树上位置，越大越靠后）；面板顺序：先主干、后物种分支，组内按 tier 升序                        |
 | `requires`    | 字符串数组 | 空                      | 前置技能 id 列表                            |
 | `requiresLevel` | 对象  | 空                      | 前置等级要求：前置技能 id → 该前置必须达到的最低等级（如 `{"furkin:nimble_grace": 3}`） |
 | `levelGate`   | 字符串   | 无                      | 等级门限：指向某前置技能，本技能可升到的最高等级 = 该前置技能当前等级 |
@@ -147,7 +147,7 @@ Skills are **data-driven**; each skill maps to one JSON config file (`data/furki
 | `id`          | string   | file name                | Skill identifier (namespaced, e.g. `furkin:sharp_fang`)       |
 | `name`        | string   | `furkin.skill.<id path>` | Display-name localization key                                 |
 | `description` | string   | `name + ".desc"`         | Description localization key                                  |
-| `tier`        | int      | 1                        | Tier (tree position; higher = later)                          |
+| `tier`        | int      | 1                        | Tier (tree position; higher = later). Panel order: trunk first, then species branches; ascending tier within a group |
 | `requires`    | string[] | empty                    | Prerequisite skill id list                                    |
 | `requiresLevel` | object | empty                    | Required prerequisite levels: prerequisite skill id → minimum level it must reach (e.g. `{"furkin:nimble_grace": 3}`) |
 | `levelGate`   | string   | none                     | Level gate: points to a prerequisite; this skill's max reachable level = that prerequisite's current level |
@@ -164,23 +164,21 @@ Each effect entry is `{ "type": "...", "params": {...} }`, where `type` refers t
 
 **中文**
 
-| type          | 说明          |
-
-
-| ------------- | ----------- |  
-| `attribute`   | 属性修正（修改属性值） |  
-| `ability`     | 主动技能        |  
-| `passive`     | 被动技能        |  
-| `interaction` | 交互技能        |
+| type                 | 说明          |
+| -------------------- | ----------- |
+| `furkin:attribute`   | 属性修正（修改属性值） |
+| `furkin:ability`     | 主动技能        |
+| `furkin:passive`     | 被动技能        |
+| `furkin:interaction` | 交互技能        |
 
 **English**
 
-| type          | Meaning            |
-| ------------- | ------------------ |
-| `attribute`   | Attribute modifier |
-| `ability`     | Active ability     |
-| `passive`     | Passive skill      |
-| `interaction` | Interaction skill  |
+| type                 | Meaning            |
+| -------------------- | ------------------ |
+| `furkin:attribute`   | Attribute modifier |
+| `furkin:ability`     | Active ability     |
+| `furkin:passive`     | Passive skill      |
+| `furkin:interaction` | Interaction skill  |
 
 `params` 为自由 JSON 对象，由对应效果实现解析。以 `attribute` 为例：
 
