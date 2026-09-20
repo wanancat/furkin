@@ -124,13 +124,15 @@ public final class SkillProgress {
      * 洗点：清空全部技能 + 按 Σ已投等级全额退点。
      *
      * <p>目标须在场（摘效果需要实体引用）。未召唤时退化为清档案快照 + 退点。</p>
+     *
+     * @return 退还的技能点数（未召唤且档案有技能时也返回退点数；找不到/非本人返回 0）。
      */
-    public static void resetSkills(ServerPlayer player, UUID companionId, SkillTree tree) {
+    public static int resetSkills(ServerPlayer player, UUID companionId, SkillTree tree) {
         ServerLevel level = player.serverLevel();
         FurkinArchiveData archive = FurkinArchiveData.get(level);
         FurkinArchiveEntry entry = archive.getEntry(companionId);
         if (entry == null || !player.getUUID().equals(entry.getOwnerUuid())) {
-            return;
+            return 0;
         }
 
         LivingEntity target = findLivingByCompanionId(level, companionId);
@@ -148,6 +150,7 @@ public final class SkillProgress {
                 FurkinNetwork.channel().send(
                         PacketDistributor.TRACKING_ENTITY_AND_SELF.with(() -> target),
                         new SyncFurkinDataPacket(target.getId(), data.serializeNBT()));
+                return refund;
             }
         } else {
             // 未召唤：技能等级在档案 skillSnapshot 里，清快照 + 退点。
@@ -158,7 +161,32 @@ public final class SkillProgress {
             entry.setSkillPoints(entry.getSkillPoints() + refund);
             entry.setSkillSnapshot(new net.minecraft.nbt.CompoundTag());
             archive.putEntry(entry);
+            return refund;
         }
+        return 0;
+    }
+
+    /** 判断某绒亲是否为「本人契约且已召唤」——洗点等动作的前置校验（避免白耗道具）。 */
+    public static boolean isOwnedAndSummoned(ServerPlayer player, UUID companionId) {
+        FurkinArchiveData archive = FurkinArchiveData.get(player.serverLevel());
+        FurkinArchiveEntry entry = archive.getEntry(companionId);
+        return entry != null
+                && player.getUUID().equals(entry.getOwnerUuid())
+                && entry.isSummoned();
+    }
+
+    /** 读取某绒亲当前技能点数（优先在场实体能力，未召唤则读档案）。 */
+    public static int skillPointsOf(ServerPlayer player, UUID companionId) {
+        LivingEntity target = findLivingByCompanionId(player.serverLevel(), companionId);
+        if (target != null) {
+            FurkinData data = target.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
+            if (data != null) {
+                return data.getSkillPoints();
+            }
+        }
+        FurkinArchiveData archive = FurkinArchiveData.get(player.serverLevel());
+        FurkinArchiveEntry entry = archive.getEntry(companionId);
+        return entry == null ? 0 : entry.getSkillPoints();
     }
 
     /** 把能力对象里的技能等级 + 技能点同步回写档案（与 dismiss 的快照口径一致）。 */

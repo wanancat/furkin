@@ -6,6 +6,7 @@ import com.wanancat.furkin.internal.capability.FurkinData;
 import com.wanancat.furkin.internal.config.FurkinServerConfig;
 import com.wanancat.furkin.internal.contract.FurkinCompanionManager;
 import com.wanancat.furkin.internal.contract.FurkinContractHandler;
+import com.wanancat.furkin.internal.contract.FurkinRecordActionHandler;
 import com.wanancat.furkin.internal.growth.CombatParticipationTracker;
 import com.wanancat.furkin.internal.growth.FurkinFeeding;
 import com.wanancat.furkin.internal.growth.FurkinGrowth;
@@ -104,6 +105,18 @@ public final class CommonEvents {
             }
         }
         // ===== 进食通道结束 =====
+
+        // 潜行 + 右键 + 手持非契约 → 打开绒亲界面（本人契约绒亲，看技能面板）。
+        // （手持契约时的潜行右键是「收回」，见下；这里只处理非契约物品。）
+        if (player.isShiftKeyDown()
+                && !(player.getMainHandItem().getItem() instanceof FurkinContractItem)
+                && isOwnCompanion) {
+            if (FurkinRecordActionHandler.openFurkinScreen(player, target)) {
+                event.setCancellationResult(InteractionResult.SUCCESS);
+                event.setCanceled(true);
+            }
+            return;
+        }
 
         // 手持绒亲契约才触发契约 / 收回。
         if (!(player.getMainHandItem().getItem() instanceof FurkinContractItem)) {

@@ -102,6 +102,26 @@ public final class FurkinNetwork {
                 UnlockSkillPacket::handle,
                 Optional.of(NetworkDirection.PLAY_TO_SERVER)
         );
+
+        // 客户端 → 服务端：洗点（消耗洗点药水，清空技能 + 退点）。
+        CHANNEL.registerMessage(
+                id++,
+                ResetSkillsPacket.class,
+                ResetSkillsPacket::encode,
+                ResetSkillsPacket::decode,
+                ResetSkillsPacket::handle,
+                Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        );
+
+        // 服务端 → 客户端：打开绒亲界面（技能面板）。
+        CHANNEL.registerMessage(
+                id++,
+                OpenFurkinScreenPacket.class,
+                OpenFurkinScreenPacket::encode,
+                OpenFurkinScreenPacket::decode,
+                OpenFurkinScreenPacket::handle,
+                Optional.of(NetworkDirection.PLAY_TO_CLIENT)
+        );
     }
 
     /** 暴露通道给包发送方（服务端契约/召唤/收回后广播）。 */

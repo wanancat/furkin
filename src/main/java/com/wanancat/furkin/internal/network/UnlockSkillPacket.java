@@ -1,5 +1,6 @@
 package com.wanancat.furkin.internal.network;
 
+import com.wanancat.furkin.internal.contract.FurkinRecordActionHandler;
 import com.wanancat.furkin.internal.skill.SkillProgress;
 import com.wanancat.furkin.internal.skill.SkillRegistry;
 import net.minecraft.network.FriendlyByteBuf;
@@ -55,8 +56,12 @@ public final class UnlockSkillPacket {
                 player, packet.companionId, packet.skillId, SkillRegistry.tree());
 
         switch (r) {
-            case OK -> player.displayClientMessage(
-                    Component.translatable("furkin.msg.skill_unlocked", packet.skillId), true);
+            case OK -> {
+                player.displayClientMessage(
+                        Component.translatable("furkin.msg.skill_unlocked", packet.skillId), true);
+                // 回传最新状态，客户端开着界面时原地刷新。
+                FurkinRecordActionHandler.refreshScreen(player, packet.companionId);
+            }
             case NOT_FOUND -> player.displayClientMessage(
                     Component.translatable("furkin.msg.skill_not_found"), false);
             case NOT_OWNER -> player.displayClientMessage(

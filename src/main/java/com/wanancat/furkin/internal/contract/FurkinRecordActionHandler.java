@@ -4,12 +4,15 @@ import com.wanancat.furkin.internal.FurkinMod;
 import com.wanancat.furkin.internal.capability.FurkinCapability;
 import com.wanancat.furkin.internal.capability.FurkinData;
 import com.wanancat.furkin.internal.network.FurkinNetwork;
+import com.wanancat.furkin.internal.network.OpenFurkinScreenPacket;
 import com.wanancat.furkin.internal.network.SyncFurkinDataPacket;
 import com.wanancat.furkin.internal.record.FurkinArchiveData;
 import com.wanancat.furkin.internal.record.FurkinArchiveEntry;
+import com.wanancat.furkin.internal.skill.Skill;
 import com.wanancat.furkin.internal.skill.SkillEffectApplier;
 import com.wanancat.furkin.internal.skill.SkillRegistry;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
@@ -17,6 +20,9 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.TamableAnimal;
 import net.minecraftforge.network.PacketDistributor;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -167,6 +173,97 @@ public final class FurkinRecordActionHandler {
         FurkinMod.LOGGER.info("Furkin renamed: id={} by {}",
                 companionId, player.getName().getString());
         return Result.OK;
+    }
+
+    /**
+     * 打开某只绒亲的界面（技能面板），下发 {@link OpenFurkinScreenPacket}。
+     *
+     * <p>潜行 + 右键本人契约绒亲（手持非契约物品）触发。组装该只的名字 / 技能点 /
+     * 可见技能快照（按物种过滤 + 当前等级），客户端开屏即渲染。</p>
+     *
+     * @return 是否成功下发（非本人 / 不存在 / 未召唤返回 false）。
+     */
+    public static boolean openFurkinScreen(ServerPlayer player, LivingEntity target) {
+        FurkinData data = target.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
+        if (data == null || !data.isCompanion()) {
+            return false;
+        }
+        UUID companionId = data.getCompanionId();
+        if (companionId == null || !player.getUUID().equals(data.getOwnerUuid())) {
+            return false;
+        }
+        return sendScreenPacket(player, target, companionId);
+    }
+
+    /**
+     * 刷新某只绒亲界面（加点 / 洗点后回传最新技能点与等级）。
+     *
+     * <p>按 companionId 定位在场实体，组装最新 {@link OpenFurkinScreenPacket} 回发。
+     * 客户端若正开着同一只界面则原地刷新，否则忽略。</p>
+     *
+     * @return 是否成功回发（实体不存在 / 非本人返回 false）。
+     */
+    public static boolean refreshScreen(ServerPlayer player, UUID companionId) {
+        LivingEntity target = findLivingByCompanionId(player.serverLevel(), companionId);
+        if (target == null) {
+            return false;
+        }
+        FurkinData data = target.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
+        if (data == null || !data.isCompanion()
+                || !player.getUUID().equals(data.getOwnerUuid())) {
+            return false;
+        }
+        return sendScreenPacket(player, target, companionId);
+    }
+
+    /** 组装并回发开屏包（open 与 refresh 共用，保证规则一套）。 */
+    private static boolean sendScreenPacket(ServerPlayer player, LivingEntity target, UUID companionId) {
+        FurkinData data = target.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
+        if (data == null) {
+            return false;
+        }
+
+        // 名字：优先实体 CustomName，回退档案 name。
+        String name = null;
+        Component custom = target.getCustomName();
+        if (custom != null) {
+            name = custom.getString();
+        } else {
+            FurkinArchiveData archive = FurkinArchiveData.get(player.serverLevel());
+            FurkinArchiveEntry entry = archive.getEntry(companionId);
+            if (entry != null && entry.getName() != null) {
+                name = entry.getName().getString();
+            }
+        }
+
+        int skillPoints = data.getSkillPoints();
+
+        // 物种 id（用于过滤技能可见性）。
+        ResourceLocation speciesId = com.wanancat.furkin.api.companion.FurkinSpeciesRegistry
+                .byEntityType(target.getType())
+                .map(com.wanancat.furkin.api.companion.FurkinSpecies::getId)
+                .orElse(null);
+
+        Map<ResourceLocation, Integer> skillLevels = data.getSkillLevels();
+        List<OpenFurkinScreenPacket.SkillView> views = new ArrayList<>();
+        for (Skill skill : SkillRegistry.tree().all()) {
+            if (!skill.availableTo(speciesId)) {
+                continue;
+            }
+            int current = skillLevels.getOrDefault(skill.getId(), 0);
+            views.add(new OpenFurkinScreenPacket.SkillView(
+                    skill.getId().toString(),
+                    skill.getNameKey(),
+                    skill.getDescriptionKey(),
+                    skill.getMaxLevel(),
+                    skill.getCost(),
+                    current));
+        }
+
+        FurkinNetwork.channel().send(
+                PacketDistributor.PLAYER.with(() -> player),
+                new OpenFurkinScreenPacket(companionId, name, skillPoints, views));
+        return true;
     }
 
     /** 解析名字：空串 → 物种显示名（translatable）；非空 → 字面量。 */

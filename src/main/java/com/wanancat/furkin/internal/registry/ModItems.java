@@ -3,6 +3,7 @@ package com.wanancat.furkin.internal.registry;
 import com.wanancat.furkin.internal.FurkinMod;
 import com.wanancat.furkin.internal.item.FurkinContractItem;
 import com.wanancat.furkin.internal.item.FurkinRecordItem;
+import com.wanancat.furkin.internal.item.FurkinRespecPotionItem;
 import net.minecraft.world.item.Item;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.registries.DeferredRegister;
@@ -28,6 +29,10 @@ public final class ModItems {
     /** 绒亲录（打开档案的入口，召唤正式入口）。 */
     public static final RegistryObject<Item> FURKIN_RECORD =
             ITEMS.register("record", FurkinRecordItem::new);
+
+    /** 洗点药水（洗点道具，合成：契约 + 水瓶）。 */
+    public static final RegistryObject<Item> FURKIN_RESPEC_POTION =
+            ITEMS.register("respec_potion", FurkinRespecPotionItem::new);
 
     private ModItems() {
     }
