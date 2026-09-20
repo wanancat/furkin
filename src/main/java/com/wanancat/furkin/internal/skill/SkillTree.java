@@ -157,12 +157,17 @@ public final class SkillTree {
     }
 
     /**
-     * 取一个前置技能的显示名 key。
+     * 取某技能的显示名 lang key —— 「技能 id → 名称 key」的<b>唯一出口</b>。
      *
-     * <p>前置 id 指向不存在的技能时（数据包写错 id），退回 {@code SkillLoader} 的默认命名约定。
-     * 此时图内会直接显示出未翻译的 key —— <b>这正是想要的信号</b>，比静默显示空白更容易发现。</p>
+     * <p>前置展示（{@link #unmetRequirements}）与加点反馈（解锁请求的动作栏提示）都走它。
+     * 两条路要的都是本地化名而不是 id —— {@code furkin:travel_pouch} 是给代码看的，
+     * 玩家该看到「随身行囊」。</p>
+     *
+     * <p>id 指向不存在的技能时（数据包写错 / 客户端伪造 id），退回 {@code SkillLoader}
+     * 的默认命名约定。此时界面内会直接显示出未翻译的 key —— <b>这正是想要的信号</b>，
+     * 比静默显示空白更容易发现。</p>
      */
-    private String nameKeyOf(ResourceLocation id) {
+    public String nameKeyOf(ResourceLocation id) {
         Skill skill = byId.get(id);
         return skill != null ? skill.getNameKey() : "furkin.skill." + id.getPath();
     }

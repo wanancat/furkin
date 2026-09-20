@@ -57,8 +57,13 @@ public final class UnlockSkillPacket {
 
         switch (r) {
             case OK -> {
+                // 提示里给「技能名」（随身行囊），不给 id（furkin:travel_pouch）—— 后者是给代码看的。
+                // 名称 key 走 SkillTree.nameKeyOf 这唯一出口，未知 id 也有兜底（见其 javadoc）。
                 player.displayClientMessage(
-                        Component.translatable("furkin.msg.skill_unlocked", packet.skillId), true);
+                        Component.translatable("furkin.msg.skill_unlocked",
+                                Component.translatable(
+                                        SkillRegistry.tree().nameKeyOf(packet.skillId))),
+                        true);
                 // 回传最新状态，客户端开着界面时原地刷新。
                 FurkinRecordActionHandler.refreshScreen(player, packet.companionId);
             }

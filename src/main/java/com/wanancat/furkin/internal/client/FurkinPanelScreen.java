@@ -191,6 +191,14 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
         this.imageWidth = 176;
         // 高度随行囊行数变：114 = 上段（标题 + 行囊区）与下段（玩家背包）之外的部分。
         this.imageHeight = 114 + menu.getRows() * 18;
+        // ⚠️ 紧跟其后重算「物品栏」标签纵坐标，否则标签与槽位脱钩。
+        // 官方 AbstractContainerScreen 构造器里写的是 inventoryLabelY = imageHeight - 94，
+        // 而那句的取值时刻在 super(...) 内 —— 那时 imageHeight 还是默认 166，算出来恒为 72。
+        // 本屏在 super 之后才改 imageHeight，于是 72 被留了下来：行囊 1 行时正确值是 38，
+        // 标签会掉到玩家背包第二行上（2026-09-21 乌狸截图报「物品栏标题错位」）。
+        // 官方箱子屏 ContainerScreen 正是这么修的（改完 imageHeight 立刻重算，见其构造器字节码）。
+        // 91 不是巧合：玩家背包首行 y = 103 + (rows - 4) × 18，与本式相减恒为 11px 间隙。
+        this.inventoryLabelY = this.imageHeight - 94;
     }
 
     // ===== 入口 =====
@@ -461,10 +469,8 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
         int right = listLeft() + listWidth();
 
         boolean maxed = skill.isMaxed();
-        boolean affordable = this.skillPoints >= skill.getCost();
-        // 前置不满足时按钮置灰 —— 与服务端的准入判据同源（unmet 由 SkillTree 算出下发），
-        // 所以「这里能点」和「服务端会放行」不会各说各话。
-        boolean enabled = !maxed && affordable && skill.isPrereqMet();
+        // 可点性判据只有一个出口（见 buttonEnabled）—— 渲染与命中必须同源。
+        boolean enabled = buttonEnabled(skill);
 
         if (hoveredRow) {
             gui.fill(left, y, right, y + rowHeight, 0x22FFFFFF);
@@ -699,14 +705,30 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
                 && mouseY >= by && mouseY < by + SKILL_BUTTON_HEIGHT;
     }
 
+    /**
+     * 「+1」按钮此刻是否可点 —— <b>渲染与命中判定的唯一判据出口</b>。
+     *
+     * <p>三条与服务端 {@code SkillProgress.tryUnlock} 的准入一一对应：未满级、点数够、
+     * 前置满足（{@code unmet} 由 {@link com.wanancat.furkin.internal.skill.SkillTree}
+     * 算出并随快照下发），所以「这里能点」和「服务端会放行」不会各说各话。</p>
+     *
+     * <p><b>为什么必须抽成一个方法</b>：这两处曾经不一致 —— 渲染侧带了前置判定、命中侧漏了，
+     * 结果「前置未满足」的行按钮是灰的却点得动，发出一个注定被服务端拒掉的包（动作栏白弹
+     * 一句「前置技能未满足」）。同一类错位在 {@link #buttonLeft()} 上也踩过一次。</p>
+     */
+    private boolean buttonEnabled(OpenFurkinScreenPacket.SkillView skill) {
+        return !skill.isMaxed()
+                && this.skillPoints >= skill.getCost()
+                && skill.isPrereqMet();
+    }
+
     /** 命中哪一行的「+1」按钮（且该行确实可加点）；未命中返回 -1。 */
     private int skillButtonIndexAt(double mouseX, double mouseY) {
         int index = rowIndexAtScreen(mouseY);
         if (index < 0 || !buttonHit(mouseX, mouseY, index)) {
             return -1;
         }
-        OpenFurkinScreenPacket.SkillView skill = this.skills.get(index);
-        return skill.isMaxed() || this.skillPoints < skill.getCost() ? -1 : index;
+        return buttonEnabled(this.skills.get(index)) ? index : -1;
     }
 
     /** 命中哪一整行（用于悬停显示描述）；未命中返回 -1。 */
