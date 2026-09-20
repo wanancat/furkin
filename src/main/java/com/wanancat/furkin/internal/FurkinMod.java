@@ -7,6 +7,7 @@ import com.wanancat.furkin.internal.config.FurkinServerConfig;
 import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.registry.BuiltinSpecies;
 import com.wanancat.furkin.internal.registry.ModItems;
+import com.wanancat.furkin.internal.skill.SkillEffects;
 import net.minecraftforge.common.capabilities.RegisterCapabilitiesEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.ModLoadingContext;
@@ -59,7 +60,11 @@ public class FurkinMod {
     }
 
     private void onCommonSetup(FMLCommonSetupEvent event) {
-        event.enqueueWork(BuiltinSpecies::register);
+        event.enqueueWork(() -> {
+            BuiltinSpecies.register();
+            // 注册内置四类效果类型（attribute / ability / passive / interaction）。
+            SkillEffects.registerBuiltin();
+        });
         LOGGER.info("Furkin builtin species registered.");
     }
 }

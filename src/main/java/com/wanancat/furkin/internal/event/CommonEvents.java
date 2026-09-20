@@ -12,6 +12,7 @@ import com.wanancat.furkin.internal.growth.FurkinGrowth;
 import com.wanancat.furkin.internal.item.FurkinContractItem;
 import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.network.SyncFurkinDataPacket;
+import com.wanancat.furkin.internal.skill.SkillRegistry;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
@@ -19,6 +20,7 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
+import net.minecraftforge.event.AddReloadListenerEvent;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
@@ -208,5 +210,14 @@ public final class CommonEvents {
             return;
         }
         CombatParticipationTracker.tickCleanup();
+    }
+
+    /**
+     * 技能树数据驱动 JSON 的资源重载监听（进服 / 数据包重载时加载）。
+     * 注意：AddReloadListenerEvent 是 FORGE 游戏事件总线事件，不能挂 ModBus。
+     */
+    @SubscribeEvent
+    public static void onAddReloadListener(AddReloadListenerEvent event) {
+        event.addListener(SkillRegistry.reloadListener());
     }
 }

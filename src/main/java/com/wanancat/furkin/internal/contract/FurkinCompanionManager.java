@@ -8,6 +8,8 @@ import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.network.SyncFurkinDataPacket;
 import com.wanancat.furkin.internal.record.FurkinArchiveData;
 import com.wanancat.furkin.internal.record.FurkinArchiveEntry;
+import com.wanancat.furkin.internal.skill.SkillEffectApplier;
+import com.wanancat.furkin.internal.skill.SkillRegistry;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -188,6 +190,10 @@ public final class FurkinCompanionManager {
                         entry.getSkillSnapshot().getInt(key));
             }
         }
+
+        // 重挂技能效果（M2.4）：实体重建后 attribute modifier 是运行时表现，须按 skillLevels
+        // 重新 apply，否则收回再召唤后属性加成丢失。
+        SkillEffectApplier.applyAll(living, SkillRegistry.tree(), data.getSkillLevels());
 
         // 对 TamableAnimal 的额外动作：置 TAME（与契约同路径）。
         if (living instanceof TamableAnimal tamable) {

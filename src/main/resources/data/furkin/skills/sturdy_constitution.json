@@ -1,0 +1,20 @@
+{
+  "id": "furkin:sturdy_constitution",
+  "name": "furkin.skill.sturdy_constitution",
+  "description": "furkin.skill.sturdy_constitution.desc",
+  "tier": 2,
+  "requires": [],
+  "maxLevel": 5,
+  "cost": 1,
+  "species": ["furkin:cat"],
+  "effects": [
+    {
+      "type": "furkin:attribute",
+      "params": {
+        "attribute": "minecraft:generic.max_health",
+        "amount": 1.0,
+        "operation": "addition"
+      }
+    }
+  ]
+}

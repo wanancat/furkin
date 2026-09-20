@@ -92,6 +92,16 @@ public final class FurkinNetwork {
                 RecordActionPacket::handle,
                 Optional.of(NetworkDirection.PLAY_TO_SERVER)
         );
+
+        // 客户端 → 服务端：解锁（加点）技能。
+        CHANNEL.registerMessage(
+                id++,
+                UnlockSkillPacket.class,
+                UnlockSkillPacket::encode,
+                UnlockSkillPacket::decode,
+                UnlockSkillPacket::handle,
+                Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        );
     }
 
     /** 暴露通道给包发送方（服务端契约/召唤/收回后广播）。 */

@@ -7,6 +7,8 @@ import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.network.SyncFurkinDataPacket;
 import com.wanancat.furkin.internal.record.FurkinArchiveData;
 import com.wanancat.furkin.internal.record.FurkinArchiveEntry;
+import com.wanancat.furkin.internal.skill.SkillEffectApplier;
+import com.wanancat.furkin.internal.skill.SkillRegistry;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -186,6 +188,8 @@ public final class FurkinRecordActionHandler {
     private static void clearFurkinLayer(LivingEntity target) {
         FurkinData data = target.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
         if (data != null) {
+            // 先摘技能效果（attribute modifier 等运行时表现），再清数据，避免残留属性加成。
+            SkillEffectApplier.removeAll(target, SkillRegistry.tree(), data.getSkillLevels());
             data.setCompanionId(null);
             data.setOwnerUuid(null);
             data.setLevel(1);

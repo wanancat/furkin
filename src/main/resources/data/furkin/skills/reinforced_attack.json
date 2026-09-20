@@ -1,0 +1,20 @@
+{
+  "id": "furkin:reinforced_attack",
+  "name": "furkin.skill.reinforced_attack",
+  "description": "furkin.skill.reinforced_attack.desc",
+  "tier": 2,
+  "requires": [],
+  "maxLevel": 5,
+  "cost": 1,
+  "species": ["furkin:dog"],
+  "effects": [
+    {
+      "type": "furkin:attribute",
+      "params": {
+        "attribute": "minecraft:generic.attack_damage",
+        "amount": 0.5,
+        "operation": "addition"
+      }
+    }
+  ]
+}

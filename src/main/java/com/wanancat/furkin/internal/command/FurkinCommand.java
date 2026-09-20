@@ -7,6 +7,7 @@ import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
+import com.wanancat.furkin.internal.FurkinMod;
 import com.wanancat.furkin.internal.capability.FurkinCapability;
 import com.wanancat.furkin.internal.capability.FurkinData;
 import com.wanancat.furkin.internal.contract.FurkinCombatMode;
@@ -16,12 +17,17 @@ import com.wanancat.furkin.internal.contract.FurkinRecordActionHandler;
 import com.wanancat.furkin.internal.growth.FurkinGrowth;
 import com.wanancat.furkin.internal.record.FurkinArchiveData;
 import com.wanancat.furkin.internal.record.FurkinArchiveEntry;
+import com.wanancat.furkin.internal.skill.Skill;
+import com.wanancat.furkin.internal.skill.SkillProgress;
+import com.wanancat.furkin.internal.skill.SkillRegistry;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.commands.arguments.ResourceLocationArgument;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
@@ -49,6 +55,19 @@ public final class FurkinCommand {
                     String name = mode.name().toLowerCase(Locale.ROOT);
                     if (name.startsWith(input)) {
                         builder.suggest(name);
+                    }
+                }
+                return builder.buildFuture();
+            };
+
+    /** skill_id 参数的建议器：列出全部已加载技能 id（完整 namespace:path），按前缀过滤。 */
+    private static final SuggestionProvider<CommandSourceStack> SKILL_SUGGESTIONS =
+            (CommandContext<CommandSourceStack> ctx, SuggestionsBuilder builder) -> {
+                String input = builder.getRemaining().toLowerCase(Locale.ROOT);
+                for (Skill skill : SkillRegistry.tree().all()) {
+                    String id = skill.getId().toString();
+                    if (id.toLowerCase(Locale.ROOT).startsWith(input)) {
+                        builder.suggest(id);
                     }
                 }
                 return builder.buildFuture();
@@ -88,6 +107,19 @@ public final class FurkinCommand {
                                                 .executes(ctx -> setMode(ctx.getSource(),
                                                         StringArgumentType.getString(ctx, "pet_id"),
                                                         StringArgumentType.getString(ctx, "mode"))))))
+                        .then(Commands.literal("skills")
+                                .executes(ctx -> listSkills(ctx.getSource())))
+                        .then(Commands.literal("skill")
+                                .then(Commands.argument("pet_id", StringArgumentType.word())
+                                        .then(Commands.argument("skill_id", ResourceLocationArgument.id())
+                                                .suggests(SKILL_SUGGESTIONS)
+                                                .executes(ctx -> unlockSkill(ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "pet_id"),
+                                                        ResourceLocationArgument.getId(ctx, "skill_id"))))))
+                        .then(Commands.literal("inspect")
+                                .then(Commands.argument("pet_id", StringArgumentType.word())
+                                        .executes(ctx -> inspect(ctx.getSource(),
+                                                StringArgumentType.getString(ctx, "pet_id")))))
         );
     }
 
@@ -293,6 +325,113 @@ public final class FurkinCommand {
             default -> src.sendFailure(Component.literal("Set mode failed."));
         }
         return 1;
+    }
+
+    /** 列出全部技能定义（id + tier + maxLevel + species，调试 / 验收用）。 */
+    private static int listSkills(CommandSourceStack src) {
+        src.sendSuccess(() -> Component.literal("Skills:"), false);
+        for (Skill skill : SkillRegistry.tree().all()) {
+            String speciesStr = skill.getSpecies().isEmpty() ? "(common)"
+                    : skill.getSpecies().toString();
+            src.sendSuccess(() -> Component.literal("  " + skill.getId()
+                    + "  tier=" + skill.getTier()
+                    + "  maxLevel=" + skill.getMaxLevel()
+                    + "  cost=" + skill.getCost()
+                    + "  species=" + speciesStr), false);
+        }
+        return 1;
+    }
+
+    /**
+     * 给某只在场绒亲加点（调试 / 验收用，完整校验走 SkillProgress）。
+     * skillId 无命名空间时归一化为 furkin:（手敲不带前缀的兜底，
+     * ResourceLocationArgument 默认补 minecraft: 会找不到技能）。
+     */
+    private static int unlockSkill(CommandSourceStack src, String petIdRaw, ResourceLocation parsedSkillId) {
+        if (!(src.getEntity() instanceof ServerPlayer player)) {
+            return 0;
+        }
+
+        UUID petId;
+        try {
+            petId = UUID.fromString(petIdRaw);
+        } catch (IllegalArgumentException e) {
+            src.sendFailure(Component.literal("Invalid pet id: " + petIdRaw));
+            return 0;
+        }
+
+        ResourceLocation skillId = parsedSkillId;
+        if (!skillId.getNamespace().equals(FurkinMod.MODID)
+                && SkillRegistry.tree().get(skillId).isEmpty()
+                && SkillRegistry.tree().get(new ResourceLocation(FurkinMod.MODID, skillId.getPath())).isPresent()) {
+            // minecraft: 命名空间下不存在、但 furkin: 下存在 → 归一化。
+            skillId = new ResourceLocation(FurkinMod.MODID, skillId.getPath());
+        }
+        final ResourceLocation finalSkillId = skillId;
+
+        SkillProgress.Result r = SkillProgress.tryUnlock(
+                player, petId, finalSkillId, SkillRegistry.tree());
+
+        switch (r) {
+            case OK -> src.sendSuccess(() -> Component.literal(
+                    "Unlocked " + finalSkillId + " for " + petId), false);
+            case NOT_FOUND -> src.sendFailure(Component.literal("No such companion: " + petId));
+            case NOT_OWNER -> src.sendFailure(Component.literal("Not your companion."));
+            case NOT_SUMMONED -> src.sendFailure(Component.literal("Companion is not summoned."));
+            case SKILL_UNKNOWN -> src.sendFailure(Component.literal("Unknown skill: " + finalSkillId));
+            case SPECIES_MISMATCH -> src.sendFailure(Component.literal("Skill not available to this species."));
+            case PREREQUISITES -> src.sendFailure(Component.literal("Prerequisites not met."));
+            case NOT_ENOUGH_POINTS -> src.sendFailure(Component.literal("Not enough skill points."));
+            case MAXED -> src.sendFailure(Component.literal("Skill already maxed."));
+        }
+        return 1;
+    }
+
+    /** 打印某只在场绒亲的四类属性当前值（调试 / 验收用，验证 attribute 技能加成）。 */
+    private static int inspect(CommandSourceStack src, String petIdRaw) {
+        if (!(src.getEntity() instanceof ServerPlayer player)) {
+            return 0;
+        }
+
+        UUID petId;
+        try {
+            petId = UUID.fromString(petIdRaw);
+        } catch (IllegalArgumentException e) {
+            src.sendFailure(Component.literal("Invalid pet id: " + petIdRaw));
+            return 0;
+        }
+
+        LivingEntity target = findLivingByCompanionId(player.serverLevel(), petId);
+        if (target == null) {
+            src.sendFailure(Component.literal("Companion entity not found in world (summon it first)."));
+            return 0;
+        }
+
+        // 属性值：直接读 AttributeInstance 的当前值（含所有 modifier 叠加后的最终值）。
+        double attack = attr(target, net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE);
+        double maxHealth = attr(target, net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH);
+        double armor = attr(target, net.minecraft.world.entity.ai.attributes.Attributes.ARMOR);
+        double speed = attr(target, net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED);
+        double currentHealth = target.getHealth();
+
+        FurkinData data = target.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
+        int level = data == null ? 0 : data.getLevel();
+        int skillPoints = data == null ? 0 : data.getSkillPoints();
+
+        src.sendSuccess(() -> Component.literal(
+                "Inspect " + petId
+                        + "  Lv." + level
+                        + "  skillPoints=" + skillPoints), false);
+        src.sendSuccess(() -> Component.literal(String.format(
+                "  attack=%.2f  maxHealth=%.2f (cur=%.2f)  armor=%.2f  speed=%.3f",
+                attack, maxHealth, currentHealth, armor, speed)), false);
+        return 1;
+    }
+
+    /** 读某实体的指定属性当前值；无该属性时返回 0。 */
+    private static double attr(LivingEntity target, net.minecraft.world.entity.ai.attributes.Attribute attribute) {
+        var instance = target.getAttribute(attribute);
+        return instance == null ? 0.0 : instance.getValue();
     }
 
     /** 在世界里按 companionId 查找在场绒亲实体。 */
