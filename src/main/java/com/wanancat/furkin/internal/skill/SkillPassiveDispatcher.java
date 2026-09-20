@@ -4,6 +4,7 @@ import com.wanancat.furkin.api.companion.FurkinSpeciesRegistry;
 import com.wanancat.furkin.internal.FurkinMod;
 import com.wanancat.furkin.internal.capability.FurkinCapability;
 import com.wanancat.furkin.internal.capability.FurkinData;
+import com.wanancat.furkin.internal.inventory.FurkinInventory;
 import com.wanancat.furkin.internal.inventory.PouchDrop;
 import com.wanancat.furkin.internal.registry.ModMobEffects;
 import com.wanancat.furkin.internal.skill.harvest.HarvestSpec;
@@ -19,7 +20,11 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.food.FoodProperties;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.phys.AABB;
+import net.minecraftforge.event.ForgeEventFactory;
 import net.minecraftforge.event.entity.living.LivingAttackEvent;
 import net.minecraftforge.event.entity.living.LivingHurtEvent;
 import net.minecraftforge.registries.ForgeRegistries;
@@ -50,12 +55,19 @@ import java.util.UUID;
  *       取消即整个受击作废，连音效闪帧一并压掉）。</li>
  *   <li>{@link #onCompanionHurt} —— 受害侧晚段（九命猫免死；{@code LivingHurtEvent}，
  *       需要改写伤害量，只能在这一层）。</li>
- *   <li>{@link #onServerTick} —— 周期侧（守夜者夜视、群猎战术叠层、凭空产出）。</li>
+ *   <li>{@link #onServerTick} —— 周期侧（守夜者夜视、群猎战术叠层、凭空产出、拾荒、低血进食）。</li>
  * </ul>
  *
- * <p><b>路由方式的两分</b>：逻辑各自独特的被动（流血 / 闪避 / 免死 / 夜视 / 群猎）按
- * {@code skillId} 显式 {@code if}；而「同一套逻辑 + 不同参数」的产出类走数据驱动
- * （{@link HarvestSpec}），谁声明谁生效 —— 新增一条产出技能不需要改本类。</p>
+ * <p><b>路由方式的两分</b>（判据 = 逻辑是否同构）：逻辑各自独特的被动（流血 / 闪避 / 免死 /
+ * 夜视 / 群猎 / 拾荒 / 进食）按 {@code skillId} 显式 {@code if} 路由；而「同一套逻辑 +
+ * 不同参数」的产出类走数据驱动（{@link HarvestSpec}），谁声明谁生效 ——
+ * 新增一条产出技能不需要改本类。</p>
+ *
+ * <p>注意「数据驱动」的边界在<b>参数</b>而不在<b>流程</b>：拾荒与进食各自逻辑独特（只有一条
+ * 技能），故走显式路由，但它们的数值（半径 / 门槛 / 冷却）仍从 JSON 读
+ * （{@link ForagerSpec} / {@link FeederSpec}），与产出类共用同一套取块与缓存通道
+ * （{@link SkillParams}）。把「独特流程」硬塞进数据驱动，会造出一门比它要解决的问题
+ * 还复杂的 DSL。</p>
  */
 public final class SkillPassiveDispatcher {
 
@@ -76,6 +88,12 @@ public final class SkillPassiveDispatcher {
     /** 群猎战术（周期侧 · 叠层增益）。 */
     private static final ResourceLocation PACK_TACTICS =
             new ResourceLocation(FurkinMod.MODID, "pack_tactics");
+    /** 拾荒本能（周期侧 · 自动拾取掉落物进行囊）。 */
+    private static final ResourceLocation FORAGER =
+            new ResourceLocation(FurkinMod.MODID, "forager");
+    /** 低血进食（周期侧 · 血量过低时自行进食）。 */
+    private static final ResourceLocation SELF_FEEDER =
+            new ResourceLocation(FurkinMod.MODID, "self_feeder");
 
     /** 犬类物种 id —— 群猎战术按「犬类队友」计数。 */
     private static final ResourceLocation DOG_SPECIES =
@@ -303,6 +321,8 @@ public final class SkillPassiveDispatcher {
         updateNightWatch(companion, data, levels);
         updatePackTactics(companion, levels);
         updateHarvest(companion, data, levels);
+        updateForager(companion, data, levels);
+        updateFeeder(companion, data, levels);
     }
 
     /**
@@ -442,6 +462,159 @@ public final class SkillPassiveDispatcher {
         PouchDrop.dropStacks(companion, List.of(leftover));
         FurkinMod.LOGGER.info("Furkin harvest: {} level={} produced {} (stored {}, dropped {} on ground)",
                 skillId.getPath(), level, producedId, stored, dropped);
+    }
+
+    // ===== 周期侧：拾荒 =====
+
+    /**
+     * 拾荒本能：把附近掉落物收进行囊（半径见 JSON {@code params.forager.radius}）。
+     *
+     * <p><b>框架照官方 {@code Mob#aiStep} 的「捡地上东西」逻辑</b>（javap 取证）：
+     * ① 先过 {@code ForgeEventFactory.getMobGriefingEvent}；
+     * ② 用 {@code level.getEntitiesOfClass(ItemEntity.class, 碰撞箱.inflate(半径))} 取候选；
+     * ③ 逐个过滤 {@code isRemoved / getItem().isEmpty() / hasPickUpDelay()}。
+     * 其中尊重 {@code hasPickUpDelay()} 是必须的 —— 那是原版给「刚被丢出的物品」留的缓冲
+     * （丢出后一段时间不可被拾取），少了它会把玩家刚扔掉的、还没来得及反悔的东西瞬间吸走。
+     * （用 {@code hasPickUpDelay()} 而不是读 {@code pickupDelay} 字段：字段是 private，
+     * 该方法是官方给外部用的判据。）</p>
+     *
+     * <p><b>搬运与善后照官方 {@code InventoryCarrier#pickUpItem} 的三段式</b>：
+     * 通知（{@code onItemPickup}，内含「丢出的物品被某实体捡走」的进度触发）→
+     * 广播（{@code take} 会发 {@code ClientboundTakeItemEntityPacket}，客户端据此播放
+     * 物品飞向拾取者的动画）→ 收尾（全装下则 {@code discard} 掉落地物，
+     * 只装下一部分则把剩余数量写回落地物，剩下的留在地上等下一轮）。</p>
+     *
+     * <p>与官方的唯一差别是顺序与门槛：先搬再通知，且<b>一个都没搬进去就完全不碰这个实体</b>
+     * （官方靠 {@code canAddItem} 预检达到同样效果）。否则行囊满时每 20 tick 都会白触发
+     * 一次进度与拾取广播，玩家会看到物品反复闪动却捡不起来。</p>
+     */
+    private static void updateForager(LivingEntity companion, FurkinData data,
+                                      Map<ResourceLocation, Integer> levels) {
+        if (!levels.containsKey(FORAGER)) {
+            return;
+        }
+        ForagerSpec spec = ForagerSpec.of(FORAGER).orElse(null);
+        if (spec == null) {
+            return;
+        }
+        FurkinInventory pouch = data.getPouch();
+        if (pouch.getContainerSize() <= 0) {
+            return;
+        }
+        // 与官方同源的门：mobGriefing 关掉时绒亲不自动拾取 —— 服主一个开关即可停用。
+        if (!ForgeEventFactory.getMobGriefingEvent(companion.level(), companion)) {
+            return;
+        }
+        double radius = spec.radius();
+        AABB area = companion.getBoundingBox().inflate(radius, radius, radius);
+        for (ItemEntity item : companion.level().getEntitiesOfClass(ItemEntity.class, area)) {
+            if (item.isRemoved() || item.getItem().isEmpty() || item.hasPickUpDelay()) {
+                continue;
+            }
+            ItemStack ground = item.getItem();
+            int before = ground.getCount();
+            // addItem 不改传入的栈（内部先 copy），故 before 与 ground 始终一致。
+            ItemStack remaining = pouch.addItem(ground);
+            int moved = before - remaining.getCount();
+            if (moved <= 0) {
+                continue;
+            }
+            companion.onItemPickup(item);
+            companion.take(item, moved);
+            if (remaining.isEmpty()) {
+                item.discard();
+            } else {
+                ground.setCount(remaining.getCount());
+            }
+            FurkinMod.LOGGER.info("Furkin forager: picked up {} x{} into pouch (left {} on ground)",
+                    ForgeRegistries.ITEMS.getKey(ground.getItem()), moved, remaining.getCount());
+        }
+    }
+
+    // ===== 周期侧：低血进食 =====
+
+    /**
+     * 低血进食：血量低于门槛时，从行囊里取一份食物吃掉。
+     *
+     * <p><b>「吃」这个动作整个交给官方</b>（javap 取证：{@code LivingEntity#eat(Level, ItemStack)}
+     * 是 public）：它内部依次做了进食音效（{@code getEatingSound}）、按概率施加食物自带的
+     * 状态效果、扣掉 1 个、发 {@code GameEvent.EAT}（幽匿感测体据此触发）——
+     * 自己另写一套只会漏掉其中若干项。唯一缺的是<b>回血</b>：官方玩家进食走 {@code FoodData}
+     * 累加、再靠饥饿值自然恢复，而生物没有 {@code FoodData}，故这里把营养值直接当血量补
+     * （原版营养值以半颗心为单位，与玩家吃一份的回血量同量级）。</p>
+     *
+     * <p>冷却与产出类共用 {@code getCooldowns()} 表，但语义不同：这里的值是
+     * 「吃完后多久不能再吃」的<b>防连发闸</b>，不是节拍 —— 所以召唤时
+     * {@link #resetPeriodicTimers} 不重置它、洗点 {@link #clearPeriodicTimers} 也不清它
+     * （两者都以「是否有产出规格」为判据），与九命猫免死冷却的处理一致。</p>
+     */
+    private static void updateFeeder(LivingEntity companion, FurkinData data,
+                                     Map<ResourceLocation, Integer> levels) {
+        if (!levels.containsKey(SELF_FEEDER)) {
+            return;
+        }
+        FeederSpec spec = FeederSpec.of(SELF_FEEDER).orElse(null);
+        if (spec == null) {
+            return;
+        }
+        float maxHealth = companion.getMaxHealth();
+        if (maxHealth <= 0.0f || companion.getHealth() >= maxHealth * spec.threshold()) {
+            return;
+        }
+        long now = companion.level().getGameTime();
+        Long nextAt = data.getCooldowns().get(SELF_FEEDER);
+        if (nextAt != null && now < nextAt) {
+            return;
+        }
+        FurkinInventory pouch = data.getPouch();
+        int slot = findBestFoodSlot(pouch, companion);
+        if (slot < 0) {
+            return;
+        }
+        ItemStack food = pouch.removeItem(slot, 1);
+        if (food.isEmpty()) {
+            return;
+        }
+        ResourceLocation foodId = ForgeRegistries.ITEMS.getKey(food.getItem());
+        FoodProperties properties = food.getFoodProperties(companion);
+        float healthBefore = companion.getHealth();
+        // 官方进食流程。注意它会把传入的栈吃掉（shrink 1），
+        // 所以只能传「刚从行囊取出的那一份」，绝不能传行囊里的原栈。
+        companion.eat(companion.level(), food);
+        int nutrition = 0;
+        if (properties != null) {
+            nutrition = properties.getNutrition();
+            companion.heal(nutrition);
+        }
+        data.getCooldowns().put(SELF_FEEDER, now + spec.cooldownTicks());
+        FurkinMod.LOGGER.info("Furkin feeder: ate {} (nutrition {}, health {}/{})",
+                foodId, nutrition, healthBefore, maxHealth);
+    }
+
+    /**
+     * 找行囊里「最顶饱」的那份食物（营养值最高者）。
+     *
+     * <p>为什么不取第一个：低血进食是「救命」场景，行囊里同时有面包与熟牛排时吃哪个，
+     * 不该取决于格子顺序。用官方 {@code ItemStack#getFoodProperties(LivingEntity)} 判定可食性
+     * —— 它正是 {@code isEdible()} 的数据来源，且将来要做「某物种忌口」可以只在这一层加过滤。</p>
+     *
+     * @return 可食用且营养值最高的格子下标；行囊里没有食物时返回 -1
+     */
+    private static int findBestFoodSlot(FurkinInventory pouch, LivingEntity companion) {
+        int best = -1;
+        int bestNutrition = -1;
+        for (int i = 0; i < pouch.getContainerSize(); i++) {
+            ItemStack stack = pouch.getItem(i);
+            if (stack.isEmpty()) {
+                continue;
+            }
+            FoodProperties properties = stack.getFoodProperties(companion);
+            if (properties != null && properties.getNutrition() > bestNutrition) {
+                bestNutrition = properties.getNutrition();
+                best = i;
+            }
+        }
+        return best;
     }
 
     // ===== 周期计时的重置 =====

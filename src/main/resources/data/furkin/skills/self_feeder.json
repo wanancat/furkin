@@ -1,0 +1,22 @@
+{
+  "id": "furkin:self_feeder",
+  "name": "furkin.skill.self_feeder",
+  "description": "furkin.skill.self_feeder.desc",
+  "tier": 2,
+  "requires": ["furkin:travel_pouch"],
+  "maxLevel": 1,
+  "cost": 1,
+  "species": [],
+  "effects": [
+    {
+      "type": "furkin:passive",
+      "params": {
+        "trigger": "tick",
+        "feeder": {
+          "threshold": 0.3,
+          "cooldown": 200
+        }
+      }
+    }
+  ]
+}

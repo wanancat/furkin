@@ -34,8 +34,11 @@ public final class SkillRegistry {
         SkillTree tree = new SkillTree();
         SkillLoader.load(manager, tree);
         TREE.set(tree);
-        // 产出规格是从技能 JSON 解析并缓存的（见 HarvestSpec），树换新后旧解析结果必须作废，
-        // 否则数据包改过的间隔 / 物品池要等到重启才生效。
+        // 周期型被动的配置块与其派生规格都是从技能 JSON 解析并缓存的
+        // （见 SkillParams / HarvestSpec / ForagerSpec / FeederSpec），树换新后旧解析结果必须作废，
+        // 否则数据包改过的间隔 / 半径 / 门槛要等到重启才生效。
+        // SkillParams 是块缓存（底层），HarvestSpec 是解析后的规格缓存（派生层），两层都要清。
+        SkillParams.invalidateCache();
         HarvestSpec.invalidateCache();
     }
 

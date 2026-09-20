@@ -4,8 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.wanancat.furkin.internal.FurkinMod;
-import com.wanancat.furkin.internal.skill.Skill;
-import com.wanancat.furkin.internal.skill.SkillRegistry;
+import com.wanancat.furkin.internal.skill.SkillParams;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
@@ -20,7 +19,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 「凭空产出」的规格 —— 从技能 JSON 的 passive params 里解析出的<b>通用配置</b>。
+ * 「凭空产出」的规格 —— 从技能 JSON 的 passive {@code params.harvest} 解析出的<b>通用配置</b>。
  *
  * <p>本类是「定时往行囊里塞东西」这套机制的契约层：<b>机制在代码里，数值在数据里</b>。
  * 因此新增一条产出技能（藏骨 / 捕鱼，或第三方自己的）<b>不需要改任何 Java</b> ——
@@ -41,11 +40,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * }
  * }</pre>
  *
- * <p><b>为什么产出配置收在 {@code harvest} 子对象里，而不是与 {@code trigger} 平铺</b>：
- * {@code trigger} 是所有被动共用的「何时查」；{@code harvest} 是「产出什么、多久一次」。
- * 分开之后，将来 {@code tick} 侧再长出别的被动（低血进食、拾荒）可以各带各的子对象，
- * 不会互相争抢 {@code interval} / {@code items} 这类通用键名；「有 harvest 块 ⇒ 是产出技能」
- * 也成了一句可判的判据。</p>
+ * <p>「块为什么收在子对象里」这件事由 {@link SkillParams} 统一说明 —— 取块、校验
+ * {@code trigger}、缓存三件事都在那里，本类只负责解析块内部。</p>
+ *
+ * <p><b>本类为什么另有缓存</b>：块内容之外的解析（查物品注册表把 id 变成 {@link Item}）
+ * 比读几个数字贵，而周期侧会反复问；缓存的失效与 {@link SkillParams} 同步
+ * （都由技能树重载触发）。</p>
  *
  * <p><b>解析失败一律留痕</b>：数据写错时最坏的表现是「技能能加点、但什么都没发生」——
  * 这类静默失效排查起来极费时间，故每一处失败路径都打 WARN（含技能 id 与具体原因）。</p>
@@ -56,22 +56,11 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public record HarvestSpec(int[] intervalTicks, List<Item> pool, int count) {
 
-    /** passive 效果类型 id —— 与 {@code SkillEffects.registerBuiltin()} 注册的一致。 */
-    private static final ResourceLocation PASSIVE_TYPE =
-            new ResourceLocation(FurkinMod.MODID, "passive");
-
-    /** 只认这个触发时机：产出是周期行为。 */
-    private static final String TRIGGER_TICK = "tick";
-
     /** 产出配置块在 params 里的键名。 */
     private static final String HARVEST_KEY = "harvest";
 
     /**
      * 解析结果缓存（技能 id → 规格）。
-     *
-     * <p>周期侧每只绒亲每 20 tick 都要问一次「这技能是不是产出技能」，而解析要遍历
-     * skill 的 effects 并查物品注册表，逐次重算毫无必要。缓存失效由
-     * {@link #invalidateCache()} 在<b>技能树重载</b>时触发 —— 那是 JSON 唯一会变的入口。</p>
      *
      * <p>用 {@link Optional} 装箱而不是只缓存命中的项：让「这个 id 不是产出技能」这个
      * 否定结论同样只算一次。</p>
@@ -113,7 +102,8 @@ public record HarvestSpec(int[] intervalTicks, List<Item> pool, int count) {
             return Optional.empty();
         }
         return CACHE.computeIfAbsent(skillId,
-                id -> SkillRegistry.tree().get(id).flatMap(HarvestSpec::parse));
+                id -> SkillParams.tickBlock(id, HARVEST_KEY)
+                        .flatMap(block -> parseHarvest(id, block)));
     }
 
     /** 清空解析缓存（技能树重载时调用 —— 旧树解析出的规格不能再被沿用）。 */
@@ -123,46 +113,18 @@ public record HarvestSpec(int[] intervalTicks, List<Item> pool, int count) {
 
     // ===== 解析 =====
 
-    /** 从技能定义里找产出声明。找不到（非产出技能）返回空，<b>不打日志</b> —— 那是常态。 */
-    private static Optional<HarvestSpec> parse(Skill skill) {
-        for (Skill.SkillEffectSpec effect : skill.getEffects()) {
-            if (!PASSIVE_TYPE.equals(effect.getType())) {
-                continue;
-            }
-            JsonObject params = effect.getParams();
-            if (params == null || !params.has(HARVEST_KEY)) {
-                continue;
-            }
-            String trigger = params.has("trigger") ? params.get("trigger").getAsString() : "";
-            if (!TRIGGER_TICK.equals(trigger)) {
-                FurkinMod.LOGGER.warn("Furkin harvest: skill {} declares '{}' but trigger is '{}'"
-                                + " (expected '{}'), ignored",
-                        skill.getId(), HARVEST_KEY, trigger, TRIGGER_TICK);
-                return Optional.empty();
-            }
-            return parseHarvest(skill, params.get(HARVEST_KEY));
-        }
-        return Optional.empty();
-    }
-
-    private static Optional<HarvestSpec> parseHarvest(Skill skill, JsonElement raw) {
-        if (raw == null || !raw.isJsonObject()) {
-            FurkinMod.LOGGER.warn("Furkin harvest: skill {}'s '{}' must be an object",
-                    skill.getId(), HARVEST_KEY);
-            return Optional.empty();
-        }
-        JsonObject harvest = raw.getAsJsonObject();
-        int[] intervals = parseIntervals(skill, harvest);
-        List<Item> pool = parsePool(skill, harvest);
+    private static Optional<HarvestSpec> parseHarvest(ResourceLocation skillId, JsonObject harvest) {
+        int[] intervals = parseIntervals(skillId, harvest);
+        List<Item> pool = parsePool(skillId, harvest);
         int count = harvest.has("count") ? harvest.get("count").getAsInt() : 1;
         if (intervals == null || pool.isEmpty() || count < 1) {
             if (pool.isEmpty()) {
                 FurkinMod.LOGGER.warn("Furkin harvest: skill {} has no usable item in 'items',"
-                        + " harvest disabled", skill.getId());
+                        + " harvest disabled", skillId);
             }
             if (count < 1) {
                 FurkinMod.LOGGER.warn("Furkin harvest: skill {} has count = {} (< 1), harvest disabled",
-                        skill.getId(), count);
+                        skillId, count);
             }
             return Optional.empty();
         }
@@ -170,17 +132,15 @@ public record HarvestSpec(int[] intervalTicks, List<Item> pool, int count) {
     }
 
     /** 解析 {@code interval} 数组：必须存在、非空、每项为正整数。 */
-    private static int[] parseIntervals(Skill skill, JsonObject harvest) {
+    private static int[] parseIntervals(ResourceLocation skillId, JsonObject harvest) {
         JsonElement raw = harvest.get("interval");
         if (raw == null || !raw.isJsonArray()) {
-            FurkinMod.LOGGER.warn("Furkin harvest: skill {} needs an 'interval' array of ticks",
-                    skill.getId());
+            FurkinMod.LOGGER.warn("Furkin harvest: skill {} needs an 'interval' array of ticks", skillId);
             return null;
         }
         JsonArray array = raw.getAsJsonArray();
         if (array.size() == 0) {
-            FurkinMod.LOGGER.warn("Furkin harvest: skill {}'s 'interval' array is empty",
-                    skill.getId());
+            FurkinMod.LOGGER.warn("Furkin harvest: skill {}'s 'interval' array is empty", skillId);
             return null;
         }
         int[] values = new int[array.size()];
@@ -188,7 +148,7 @@ public record HarvestSpec(int[] intervalTicks, List<Item> pool, int count) {
             int ticks = array.get(i).getAsInt();
             if (ticks <= 0) {
                 FurkinMod.LOGGER.warn("Furkin harvest: skill {} interval[{}] = {} is not positive",
-                        skill.getId(), i, ticks);
+                        skillId, i, ticks);
                 return null;
             }
             values[i] = ticks;
@@ -203,11 +163,10 @@ public record HarvestSpec(int[] intervalTicks, List<Item> pool, int count) {
      * 池空了才由调用方判定为「产出禁用」。这样「池里 3 选 1 其中 1 个写错」不至于
      * 把整个技能打死。</p>
      */
-    private static List<Item> parsePool(Skill skill, JsonObject harvest) {
+    private static List<Item> parsePool(ResourceLocation skillId, JsonObject harvest) {
         JsonElement raw = harvest.get("items");
         if (raw == null || !raw.isJsonArray()) {
-            FurkinMod.LOGGER.warn("Furkin harvest: skill {} needs an 'items' array of item ids",
-                    skill.getId());
+            FurkinMod.LOGGER.warn("Furkin harvest: skill {} needs an 'items' array of item ids", skillId);
             return List.of();
         }
         List<Item> pool = new ArrayList<>();
@@ -217,7 +176,7 @@ public record HarvestSpec(int[] intervalTicks, List<Item> pool, int count) {
             Item item = itemId == null ? null : ForgeRegistries.ITEMS.getValue(itemId);
             if (item == null) {
                 FurkinMod.LOGGER.warn("Furkin harvest: skill {} has unknown item id '{}', skipped",
-                        skill.getId(), text);
+                        skillId, text);
                 continue;
             }
             pool.add(item);

@@ -1,0 +1,21 @@
+{
+  "id": "furkin:forager",
+  "name": "furkin.skill.forager",
+  "description": "furkin.skill.forager.desc",
+  "tier": 2,
+  "requires": ["furkin:travel_pouch"],
+  "maxLevel": 1,
+  "cost": 1,
+  "species": [],
+  "effects": [
+    {
+      "type": "furkin:passive",
+      "params": {
+        "trigger": "tick",
+        "forager": {
+          "radius": 8
+        }
+      }
+    }
+  ]
+}
