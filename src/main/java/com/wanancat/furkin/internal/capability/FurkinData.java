@@ -44,7 +44,7 @@ public final class FurkinData {
     /** 上次进食时间戳（毫秒），用于递减收益的「停喂恢复」。 */
     private long lastFeedMillis;
 
-    /** 技能冷却（技能 id → 冷却结束的 world game time）。运行时状态，不持久化。 */
+    /** 技能冷却（技能 id → 冷却结束的 world game time）。**入档持久化**，跨会话保留。 */
     private final Map<ResourceLocation, Long> cooldowns = new HashMap<>();
 
     public FurkinData() {
@@ -139,7 +139,7 @@ public final class FurkinData {
         this.lastFeedMillis = lastFeedMillis;
     }
 
-    /** 技能冷却表（技能 id → 冷却结束的 world game time）。运行时状态，不持久化。 */
+    /** 技能冷却表（技能 id → 冷却结束的 world game time）。**入档持久化**，跨会话保留。 */
     public Map<ResourceLocation, Long> getCooldowns() {
         return cooldowns;
     }
@@ -171,6 +171,14 @@ public final class FurkinData {
             skills.putInt(e.getKey().toString(), e.getValue());
         }
         tag.put("skill_levels", skills);
+
+        // 技能冷却入档：存「冷却结束的绝对 game time」。
+        // gameTime 在同一存档内跨会话连续递增，且离线期间不流逝，故直接存绝对值语义正确。
+        CompoundTag cooldownsTag = new CompoundTag();
+        for (Map.Entry<ResourceLocation, Long> e : cooldowns.entrySet()) {
+            cooldownsTag.putLong(e.getKey().toString(), e.getValue());
+        }
+        tag.put("cooldowns", cooldownsTag);
         return tag;
     }
 
@@ -192,6 +200,13 @@ public final class FurkinData {
         CompoundTag skills = tag.getCompound("skill_levels");
         for (String key : skills.getAllKeys()) {
             this.skillLevels.put(new ResourceLocation(key), skills.getInt(key));
+        }
+
+        // 技能冷却：旧档无此键时保持空表（等价于「无冷却」）。
+        this.cooldowns.clear();
+        CompoundTag cooldownsTag = tag.getCompound("cooldowns");
+        for (String key : cooldownsTag.getAllKeys()) {
+            this.cooldowns.put(new ResourceLocation(key), cooldownsTag.getLong(key));
         }
     }
 
