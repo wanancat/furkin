@@ -12,6 +12,7 @@ import com.wanancat.furkin.internal.growth.CombatParticipationTracker;
 import com.wanancat.furkin.internal.growth.FurkinFeeding;
 import com.wanancat.furkin.internal.growth.FurkinGrowth;
 import com.wanancat.furkin.internal.item.FurkinContractItem;
+import com.wanancat.furkin.internal.inventory.PouchDrop;
 import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.network.SyncFurkinDataPacket;
 import com.wanancat.furkin.internal.record.FurkinArchiveData;
@@ -291,6 +292,11 @@ public final class CommonEvents {
         if (entry == null) {
             return;
         }
+
+        // D6：死亡即掉落 —— 与收回同口径，必须先倒空行囊再存快照。
+        // 快照走 saveWithoutId，会带上 ForgeCaps（行囊 NBT 在其中）；顺序颠倒的话，
+        // M4 复活按同一身份 UUID 重建实体、load 快照时会把行囊原样回灌。
+        PouchDrop.dropAll(target, data.getPouch());
 
         // 死亡快照：与收回同口径，保证等级 / 经验 / 技能不因死亡丢失。
         entry.setLevel(data.getLevel());

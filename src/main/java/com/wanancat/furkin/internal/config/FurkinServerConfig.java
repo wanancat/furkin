@@ -46,6 +46,15 @@ public class FurkinServerConfig {
             .comment("Diminishing returns: seconds without feeding to recover one step.", "Design intent: 30.")
             .defineInRange("diminishRecoverySeconds", 30, 1, Integer.MAX_VALUE);
 
+    // ===== 随身行囊（D5 / D7）=====
+
+    /** 随身行囊每级格数（D5：9 → 18 → 27）。0 = 行囊完全关闭；容器侧另有 256 格硬上限。 */
+    public static final ForgeConfigSpec.IntValue POUCH_SLOTS_PER_LEVEL = BUILDER
+            .comment("Travel pouch slots granted per travel_pouch level.",
+                    "Design intent: 9 (Lv1 = 9, Lv2 = 18, Lv3 = 27).",
+                    "0 disables the pouch entirely; the container also hard-caps at 256 slots.")
+            .defineInRange("pouchSlotsPerLevel", 9, 0, 64);
+
     // ===== 复活 =====
 
     /** 复活冷却时长（秒）。具体数值 M5 平衡时定，占位 600。 */

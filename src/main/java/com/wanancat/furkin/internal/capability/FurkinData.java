@@ -1,13 +1,16 @@
 package com.wanancat.furkin.internal.capability;
 
 import com.wanancat.furkin.internal.FurkinMod;
+import com.wanancat.furkin.internal.config.FurkinServerConfig;
 import com.wanancat.furkin.internal.contract.FurkinCombatMode;
 import com.wanancat.furkin.internal.contract.FurkinState;
 import com.wanancat.furkin.internal.inventory.FurkinInventory;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -52,8 +55,6 @@ public final class FurkinData {
     /** 随身行囊技能 id —— 行囊格数由它的当前等级决定。 */
     private static final ResourceLocation TRAVEL_POUCH =
             new ResourceLocation(FurkinMod.MODID, "travel_pouch");
-    /** 随身行囊每级格数（设计稿 D5：9 → 18 → 27）。批 2 第 2 步迁入 server config（D7）。 */
-    private static final int POUCH_SLOTS_PER_LEVEL = 9;
 
     /**
      * 随身行囊容器（只在场有效）。
@@ -166,18 +167,43 @@ public final class FurkinData {
     }
 
     /**
-     * 按 travel_pouch 当前等级刷新行囊容量（加点后 / 实体加载时调用）。
+     * 按 travel_pouch 当前等级刷新行囊容量，**只扩不缩**（加点后 / 实体加载时调用）。
      *
-     * <p><b>只扩不缩</b>：扩容不产生溢出，可直接做。缩容（洗点 / 降级）会把已有物品挤出容器，
-     * 其处置策略（掉落到地上）属批 2 第 2 步，故此处刻意不缩 —— 绝不在容器层留一条
-     * 「静默吞物品」的路径。</p>
+     * <p>扩容不产生溢出，可直接做。缩容会把已有物品挤出容器，而那些物品必须由
+     * <b>持有实体的服务端调用方</b>去掉落（本类不持有实体，拿不到落点）——
+     * 绝不在容器层留一条「静默吞物品」的路径。需要缩容的场合走
+     * {@link #resizePouchToLevel()}，它把挤出的物品交还给调用方。</p>
      */
     public void refreshPouchSize() {
-        int level = skillLevels.getOrDefault(TRAVEL_POUCH, 0);
-        int target = Math.max(0, level) * POUCH_SLOTS_PER_LEVEL;
+        int target = pouchSlotsForLevel();
         if (target > pouch.getContainerSize()) {
             pouch.resize(target);
         }
+    }
+
+    /**
+     * 把容量对齐到「travel_pouch 等级 × 每级格数」（**可扩可缩**），返回被挤出的物品。
+     *
+     * <p>与 {@link #refreshPouchSize()} 的分工：本方法允许缩容，所以只能由<b>能处置溢出物</b>的
+     * 服务端调用方使用（洗点后归零、召唤时按 config 重算），拿到返回值后交给
+     * {@code PouchDrop.dropStacks(...)} 倒在宠物脚下。读档路径（无实体在场）只能用只扩的那个。</p>
+     *
+     * @return 被挤出的物品；扩容或容量无变化时为空列表
+     */
+    public List<ItemStack> resizePouchToLevel() {
+        return pouch.resize(pouchSlotsForLevel());
+    }
+
+    /**
+     * 行囊容量 = travel_pouch 等级 × 每级格数（D5 / D7：每级格数进 server config）。
+     *
+     * <p>本类双端都会实例化，而客户端读 SERVER config 拿到的是<b>本地副本</b>
+     * （多人游戏下未必等于服务端的值）。这是可接受的近似：行囊内容的权威副本在服务端，
+     * 客户端算出的格数只用于本地推断，最终以服务端下发的 Menu 数据为准。</p>
+     */
+    private int pouchSlotsForLevel() {
+        int level = skillLevels.getOrDefault(TRAVEL_POUCH, 0);
+        return Math.max(0, level) * FurkinServerConfig.POUCH_SLOTS_PER_LEVEL.get();
     }
 
     /** 是否已契约（COMPANION 或 FALLEN 都算「已进入伴侣体系」）。 */

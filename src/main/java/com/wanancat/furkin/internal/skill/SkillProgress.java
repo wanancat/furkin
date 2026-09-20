@@ -5,6 +5,7 @@ import com.wanancat.furkin.api.companion.FurkinSpeciesRegistry;
 import com.wanancat.furkin.internal.FurkinMod;
 import com.wanancat.furkin.internal.capability.FurkinCapability;
 import com.wanancat.furkin.internal.capability.FurkinData;
+import com.wanancat.furkin.internal.inventory.PouchDrop;
 import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.network.SyncFurkinDataPacket;
 import com.wanancat.furkin.internal.record.FurkinArchiveData;
@@ -151,6 +152,9 @@ public final class SkillProgress {
                 }
                 data.setSkillPoints(data.getSkillPoints() + refund);
                 data.getSkillLevels().clear();
+                // 容量是 travel_pouch 等级的派生值：技能清空后归 0（缩容），被挤出的物品
+                // 倒在宠物脚下（D6「只在场才有包裹」）—— 容器层不提供静默吞物品的路径。
+                PouchDrop.dropStacks(target, data.resizePouchToLevel());
                 syncToArchive(target, data, archive, entry);
                 FurkinNetwork.channel().send(
                         PacketDistributor.TRACKING_ENTITY_AND_SELF.with(() -> target),

@@ -4,6 +4,7 @@ import com.wanancat.furkin.internal.FurkinMod;
 import com.wanancat.furkin.internal.capability.FurkinCapability;
 import com.wanancat.furkin.internal.capability.FurkinData;
 import com.wanancat.furkin.internal.config.FurkinServerConfig;
+import com.wanancat.furkin.internal.inventory.PouchDrop;
 import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.network.SyncFurkinDataPacket;
 import com.wanancat.furkin.internal.record.FurkinArchiveData;
@@ -88,6 +89,11 @@ public final class FurkinCompanionManager {
         if (entry.getSpecies() == null) {
             entry.setSpecies(target.getType());
         }
+        // D6：收回即掉落 —— 必须**先倒空行囊，再存快照**。
+        // 快照走 saveWithoutId，会带上 ForgeCaps（行囊 NBT 在其中）；顺序颠倒的话，
+        // 下面 summon 里的 living.load(snapshot) 会把行囊原样回灌，物品「诈尸」回来。
+        PouchDrop.dropAll(target, data.getPouch());
+
         // 实体外观快照：品种 / 毛色 / 坐定 / 跟随等，收回时整包存下。
         entry.setEntitySnapshot(target.saveWithoutId(new CompoundTag()));
         // 装备快照：原版实体装备槽 → 录（M3 前为空占位，字段保留）。
@@ -195,10 +201,6 @@ public final class FurkinCompanionManager {
         // 重新 apply，否则收回再召唤后属性加成丢失。
         SkillEffectApplier.applyAll(living, SkillRegistry.tree(), data.getSkillLevels());
 
-        // 行囊容量是「travel_pouch 等级的派生值」，必须与技能等级同步重算：
-        // 上面刚把技能等级从档案回灌，若此处不算，升级过的绒亲收回再召唤后行囊会变回 0 格。
-        data.refreshPouchSize();
-
         // 对 TamableAnimal 的额外动作：置 TAME（与契约同路径）。
         if (living instanceof TamableAnimal tamable) {
             tamable.setTame(true);
@@ -227,6 +229,13 @@ public final class FurkinCompanionManager {
 
         // 加入世界。
         serverLevel.addFreshEntity(living);
+
+        // 行囊容量是「travel_pouch 等级的派生值」，必须与刚回灌的技能等级同步重算：
+        // 不重算的话，升级过的绒亲收回再召唤后行囊会变回 0 格。
+        // 这里用「可缩」版本而非只扩的 refreshPouchSize：若每级格数被 config 调小，
+        // 或旧档快照带回了超格物品，多出来的部分在此掉落。放在加入世界之后，
+        // 是为了让落点取到实体的真实位置（前面 moveTo 尚未生效于世界坐标）。
+        PouchDrop.dropStacks(living, data.resizePouchToLevel());
 
         // 置 summoned=true。
         entry.setSummoned(true);
