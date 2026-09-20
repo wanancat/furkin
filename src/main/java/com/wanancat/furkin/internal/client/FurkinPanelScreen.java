@@ -7,7 +7,9 @@ import com.wanancat.furkin.internal.network.ResetSkillsPacket;
 import com.wanancat.furkin.internal.network.UnlockSkillPacket;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.AbstractScrollWidget;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.network.chat.Component;
@@ -37,6 +39,12 @@ import java.util.UUID;
  * <p><b>技能数据不走 Menu</b>：技能列表是变长结构，{@code ContainerData} 是 {@code int[]}
  * 装不下，故仍走 {@link OpenFurkinScreenPacket}（S→C）。因为开屏包与菜单包谁先到不保证，
  * 本类用 {@link #pendingSkillData} 做「先到先存、{@code init} 时套用」的兜底。</p>
+ *
+ * <p><b>技能列表的滚动</b>：用官方 {@link AbstractScrollWidget}（不自己造滚动条）。
+ * 它已经把三件事做完了 —— {@code enableScissor} 剪裁、{@code pose.translate(0, -scrollAmount)}
+ * 平移内容、以及官方的滚动条绘制（含拖动与滚轮）。我们只需要给出内容高度
+ * （{@link SkillListWidget#getInnerHeight()}）与滚轮步长（{@link SkillListWidget#scrollRate()}），
+ * 并在 {@code renderContents} 里按绝对坐标画行 —— 平移已由框架加在 pose 上。</p>
  *
  * <p><b>端位隔离</b>：本类 {@link OnlyIn}{@code (Dist.CLIENT)}。</p>
  */
@@ -80,6 +88,26 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
     /** 技能名与等级文本之间的固定间距 —— 保证等级列左对齐成一条竖线。 */
     private static final int SKILL_LEVEL_COLUMN = 74;
 
+    /**
+     * 技能列表为滚动条预留的宽度。
+     *
+     * <p>官方 {@code AbstractScrollWidget} 把滚动条画在<b>控件右缘之外</b>
+     * （{@code getX() + width} 起、固定 8px 宽，见其 {@code renderScrollBar} 字节码），
+     * 故列表要主动右缩 8px 把这 8px 让出来，否则滚动条会压在面板边框上。</p>
+     */
+    private static final int SCROLLBAR_WIDTH = 8;
+
+    /**
+     * 行高区间：条目少时宽松（撑满可用区），条目多时收紧到 {@value #ROW_HEIGHT_MIN} 为止。
+     *
+     * <p><b>为什么下限是 20 而不是更小</b>：下限若压到十几像素，「铺满可用区」就永远成立 ——
+     * 内容总高恰好等于控件高度，官方 {@code scrollbarVisible()}（{@code innerHeight > height}）
+     * 永不成立，滚动条一辈子不出现。宁可保持一行读得舒服的 20px、超出部分交给滚动，
+     * 也不要为了「硬塞」把行压扁（8px 字体在 14px 行里没有行距）。</p>
+     */
+    private static final int ROW_HEIGHT_MIN = 20;
+    private static final int ROW_HEIGHT_MAX = 26;
+
     private static final int COLOR_LABEL = 0x404040;
     private static final int COLOR_HINT = 0x707070;
     private static final int COLOR_MAXED = 0x2E7D32;
@@ -97,6 +125,9 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
     /** 页签按钮，下标 = 页签编号；本菜单不提供的页为 {@code null}（不建控件、不留空位）。 */
     private final Button[] tabButtons = new Button[3];
     private Button resetButton;
+
+    /** 技能列表的滚动容器（官方组件，见类注释）。非技能页时 {@code visible = false}。 */
+    private SkillListWidget skillList;
 
     /**
      * 技能快照缓存。
@@ -149,6 +180,10 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
         this.companionName = packet.getName();
         this.skillPoints = packet.getSkillPoints();
         this.skills = packet.getSkills();
+        // 列表长度若变了，原滚动量可能超出新范围（框架只在 set 时 clamp），故重设一次。
+        if (this.skillList != null) {
+            this.skillList.reclampScroll();
+        }
     }
 
     // ===== 生命周期 =====
@@ -171,6 +206,11 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
 
         // 开屏落在哪一页：沿用上次停留的页（菜单重开后不该被弹回默认页）。
         this.menu.setActiveTab(resolveInitialTab());
+
+        // 列表先加：控件按加入顺序接收点击，列表要让出优先级给页签按钮之外的区域也无妨，
+        // 但先加能保证它在内容区「吃掉」点击，不会被后续控件抢先。
+        this.skillList = this.addRenderableWidget(new SkillListWidget(
+                listLeft(), listTop(), listWidth(), listBottom() - listTop()));
 
         // 页签按固定顺序左起排列，不提供的页跳过 —— 不留空位、不出现点不动的空页。
         Arrays.fill(this.tabButtons, null);
@@ -241,6 +281,8 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
         }
         this.resetButton.visible = active == TAB_SKILLS;
         this.resetButton.active = active == TAB_SKILLS;
+        // 非技能页不显示列表容器：它同时负责「吃掉内容区点击」，关掉才轮得到槽位。
+        this.skillList.visible = active == TAB_SKILLS;
     }
 
     // ===== 渲染 =====
@@ -280,7 +322,8 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
         if (active == TAB_EQUIP) {
             renderEquipPage(gui);
         } else {
-            renderSkillPage(gui, mouseX, mouseY);
+            // 只画抬头 / 空态提示；技能行由 SkillListWidget 在控件层绘制（见类注释）。
+            renderSkillHeader(gui);
         }
     }
 
@@ -323,7 +366,8 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
                 this.topPos + this.imageHeight / 2, COLOR_HINT);
     }
 
-    private void renderSkillPage(GuiGraphics gui, int mouseX, int mouseY) {
+    /** 技能页的抬头与空态提示（技能行本身由 {@link SkillListWidget} 画）。 */
+    private void renderSkillHeader(GuiGraphics gui) {
         // 头部第二行（标题条已占第一行）：宠物名 + 技能点。
         Component header = Component.literal(this.companionName == null ? "" : this.companionName + "  ")
                 .append(Component.translatable("furkin.screen.furkin.skill_points"))
@@ -334,27 +378,27 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
             gui.drawCenteredString(this.font, Component.translatable("furkin.screen.furkin.empty"),
                     this.leftPos + this.imageWidth / 2,
                     (listTop() + listBottom()) / 2, COLOR_HINT);
-            return;
-        }
-
-        int rowHeight = rowHeight();
-        for (int i = 0; i < this.skills.size(); i++) {
-            renderSkillRow(gui, i, rowHeight, mouseX, mouseY);
         }
     }
 
-    /** 画一行技能：名字 + 等级进度 + 行内「+1」。 */
-    private void renderSkillRow(GuiGraphics gui, int index, int rowHeight, int mouseX, int mouseY) {
+    /**
+     * 画一行技能：名字 + 等级进度 + 行内「+1」。
+     *
+     * <p>在 {@link SkillListWidget#renderContents} 里调用 —— 框架已经把 pose 平移了
+     * {@code -scrollAmount}，故此处一律用<b>未滚动的绝对坐标</b>，滚动由框架负责。</p>
+     */
+    private void renderSkillRow(GuiGraphics gui, int index, boolean hoveredRow, boolean hoveredButton) {
         OpenFurkinScreenPacket.SkillView skill = this.skills.get(index);
+        int rowHeight = rowHeight();
         int y = rowY(index);
-        int left = this.leftPos + TAB_MARGIN;
-        int right = this.leftPos + this.imageWidth - TAB_MARGIN;
+        int left = listLeft();
+        int right = listLeft() + listWidth();
 
         boolean maxed = skill.isMaxed();
         boolean affordable = this.skillPoints >= skill.getCost();
         boolean enabled = !maxed && affordable;
 
-        if (mouseX >= left && mouseX < right && mouseY >= y && mouseY < y + rowHeight) {
+        if (hoveredRow) {
             gui.fill(left, y, right, y + rowHeight, 0x22FFFFFF);
         }
 
@@ -369,8 +413,7 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
 
         int bx = right - SKILL_BUTTON_WIDTH;
         int by = y + (rowHeight - SKILL_BUTTON_HEIGHT) / 2;
-        boolean onButton = hoveredAt(mouseX, mouseY, bx, by);
-        int bg = enabled ? (onButton ? COLOR_BUTTON_HOVER : COLOR_BUTTON) : COLOR_BUTTON_OFF;
+        int bg = enabled ? (hoveredButton ? COLOR_BUTTON_HOVER : COLOR_BUTTON) : COLOR_BUTTON_OFF;
         gui.fill(bx, by, bx + SKILL_BUTTON_WIDTH, by + SKILL_BUTTON_HEIGHT, bg);
         gui.renderOutline(bx, by, SKILL_BUTTON_WIDTH, SKILL_BUTTON_HEIGHT, COLOR_BUTTON_BORDER);
         gui.drawCenteredString(this.font, Component.literal("+1"),
@@ -391,6 +434,24 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
         return super.mouseClicked(mouseX, mouseY, button);
     }
 
+    /**
+     * 拖动路由 —— <b>必须显式转发给列表控件</b>。
+     *
+     * <p>硬事实（javap 字节码核实）：{@code AbstractContainerScreen.mouseDragged} 全程
+     * <b>不调用 super</b>（全类仅此一处 mouseDragged，无任何委派），故控件永远收不到拖动事件 ——
+     * 官方的 {@code AbstractScrollWidget} 正因为依赖 {@code mouseDragged}（要求
+     * {@code isFocused() && scrolling}），在容器屏里默认拖不动。点击与松开是委派的
+     * （{@code Screen.mouseClicked} / {@code Screen.mouseReleased}），只有拖动这条断了。</p>
+     */
+    @Override
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (this.skillList != null && this.skillList.visible
+                && this.skillList.mouseDragged(mouseX, mouseY, button, dragX, dragY)) {
+            return true;
+        }
+        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+    }
+
     /** 点「+1」：上行加点请求，服务端校验（前置 / 等级门限 / 点数）。 */
     private void requestUnlock(OpenFurkinScreenPacket.SkillView skill) {
         FurkinNetwork.channel().sendToServer(
@@ -403,7 +464,7 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
         for (OpenFurkinScreenPacket.SkillView s : this.skills) {
             refund += s.getCurrentLevel();
         }
-        final int finalRefund = refund;
+        final int refundPoints = refund;
         Minecraft.getInstance().setScreen(new ConfirmScreen(
                 (it.unimi.dsi.fastutil.booleans.BooleanConsumer) confirmed -> {
                     if (confirmed) {
@@ -412,7 +473,7 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
                     Minecraft.getInstance().setScreen(this);
                 },
                 Component.translatable("furkin.screen.furkin.reset"),
-                Component.translatable("furkin.screen.furkin.reset_confirm", finalRefund),
+                Component.translatable("furkin.screen.furkin.reset_confirm", refundPoints),
                 Component.translatable("furkin.screen.furkin.reset_confirm_yes"),
                 Component.translatable("furkin.screen.furkin.reset_confirm_cancel")));
     }
@@ -420,6 +481,78 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
     @Override
     public boolean isPauseScreen() {
         return false;
+    }
+
+    // ===== 技能列表的滚动容器 =====
+
+    /**
+     * 技能列表本体 —— 官方 {@link AbstractScrollWidget} 的子类。
+     *
+     * <p>框架负责：剪裁（{@code enableScissor}）、内容平移（{@code pose.translate(0, -scrollAmount)}）、
+     * 滚动条绘制与拖动、滚轮。本类只回答「内容多高」「一格滚多少」「怎么画内容」。</p>
+     *
+     * <p>不画官方那圈 {@code renderBorder} 边框（覆盖 {@code renderBackground} 为空）：列表区
+     * 的底板由 {@link #renderFlatPanel} 提供，加边框会与面板样式打架。</p>
+     */
+    private final class SkillListWidget extends AbstractScrollWidget {
+
+        SkillListWidget(int x, int y, int width, int height) {
+            super(x, y, width, height, Component.empty());
+        }
+
+        /** 内容总高 = 行数 × 行高；超过控件高度即出现滚动条（框架的 {@code scrollbarVisible}）。 */
+        @Override
+        protected int getInnerHeight() {
+            return FurkinPanelScreen.this.skills.size() * rowHeight();
+        }
+
+        /** 滚轮一格 = 一行。 */
+        @Override
+        protected double scrollRate() {
+            return rowHeight();
+        }
+
+        /** 列表区不加官方边框（底板已由 renderBg 画好）。 */
+        @Override
+        protected void renderBackground(GuiGraphics gui) {
+        }
+
+        /**
+         * 人读支持。
+         *
+         * <p>{@code updateWidgetNarration} 在 {@code AbstractWidget} 里是抽象方法，而
+         * {@code AbstractScrollWidget} <b>并没有</b>实现它（javap 确认：它的方法表里没有这一项），
+         * 故任何子类都必须自己补上，否则编译不过。这里退回按钮的默认念白。</p>
+         */
+        @Override
+        protected void updateWidgetNarration(NarrationElementOutput narration) {
+            this.defaultButtonNarrationText(narration);
+        }
+
+        @Override
+        protected void renderContents(GuiGraphics gui, int mouseX, int mouseY, float partialTick) {
+            // 渲染用的是「未滚动的绝对坐标」（框架已把 pose 平移 -scrollAmount），
+            // 而鼠标坐标是屏幕坐标 —— 两者相差一个滚动量，命中一律走 rowScreenY。
+            int hoveredRow = rowIndexAtScreen(mouseY);
+            for (int i = 0; i < FurkinPanelScreen.this.skills.size(); i++) {
+                renderSkillRow(gui, i, hoveredRow == i, buttonHit(mouseX, mouseY, i));
+            }
+        }
+
+        /** 滚动量只在 {@code setScrollAmount} 里被 clamp；内容变矮时要把现值重设一次才收敛。 */
+        void reclampScroll() {
+            setScrollAmount(scrollAmount());
+        }
+
+        /**
+         * 当前滚动量。
+         *
+         * <p>必须由子类开口：{@code scrollAmount()} 是 {@code protected}，而
+         * {@code AbstractScrollWidget} 与本屏不在同一个包，外层类无法直接调用。</p>
+         */
+        double scroll() {
+            return scrollAmount();
+        }
     }
 
     // ===== 布局计算（渲染与命中必须用同一套，故抽出来共用） =====
@@ -433,48 +566,67 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
         return this.topPos + this.imageHeight - 6;
     }
 
-    /** 行高自适应：条目少时宽松，条目多时收紧（下限 14 保证 8px 字体仍有行距）。 */
+    /** 列表左缘（内容与命中同源）。 */
+    private int listLeft() {
+        return this.leftPos + TAB_MARGIN;
+    }
+
+    /** 列表宽度：面板内宽减去两侧留白，再让出右侧 8px 给官方滚动条。 */
+    private int listWidth() {
+        return this.imageWidth - TAB_MARGIN * 2 - SCROLLBAR_WIDTH;
+    }
+
+    /**
+     * 行高：条目少时撑满可用区（上限 {@value #ROW_HEIGHT_MAX}），多了就收到
+     * {@value #ROW_HEIGHT_MIN} 为止，再放不下由 {@link SkillListWidget} 滚动。
+     */
     private int rowHeight() {
         int count = Math.max(1, this.skills.size());
-        return Math.max(14, Math.min(26, (listBottom() - listTop()) / count));
+        return Math.max(ROW_HEIGHT_MIN, Math.min(ROW_HEIGHT_MAX, (listBottom() - listTop()) / count));
     }
 
     private int rowY(int index) {
         return listTop() + index * rowHeight();
     }
 
+    /** 屏幕 Y → 行下标；已计入滚动量，且越界（在列表区外）返回 -1。 */
+    private int rowIndexAtScreen(double mouseY) {
+        if (mouseY < listTop() || mouseY >= listBottom() || this.skills.isEmpty()) {
+            return -1;
+        }
+        int index = (int) Math.floor((mouseY - rowScreenY(0)) / (double) rowHeight());
+        return index >= 0 && index < this.skills.size() ? index : -1;
+    }
+
+    /** 某一行在屏幕上的纵坐标 = 未滚动坐标 − 滚动量。 */
+    private int rowScreenY(int index) {
+        int scroll = this.skillList == null ? 0 : (int) this.skillList.scroll();
+        return rowY(index) - scroll;
+    }
+
+    /** 该行的「+1」按钮是否被鼠标压住（纯几何，不含可点性判断）。 */
+    private boolean buttonHit(double mouseX, double mouseY, int index) {
+        int bx = listLeft() + listWidth() - SKILL_BUTTON_WIDTH;
+        int by = rowScreenY(index) + (rowHeight() - SKILL_BUTTON_HEIGHT) / 2;
+        return mouseX >= bx && mouseX < bx + SKILL_BUTTON_WIDTH
+                && mouseY >= by && mouseY < by + SKILL_BUTTON_HEIGHT;
+    }
+
     /** 命中哪一行的「+1」按钮（且该行确实可加点）；未命中返回 -1。 */
     private int skillButtonIndexAt(double mouseX, double mouseY) {
-        int rowHeight = rowHeight();
-        int bx = this.leftPos + this.imageWidth - TAB_MARGIN - SKILL_BUTTON_WIDTH;
-        for (int i = 0; i < this.skills.size(); i++) {
-            int by = rowY(i) + (rowHeight - SKILL_BUTTON_HEIGHT) / 2;
-            if (mouseX >= bx && mouseX < bx + SKILL_BUTTON_WIDTH
-                    && mouseY >= by && mouseY < by + SKILL_BUTTON_HEIGHT) {
-                OpenFurkinScreenPacket.SkillView skill = this.skills.get(i);
-                return skill.isMaxed() || this.skillPoints < skill.getCost() ? -1 : i;
-            }
+        int index = rowIndexAtScreen(mouseY);
+        if (index < 0 || !buttonHit(mouseX, mouseY, index)) {
+            return -1;
         }
-        return -1;
+        OpenFurkinScreenPacket.SkillView skill = this.skills.get(index);
+        return skill.isMaxed() || this.skillPoints < skill.getCost() ? -1 : index;
     }
 
     /** 命中哪一整行（用于悬停显示描述）；未命中返回 -1。 */
     private int skillRowIndexAt(double mouseX, double mouseY) {
-        int left = this.leftPos + TAB_MARGIN;
-        int right = this.leftPos + this.imageWidth - TAB_MARGIN;
-        if (mouseX < left || mouseX >= right) {
+        if (mouseX < listLeft() || mouseX >= listLeft() + listWidth()) {
             return -1;
         }
-        int rowHeight = rowHeight();
-        int index = (int) ((mouseY - listTop()) / rowHeight);
-        if (mouseY < listTop() || index < 0 || index >= this.skills.size()) {
-            return -1;
-        }
-        return index;
-    }
-
-    private static boolean hoveredAt(int mouseX, int mouseY, int x, int y) {
-        return mouseX >= x && mouseX < x + SKILL_BUTTON_WIDTH
-                && mouseY >= y && mouseY < y + SKILL_BUTTON_HEIGHT;
+        return rowIndexAtScreen(mouseY);
     }
 }
