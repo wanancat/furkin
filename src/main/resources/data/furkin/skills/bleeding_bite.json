@@ -1,0 +1,19 @@
+{
+  "id": "furkin:bleeding_bite",
+  "name": "furkin.skill.bleeding_bite",
+  "description": "furkin.skill.bleeding_bite.desc",
+  "tier": 2,
+  "requires": ["furkin:sharp_fang"],
+  "levelGate": "furkin:sharp_fang",
+  "maxLevel": 3,
+  "cost": 1,
+  "species": ["furkin:dog"],
+  "effects": [
+    {
+      "type": "furkin:passive",
+      "params": {
+        "trigger": "attack"
+      }
+    }
+  ]
+}

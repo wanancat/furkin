@@ -88,13 +88,14 @@ public final class SkillProgress {
             return Result.SPECIES_MISMATCH;
         }
 
-        if (!tree.prerequisitesMet(skillId, data.getSkillLevels())) {
-            return Result.PREREQUISITES;
-        }
-
         int current = data.getSkillLevels().getOrDefault(skillId, 0);
         if (!skill.isInfinite() && current >= skill.getMaxLevel()) {
             return Result.MAXED;
+        }
+
+        // 前置校验（含等级门限）：升到 current+1 级需满足。
+        if (!tree.prerequisitesMet(skillId, data.getSkillLevels(), current + 1)) {
+            return Result.PREREQUISITES;
         }
 
         if (data.getSkillPoints() < skill.getCost()) {

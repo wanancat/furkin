@@ -6,13 +6,13 @@
   "requires": [],
   "maxLevel": 5,
   "cost": 1,
-  "species": ["furkin:cat"],
+  "species": [],
   "effects": [
     {
       "type": "furkin:attribute",
       "params": {
         "attribute": "minecraft:generic.max_health",
-        "amount": 1.0,
+        "amount": 2.0,
         "operation": "addition"
       }
     }

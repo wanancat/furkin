@@ -13,6 +13,7 @@ import com.wanancat.furkin.internal.growth.FurkinGrowth;
 import com.wanancat.furkin.internal.item.FurkinContractItem;
 import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.network.SyncFurkinDataPacket;
+import com.wanancat.furkin.internal.skill.SkillPassiveDispatcher;
 import com.wanancat.furkin.internal.skill.SkillRegistry;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -165,6 +166,9 @@ public final class CommonEvents {
             return;
         }
         CombatParticipationTracker.recordDamage(target, attacker, event.getAmount());
+
+        // 攻击侧被动（流血撕咬等）。
+        SkillPassiveDispatcher.onCompanionAttack(attacker, target);
     }
 
     /**

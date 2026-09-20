@@ -7,6 +7,7 @@ import com.wanancat.furkin.internal.config.FurkinServerConfig;
 import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.registry.BuiltinSpecies;
 import com.wanancat.furkin.internal.registry.ModItems;
+import com.wanancat.furkin.internal.registry.ModMobEffects;
 import com.wanancat.furkin.internal.skill.SkillEffects;
 import net.minecraftforge.common.capabilities.RegisterCapabilitiesEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
@@ -39,6 +40,9 @@ public class FurkinMod {
 
         // 物品注册。
         ModItems.register(modBus);
+
+        // MobEffect 注册（流血等）。
+        ModMobEffects.register(modBus);
 
         // 能力注册。
         modBus.addListener(this::onRegisterCapabilities);

@@ -84,6 +84,11 @@ public final class SkillLoader {
             }
         }
 
+        ResourceLocation levelGate = null;
+        if (root.has("levelGate") && !root.get("levelGate").isJsonNull()) {
+            levelGate = new ResourceLocation(root.get("levelGate").getAsString());
+        }
+
         List<ResourceLocation> species = new ArrayList<>();
         if (root.has("species") && root.get("species").isJsonArray()) {
             for (JsonElement e : root.getAsJsonArray("species")) {
@@ -102,6 +107,6 @@ public final class SkillLoader {
             }
         }
 
-        return new Skill(id, nameKey, descriptionKey, tier, requires, maxLevel, cost, effects, species);
+        return new Skill(id, nameKey, descriptionKey, tier, requires, levelGate, maxLevel, cost, effects, species);
     }
 }

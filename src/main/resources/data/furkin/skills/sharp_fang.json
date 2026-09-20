@@ -1,12 +1,12 @@
 {
-  "id": "furkin:reinforced_attack",
-  "name": "furkin.skill.reinforced_attack",
-  "description": "furkin.skill.reinforced_attack.desc",
+  "id": "furkin:sharp_fang",
+  "name": "furkin.skill.sharp_fang",
+  "description": "furkin.skill.sharp_fang.desc",
   "tier": 2,
   "requires": [],
   "maxLevel": 5,
   "cost": 1,
-  "species": ["furkin:dog"],
+  "species": [],
   "effects": [
     {
       "type": "furkin:attribute",

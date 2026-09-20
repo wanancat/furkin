@@ -31,16 +31,37 @@ public final class SkillTree {
         return Collections.unmodifiableCollection(byId.values());
     }
 
-    /** 判断某技能的前置是否已满足（前置列表里每一项都已达到要求的等级）。 */
-    public boolean prerequisitesMet(ResourceLocation skillId, Map<ResourceLocation, Integer> skillLevels) {
+    /**
+     * 判断某技能升到目标等级的前置是否已满足。
+     *
+     * <p>规则：</p>
+     * <ul>
+     *   <li>{@code requires} 列表里每一项都至少投过 1 级（解锁前置）。</li>
+     *   <li>若声明了 {@code levelGate}，则该前置技能的当前等级必须 ≥ 目标等级
+     *       （等级门限：本技能可升到的最高等级 = 门限前置的当前等级）。</li>
+     * </ul>
+     *
+     * @param skillId    要升级的技能
+     * @param skillLevels 已投等级快照
+     * @param targetLevel 目标等级（升级后想达到的等级）
+     */
+    public boolean prerequisitesMet(ResourceLocation skillId, Map<ResourceLocation, Integer> skillLevels, int targetLevel) {
         Skill skill = byId.get(skillId);
         if (skill == null) {
             return false;
         }
         for (ResourceLocation req : skill.getRequires()) {
             Integer level = skillLevels.get(req);
-            // 前置技能至少投过 1 级即视为满足（暂不要求前置满级）。
+            // 前置技能至少投过 1 级即视为满足（解锁前置）。
             if (level == null || level < 1) {
+                return false;
+            }
+        }
+        // 等级门限：门限前置的当前等级必须 ≥ 目标等级。
+        ResourceLocation gate = skill.getLevelGate();
+        if (gate != null) {
+            Integer gateLevel = skillLevels.get(gate);
+            if (gateLevel == null || gateLevel < targetLevel) {
                 return false;
             }
         }
