@@ -69,6 +69,7 @@
   "furkin.screen.furkin.requires": "Requires",
   "furkin.screen.furkin.require_unlock": "Requires %s",
   "furkin.screen.furkin.require_level": "Requires %s at Lv.%s",
+  "furkin.screen.furkin.equip_bonus": "Equipment Bonus",
   "furkin.screen.record.title": "Furkin Record",
   "furkin.screen.record.summon": "Summon",
   "furkin.screen.record.dismiss": "Dismiss",

@@ -69,6 +69,7 @@
   "furkin.screen.furkin.requires": "前置",
   "furkin.screen.furkin.require_unlock": "需先学会 %s",
   "furkin.screen.furkin.require_level": "需 %s 达到 Lv.%s",
+  "furkin.screen.furkin.equip_bonus": "装备加成",
   "furkin.screen.record.title": "绒亲录",
   "furkin.screen.record.summon": "召唤",
   "furkin.screen.record.dismiss": "收回",

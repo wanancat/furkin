@@ -1,5 +1,7 @@
 package com.wanancat.furkin.internal.client;
 
+import com.wanancat.furkin.internal.config.FurkinClientConfig;
+import com.wanancat.furkin.internal.equipment.EquipBonus;
 import com.wanancat.furkin.internal.equipment.MobEquipmentContainer;
 import com.wanancat.furkin.internal.menu.FurkinPouchMenu;
 import com.wanancat.furkin.internal.network.FurkinNetwork;
@@ -18,6 +20,7 @@ import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.Slot;
@@ -94,6 +97,15 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
     private static final int SLOT_FRAME_U = 7;
     private static final int SLOT_FRAME_V = 17;
     private static final int SLOT_FRAME_SIZE = 18;
+
+    /**
+     * 装备页摘要行的排版常量。
+     *
+     * <p>{@code EQUIP_SUMMARY_GAP} = 摘要起点与装备槽右缘之间的间隙；
+     * {@code SUMMARY_ITEM_GAP} = 摘要里两项之间的间隙（按一个空格宽度取 4px）。</p>
+     */
+    private static final int EQUIP_SUMMARY_GAP = 2;
+    private static final int SUMMARY_ITEM_GAP = 4;
 
     /**
      * 「玩家背包段」在 {@link #PANEL_TEXTURE} 里的取材矩形 —— 两页共用同一份数。
@@ -392,6 +404,16 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
                         Optional.empty(), mouseX, mouseY);
             }
         }
+
+        // 装备页：摘要行只放得下两项，完整清单走悬停（挂在摘要行上，不是槽位上 ——
+        // 槽位本身已有原版物品 tooltip，两者叠在一起会互相遮）。
+        if (this.menu.getActiveTab() == TAB_EQUIP) {
+            List<EquipBonus.Entry> bonuses = equipBonuses();
+            if (!bonuses.isEmpty() && isOverEquipSummary(mouseX, mouseY)) {
+                gui.renderTooltip(this.font, equipBonusLines(bonuses),
+                        Optional.empty(), mouseX, mouseY);
+            }
+        }
     }
 
     /**
@@ -438,6 +460,7 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
         if (active == TAB_EQUIP) {
             renderEquipPanel(gui);
             renderEquipPage(gui);
+            renderEquipSummary(gui);
         } else {
             // 技能页整屏净板；只画抬头 / 空态提示，技能行由 SkillListWidget 在控件层绘制。
             renderFlatPanel(gui);
@@ -535,6 +558,91 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
                     this.leftPos + slot.x - 1, this.topPos + slot.y - 1,
                     SLOT_FRAME_U, SLOT_FRAME_V, SLOT_FRAME_SIZE, SLOT_FRAME_SIZE);
         }
+    }
+
+    /**
+     * 装备页摘要 —— 四个装备槽的属性合计，画在装备槽右侧那一行。
+     *
+     * <p><b>为什么只画前 {@link EquipBonus#SUMMARY_MAX} 项</b>：右侧只剩约 87px
+     * （见 {@link #equipSummaryLeft()}），按 MC 字体宽度两项约 72px、三项约 110px
+     * ⇒ 物理上限就是两项。放不下的项不截断、不加省略号，全部交给悬停明细 ——
+     * 摘要里出现半截的值，比不显示更容易被误读。</p>
+     *
+     * <p>颜色既写进 {@code Component} 样式、也作为 {@code drawString} 的参数传一遍：
+     * 同一个颜色给两个来源，换渲染路径（或样式被吞）时也不会掉色。</p>
+     */
+    private void renderEquipSummary(GuiGraphics gui) {
+        List<EquipBonus.Entry> bonuses = equipBonuses();
+        if (bonuses.isEmpty()) {
+            return;
+        }
+        int x = equipSummaryLeft();
+        int y = equipSummaryTop() + 4;
+        for (int i = 0; i < Math.min(EquipBonus.SUMMARY_MAX, bonuses.size()); i++) {
+            EquipBonus.Entry entry = bonuses.get(i);
+            MutableComponent part = EquipBonus.format(entry);
+            gui.drawString(this.font, part, x, y, EquipBonus.style(entry).getColor(), false);
+            x += this.font.width(part) + SUMMARY_ITEM_GAP;
+        }
+    }
+
+    /**
+     * 摘要行起点 —— 四个装备槽右缘再留一道间隙。
+     *
+     * <p>槽位横排自 {@code x=8} 起、步进 18（真相源在 {@code FurkinPouchMenu.registerSlots}），
+     * 故右缘 = {@code 8 + 4 × 18}。这块位置是装备页<b>唯一</b>动得了的空地：玩家背包槽要同时
+     * 属于行囊页与装备页、位置不能挪（设计稿新定②），而装备槽又钉在行囊区首行左侧四格。</p>
+     */
+    private int equipSummaryLeft() {
+        return this.leftPos + 8 + MobEquipmentContainer.SLOT_COUNT * 18 + EQUIP_SUMMARY_GAP;
+    }
+
+    /** 摘要行顶端 —— 与装备槽同一行（槽位 y=18）。 */
+    private int equipSummaryTop() {
+        return this.topPos + 18;
+    }
+
+    /**
+     * 鼠标是否落在摘要行上。
+     *
+     * <p>命中区取<b>整行余量</b>（一直到面板右边距）而不是实际文字宽度：文字宽度随数值变化，
+     * 拿它做命中区会让「差一像素」的悬停莫名其妙失效；而这块区域在装备页本就是空的，
+     * 划过去没有第二个人跟它抢。</p>
+     */
+    private boolean isOverEquipSummary(double mouseX, double mouseY) {
+        int top = equipSummaryTop();
+        return mouseX >= equipSummaryLeft()
+                && mouseX < this.leftPos + this.imageWidth - TAB_MARGIN
+                && mouseY >= top && mouseY < top + SLOT_FRAME_SIZE;
+    }
+
+    /**
+     * 算出装备合计 —— <b>配置开关的总闸门就在这里</b>。
+     *
+     * <p>{@code showEquipTooltip} 一关，摘要与悬停明细同时消失（两者是同一份数据的两种呈现，
+     * 半开半关只会让玩家说不清自己到底关掉了什么）。判据 7 只测「摘要行消失」，本条同样满足。</p>
+     */
+    private List<EquipBonus.Entry> equipBonuses() {
+        if (!FurkinClientConfig.SHOW_EQUIP_TOOLTIP.get()) {
+            return Collections.emptyList();
+        }
+        return EquipBonus.total(this.menu.getEquipment());
+    }
+
+    /**
+     * 悬停明细 —— 摘要放不下的项都在这里（逐属性一行，原版格式与配色）。
+     *
+     * <p>只在真有加成时调用：四槽全空、或装备不给任何属性时，一个只写着标题的空框
+     * 比不弹更让人困惑。</p>
+     */
+    private List<Component> equipBonusLines(List<EquipBonus.Entry> bonuses) {
+        List<Component> lines = new ArrayList<>();
+        lines.add(Component.translatable("furkin.screen.furkin.equip_bonus")
+                .withStyle(ChatFormatting.GRAY));
+        for (EquipBonus.Entry entry : bonuses) {
+            lines.add(EquipBonus.format(entry));
+        }
+        return lines;
     }
 
     /** 技能页的抬头与空态提示（技能行本身由 {@link SkillListWidget} 画）。 */

@@ -201,6 +201,18 @@ public class MobEquipmentContainer implements Container {
 
     // ===== 内部 =====
 
+    /**
+     * 索引 → 原版槽位。
+     *
+     * <p>公开出去是给属性计算用的（{@link EquipBonus} 得按槽位去问
+     * {@code ItemStack#getAttributeModifiers}）—— 顺序表的真相源只应有一份，
+     * 让调用方自己再维护一张「索引 → 槽位」的表，迟早会与这里错开。
+     * 调用方需自行保证下标合法（本类各读路径都已过 {@link #isValid}）。</p>
+     */
+    public static EquipmentSlot slotFor(int index) {
+        return SLOTS[index];
+    }
+
     private void write(int slot, ItemStack stack) {
         if (entity != null) {
             entity.setItemSlot(SLOTS[slot], stack);
