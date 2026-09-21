@@ -21,7 +21,7 @@ import java.util.UUID;
  * <p>只持有原版没有的数据（设计稿 §1 通用判别法）：等级 / 经验 / 技能点 / 技能等级 / 身份。
  * 装备、生命值等原版已有权威数据位的东西，一律不在此重复持有。</p>
  *
- * <p>字段（设计稿 §2.1）：</p>
+ * <p>字段（设计稿 §2.1；已随实现补全 —— 2026-09-21）：</p>
  * <pre>
  * companionId    UUID    宠物身份（绑定主人与宠物，跨实体唯一档案主键）
  * ownerUuid      UUID    主人
@@ -29,6 +29,10 @@ import java.util.UUID;
  * skillPoints    可用技能点
  * skillLevels    Map&lt;ResourceLocation, Integer&gt;   技能 → 已投等级
  * state          FurkinState                        状态机当前值
+ * combatMode     FurkinCombatMode                   战斗模式四档（跟随 / 被动 / 保护 / 主动）
+ * feedCount / lastFeedMillis                        进食防刷的递减收益计数与最近喂食时刻
+ * cooldowns      Map&lt;ResourceLocation, Long&gt;       技能冷却（技能 id → 冷却结束的 game time，入档持久化）
+ * pouch          FurkinInventory                    随身行囊容器（只在场有效，格数随 travel_pouch 等级派生）
  * </pre>
  */
 public final class FurkinData {
