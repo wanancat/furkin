@@ -14,7 +14,10 @@
     {
       "type": "furkin:passive",
       "params": {
-        "trigger": "hurt"
+        "trigger": "hurt",
+        "nine_lives": {
+          "cooldownTicks": 12000
+        }
       }
     }
   ]

@@ -99,25 +99,12 @@ public final class SkillPassiveDispatcher {
     private static final ResourceLocation DOG_SPECIES =
             new ResourceLocation(FurkinMod.MODID, "dog");
 
-    // ===== 数值（待数值定稿阶段统一复核）=====
-
-    /** 灵巧身法：每级闪避概率。 */
-    private static final float DODGE_CHANCE_PER_LEVEL = 0.08f;
-
-    /** 九命猫：冷却 tick = 10 分钟。 */
-    private static final int NINE_LIVES_COOLDOWN_TICKS = 10 * 60 * 20;
-
-    /** 守夜者：生效半径（格）。 */
-    private static final double NIGHT_WATCH_RADIUS = 16.0;
-    /** 守夜者：夜视时长（tick）—— 短时长 + 周期刷新，绒亲离开 / 天亮后自然失效。 */
-    private static final int NIGHT_VISION_DURATION_TICKS = 300;
-
-    /** 群猎战术：每级每层的攻击加成（Lv.1 / 2 / 3）。 */
-    private static final double[] PACK_BONUS_PER_STACK = {0.10, 0.15, 0.20};
-    /** 群猎战术：最大叠层数。 */
-    private static final int PACK_MAX_STACKS = 3;
-    /** 群猎战术：计数半径（格）。 */
-    private static final double PACK_RADIUS = 16.0;
+    // ===== 数值 =====
+    // 被动技能的数值已全部外露到数据包（各自技能 JSON 的 passive params 块），
+    // 故本类不再保留数值常量 —— 取块与解析在 SkillParams + 各 Spec 类里：
+    //   灵巧身法 → dodge{chancePerLevel}            九命猫 → nine_lives{cooldownTicks}
+    //   守夜者   → night_watch{radius,durationTicks} 群猎战术 → pack_tactics{bonusPerStack,maxStacks,radius}
+    // 解析结果带缓存，技能树重载（/reload）即失效，改数据不必重启。
 
     /** 群猎战术的动态属性 modifier 固定 UUID（每次刷新先摘后挂，幂等）。 */
     private static final UUID PACK_TACTICS_UUID =
@@ -168,7 +155,8 @@ public final class SkillPassiveDispatcher {
      * 入口处触发，取消后整个受击流程直接返回：不掉血、不出声、不闪红。</p>
      *
      * <ul>
-     *   <li><b>灵巧身法</b>：按 {@code +8% × 等级} 概率闪避，命中则整个取消该次攻击。
+     *   <li><b>灵巧身法</b>：按「每级闪避概率 × 等级」闪避（每级概率取自技能 JSON 的
+     *       {@code params.dodge.chancePerLevel}），命中则整个取消该次攻击。
      *       只对「有实体攻击者」的攻击生效（摔落 / 虚空 / 指令伤害不可闪避）。</li>
      * </ul>
      *
@@ -191,14 +179,21 @@ public final class SkillPassiveDispatcher {
         if (!(event.getSource().getEntity() instanceof LivingEntity)) {
             return;
         }
-        if (victim.getRandom().nextFloat() >= DODGE_CHANCE_PER_LEVEL * dodgeLevel) {
+        DodgeSpec spec = DodgeSpec.of(NIMBLE_GRACE).orElse(null);
+        if (spec == null) {
+            return;
+        }
+        // 截顶到 1.0：数据里每级概率写大时退化成「必定闪避」，而不是溢出成负概率。
+        float chance = (float) Math.min(1.0, spec.chancePerLevel() * dodgeLevel);
+        if (victim.getRandom().nextFloat() >= chance) {
             return;
         }
         event.setCanceled(true);
         // 验收可观测性：闪避是概率行为，且取消后不再有任何原版受击表现，
-        // 不打日志就完全无法分辨「闪了」和「没打中」。
-        FurkinMod.LOGGER.info("Furkin passive: nimble_grace dodge proc (level={}, avoided={})",
-                dodgeLevel, event.getAmount());
+        // 不打日志就完全无法分辨「闪了」和「没打中」。概率值一并印出 ——
+        // 改数据包后要能从日志看出「生效的确实是新值」。
+        FurkinMod.LOGGER.info("Furkin passive: nimble_grace dodge proc (level={}, chance={}, avoided={})",
+                dodgeLevel, chance, event.getAmount());
     }
 
     /**
@@ -213,7 +208,8 @@ public final class SkillPassiveDispatcher {
      *
      * <ul>
      *   <li><b>九命猫</b>：受到致命伤害（≥ 当前生命）时，<b>完全复刻原版不死图腾</b>
-     *       （见 {@link #applyTotemRevival}），随后进入 10 分钟冷却。</li>
+     *       （见 {@link #applyTotemRevival}），随后进入冷却（时长取自技能 JSON 的
+     *       {@code params.nine_lives.cooldownTicks}）。</li>
      * </ul>
      *
      * @param victim 受击的绒亲（方法内部自检）
@@ -238,24 +234,28 @@ public final class SkillPassiveDispatcher {
         if (event.getSource().is(DamageTypeTags.BYPASSES_INVULNERABILITY)) {
             return;
         }
+        NineLivesSpec spec = NineLivesSpec.of(NINE_LIVES).orElse(null);
+        if (spec == null) {
+            return;
+        }
         long now = victim.level().getGameTime();
         long readyAt = data.getCooldowns().getOrDefault(NINE_LIVES, 0L);
         if (now < readyAt) {
             // 冷却中挨致命伤 —— 这正是「看不出有没有生效」的现场，必须留痕。
             FurkinMod.LOGGER.info(
-                    "Furkin passive: nine_lives on cooldown ({}s left), fatal hit lands",
-                    (readyAt - now) / 20);
+                    "Furkin passive: nine_lives on cooldown ({}s left of {}s), fatal hit lands",
+                    (readyAt - now) / 20, spec.cooldownTicks() / 20);
             return;
         }
-        data.getCooldowns().put(NINE_LIVES, now + NINE_LIVES_COOLDOWN_TICKS);
+        data.getCooldowns().put(NINE_LIVES, now + spec.cooldownTicks());
         float incoming = event.getAmount();
         // 先挡下这次致命伤（伤害归零会让后续 actuallyHurt 直接 return，血量不再被改），
         // 再由 applyTotemRevival 把生命值设回 1 —— 合起来等价于原版
         // 「死亡判定前拦下 + setHealth(1.0F)」两步。
         event.setAmount(0.0f);
         applyTotemRevival(victim);
-        FurkinMod.LOGGER.info("Furkin passive: nine_lives proc (health={}, incoming={}, kept=1)",
-                victim.getHealth(), incoming);
+        FurkinMod.LOGGER.info("Furkin passive: nine_lives proc (health={}, incoming={}, kept=1, cooldown={}s)",
+                victim.getHealth(), incoming, spec.cooldownTicks() / 20);
     }
 
     /**
@@ -326,8 +326,11 @@ public final class SkillPassiveDispatcher {
     }
 
     /**
-     * 守夜者：夜晚 + 绒亲距主人 {@link #NIGHT_WATCH_RADIUS} 格内 → 使<b>主人</b>获得夜视。
+     * 守夜者：夜晚 + 绒亲距主人 radius 格内 → 使<b>主人</b>获得夜视。
      * 短时长持续刷新，绒亲离开 / 天亮后自然失效。
+     *
+     * <p>半径与夜视时长取自技能 JSON 的 {@code params.night_watch}
+     * （{@link NightWatchSpec}），不再写死在类常量里。</p>
      */
     private static void updateNightWatch(LivingEntity companion, FurkinData data,
                                          Map<ResourceLocation, Integer> levels) {
@@ -337,20 +340,27 @@ public final class SkillPassiveDispatcher {
         if (companion.level().isDay()) {
             return;
         }
+        NightWatchSpec spec = NightWatchSpec.of(NIGHT_WATCH).orElse(null);
+        if (spec == null) {
+            return;
+        }
         ServerPlayer owner = resolveOwner(companion, data);
         if (owner == null) {
             return;
         }
-        if (companion.distanceToSqr(owner) > NIGHT_WATCH_RADIUS * NIGHT_WATCH_RADIUS) {
+        if (companion.distanceToSqr(owner) > spec.radius() * spec.radius()) {
             return;
         }
         owner.addEffect(new MobEffectInstance(MobEffects.NIGHT_VISION,
-                NIGHT_VISION_DURATION_TICKS, 0, true, false));
+                spec.durationTicks(), 0, true, false));
     }
 
     /**
-     * 群猎战术：附近每只犬类队友 +1 层，最多叠 {@link #PACK_MAX_STACKS} 层，
-     * 按等级给予 {@code +10% / +15% / +20%} 攻击（MULTIPLY_BASE）。
+     * 群猎战术：附近每只犬类队友 +1 层，最多叠 {@code maxStacks} 层，
+     * 按等级给予每层攻击加成（MULTIPLY_BASE）。
+     *
+     * <p>加成阵列、层数上限、计数半径都取自技能 JSON 的 {@code params.pack_tactics}
+     * （{@link PackTacticsSpec}），不再写死在类常量里。</p>
      *
      * <p>用 transient modifier「先摘后挂」—— 队友走散后即时回落，不留残留；
      * transient 不入档，实体重载后由本 tick 逻辑自动重建。</p>
@@ -361,12 +371,14 @@ public final class SkillPassiveDispatcher {
             return;
         }
         int level = levels.getOrDefault(PACK_TACTICS, 0);
+        // 取不到规格（数据缺块 / 写错）时按「无加成」处理并摘掉旧 modifier，
+        // 与「技能未加点」同形 —— 失效原因由 Spec 类的 WARN 留痕。
+        PackTacticsSpec spec = level > 0 ? PackTacticsSpec.of(PACK_TACTICS).orElse(null) : null;
         int stacks = 0;
         double bonus = 0.0;
-        if (level > 0) {
-            stacks = Math.min(countPackMates(companion), PACK_MAX_STACKS);
-            double perStack = PACK_BONUS_PER_STACK[Math.min(level, PACK_BONUS_PER_STACK.length) - 1];
-            bonus = perStack * stacks;
+        if (spec != null) {
+            stacks = Math.min(countPackMates(companion, spec.radius()), spec.maxStacks());
+            bonus = spec.bonusForLevel(level) * stacks;
         }
         AttributeModifier previous = attack.getModifier(PACK_TACTICS_UUID);
         double previousBonus = previous == null ? 0.0 : previous.getAmount();
@@ -701,12 +713,16 @@ public final class SkillPassiveDispatcher {
         target.addEffect(new MobEffectInstance(ModMobEffects.BLEEDING.get(), durationTicks, amplifier));
     }
 
-    /** 统计半径内「犬类绒亲队友」数量（不含自己）。 */
-    private static int countPackMates(LivingEntity companion) {
+    /**
+     * 统计半径内「犬类绒亲队友」数量（不含自己）。
+     *
+     * @param radius 计数半径（格），由 {@link PackTacticsSpec#radius()} 传入
+     */
+    private static int countPackMates(LivingEntity companion, double radius) {
         int count = 0;
         for (LivingEntity ignored : companion.level().getEntitiesOfClass(
                 LivingEntity.class,
-                companion.getBoundingBox().inflate(PACK_RADIUS),
+                companion.getBoundingBox().inflate(radius),
                 e -> e != companion && isDogCompanion(e))) {
             count++;
         }

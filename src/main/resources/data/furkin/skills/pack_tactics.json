@@ -12,7 +12,12 @@
     {
       "type": "furkin:passive",
       "params": {
-        "trigger": "tick"
+        "trigger": "tick",
+        "pack_tactics": {
+          "bonusPerStack": [0.10, 0.15, 0.20],
+          "maxStacks": 3,
+          "radius": 16.0
+        }
       }
     }
   ]

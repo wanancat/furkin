@@ -200,11 +200,84 @@ Each effect entry is `{ "type": "...", "params": {...} }`, where `type` refers t
 | `amount`     | Per-level amount (actual value = amount × level)              | 0.0      |
 | `operation`  | `addition` / `multiply_base` / `multiply_total`               | addition |
 
+`passive` 类型的 `params` 多一个 `trigger`（触发位点）字段，并按技能各带一个配置块 ——
+块名说的是「这个技能做什么」，块里的字段就是它的全部数值：
+
+For `passive`, `params` carries an extra `trigger` field plus exactly one config block per skill.
+The block name says what the skill does; its fields are all of its values:
+
+**中文**
+
+| params 字段 | 含义                | 取值                                        |
+| --------- | ----------------- | ----------------------------------------- |
+| `trigger` | 触发位点              | `tick`（周期）/ `attack`（攻击时）/ `hurt`（受击时） |
+| 配置块       | 该技能的数值块，块名见下表     | 下列块名之一                                    |
+
+| 块名              | 所属技能                               | 字段（均为必填）                                                        |
+| --------------- | ---------------------------------- | --------------------------------------------------------------- |
+| `harvest`       | `fish_harvest` / `bone_harvest`    | `interval[]`（各等级间隔，tick）、`items[]`（物品池）、`count`（每次份数）            |
+| `forager`       | `forager`                          | `radius`（拾取半径，格）                                                |
+| `feeder`        | `self_feeder`                      | `threshold`（开吃血量比例）、`cooldown`（两次进食间隔，tick）                     |
+| `dodge`         | `nimble_grace`                     | `chancePerLevel`（每级闪避概率）                                        |
+| `nine_lives`    | `nine_lives`                       | `cooldownTicks`（免死冷却，tick）                                       |
+| `night_watch`   | `night_watch`                      | `radius`（生效半径，格）、`durationTicks`（每次刷新的夜视时长，tick）                 |
+| `pack_tactics`  | `pack_tactics`                     | `bonusPerStack[]`（各等级每层加成）、`maxStacks`（叠层上限）、`radius`（计数半径，格） |
+
+时间单位一律用 **tick**（20 tick = 1 秒），与产出 / 进食 / 免死保持一致。
+字段缺失或越界时**该技能整体禁用**，并在服务端日志打 WARN —— 不会静默截断、也不会退回默认值。
+
+**English**
+
+| params Field | Meaning                                      | Value                                                                        |
+| ------------ | -------------------------------------------- | ---------------------------------------------------------------------------- |
+| `trigger`    | Trigger site                                 | `tick` (periodic) / `attack` (on attacking) / `hurt` (on damaged)              |
+| config block | The skill's value block; see the table below | one of the block names below                                                 |
+
+| Block           | Skill                            | Fields (all required)                                                                             |
+| --------------- | -------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `harvest`       | `fish_harvest` / `bone_harvest`  | `interval[]` (per-level interval, tick), `items[]` (item pool), `count` (per yield)                |
+| `forager`       | `forager`                        | `radius` (pickup radius, blocks)                                                                  |
+| `feeder`        | `self_feeder`                    | `threshold` (health ratio to start eating), `cooldown` (between two meals, tick)                   |
+| `dodge`         | `nimble_grace`                   | `chancePerLevel` (dodge chance per level)                                                          |
+| `nine_lives`    | `nine_lives`                     | `cooldownTicks` (death-defy cooldown, tick)                                                        |
+| `night_watch`   | `night_watch`                    | `radius` (effect radius, blocks), `durationTicks` (night-vision duration per refresh, tick)        |
+| `pack_tactics`  | `pack_tactics`                   | `bonusPerStack[]` (per-level, per-stack bonus), `maxStacks` (stack cap), `radius` (counting radius, blocks) |
+
+All durations are in **ticks** (20 ticks = 1 second), consistent with harvest / feeder / nine-lives.
+A missing or out-of-range field disables the whole skill and logs a WARN on the server —
+values are never silently clamped or defaulted.
+
 ---
 
 ## 四、备注 / Notes
 
-- 技能点、背包格数、各数值均可通过配置调整。
+**可配置项分两层 / Configurable values come in two layers**
+
+- **全局速率**（`furkin-server.toml`，SERVER 类型、进服同步）：活跃伴侣上限、
+  战斗 / 进食经验系数、递减收益步长与恢复时间、行囊每级格数、复活与重获魂石冷却。
+  客户端另有两项纯界面偏好（`furkin-client.toml`）。
+- **单技能数值**（数据包 `data/furkin/skills/*.json` 的 `effects[].params`，`/reload` 即时生效）：
+  产出间隔与物品池、拾荒半径、进食阈值与冷却、闪避概率、免死冷却、夜视半径与时长、
+  群猎加成 / 层数 / 半径、属性加成量，以及 `maxLevel` 与技能点消耗。
+- **硬编码不开放**（属「刻度」而非「速率」）：经验曲线（照搬玩家公式）、每级 1 技能点、
+  引擎节拍（20 tick）、拾荒与夜视的半径上限（32 格，防呆校验）、行囊内部硬上限。
+- **尚未外露**：流血撕咬的每秒伤害与持续时长。原因有二 —— 数值本身待定稿；
+  且 `MobEffect` 只拿得到 `amplifier` / `duration`、拿不到 `params`，需另设通道。
+
+**English**
+
+- **Global rates** (`furkin-server.toml`, SERVER type, synced on join): active companion limit,
+  combat / feeding XP multipliers, diminishing-returns step and recovery, pouch slots per level,
+  revive and soulstone-reacquire cooldowns. Two client-side UI preferences live in `furkin-client.toml`.
+- **Per-skill values** (datapack `data/furkin/skills/*.json`, `effects[].params`, applied on `/reload`):
+  harvest interval and item pool, forager radius, feeder threshold and cooldown, dodge chance,
+  nine-lives cooldown, night-watch radius and duration, pack-tactics bonus / stacks / radius,
+  attribute amounts, plus `maxLevel` and skill-point cost.
+- **Hardcoded by design** (these are "scales", not "rates"): XP curve (copies the player formula),
+  1 skill point per level, engine tick (20), radius caps for forager / night-watch (32 blocks,
+  a sanity check), internal pouch hard cap.
+- **Not exposed yet**: bleeding-bite damage per second and duration — the values are not final,
+  and `MobEffect` only sees `amplifier` / `duration`, never the params, so it needs its own channel.
+
 - 本模组仍处于开发阶段，技能效果与数值可能随版本迭代调整。
-- Skill points, pouch size, and all values are configurable.
 - This mod is still under development; skill effects and values may be adjusted across versions.

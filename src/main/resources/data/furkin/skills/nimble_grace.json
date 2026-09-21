@@ -11,7 +11,10 @@
     {
       "type": "furkin:passive",
       "params": {
-        "trigger": "hurt"
+        "trigger": "hurt",
+        "dodge": {
+          "chancePerLevel": 0.08
+        }
       }
     }
   ]

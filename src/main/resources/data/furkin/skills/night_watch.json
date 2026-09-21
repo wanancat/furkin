@@ -11,7 +11,11 @@
     {
       "type": "furkin:passive",
       "params": {
-        "trigger": "tick"
+        "trigger": "tick",
+        "night_watch": {
+          "radius": 16.0,
+          "durationTicks": 300
+        }
       }
     }
   ]
