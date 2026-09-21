@@ -15,7 +15,10 @@ import java.util.Optional;
  * 不同步到客户端。客户端遍历实体时拿到的是自己 attach 的全新 {@code WILD} 数据，
  * 导致头顶图标、等级显示等客户端表现永远拿不到「已契约」真相。故加本通道。</p>
  *
- * <p>通道只做「服务端 → 客户端」单向同步（{@link NetworkDirection#PLAY_TO_CLIENT}）。</p>
+ * <p><b>两个方向都在用</b>：能力数据同步走「服务端 → 客户端」，玩家操作请求走
+ * 「客户端 → 服务端」（加点 / 洗点 / 召回 / 契约 / 页签）。方向是<b>每包</b>在注册时指定的
+ * （{@link NetworkDirection}），不是通道级属性 —— 早前这里写过「本通道只做单向同步」，
+ * 那句在挂上第一个上行包时就失效了。</p>
  */
 public final class FurkinNetwork {
 
@@ -110,6 +113,16 @@ public final class FurkinNetwork {
                 ResetSkillsPacket::encode,
                 ResetSkillsPacket::decode,
                 ResetSkillsPacket::handle,
+                Optional.of(NetworkDirection.PLAY_TO_SERVER)
+        );
+
+        // 客户端 → 服务端：同步当前页签（决定 Shift 点击的落点是装备槽还是行囊）。
+        CHANNEL.registerMessage(
+                id++,
+                SelectTabPacket.class,
+                SelectTabPacket::encode,
+                SelectTabPacket::decode,
+                SelectTabPacket::handle,
                 Optional.of(NetworkDirection.PLAY_TO_SERVER)
         );
 

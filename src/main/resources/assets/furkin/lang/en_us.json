@@ -66,7 +66,6 @@
   "furkin.screen.furkin.reset_confirm_yes": "Confirm Reset",
   "furkin.screen.furkin.reset_confirm_cancel": "Cancel",
   "furkin.screen.furkin.empty": "This furkin has no learnable skills",
-  "furkin.screen.furkin.equip_placeholder": "Gear slots not available yet",
   "furkin.screen.furkin.requires": "Requires",
   "furkin.screen.furkin.require_unlock": "Requires %s",
   "furkin.screen.furkin.require_level": "Requires %s at Lv.%s",

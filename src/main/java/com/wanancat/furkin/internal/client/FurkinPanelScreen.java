@@ -1,9 +1,11 @@
 package com.wanancat.furkin.internal.client;
 
+import com.wanancat.furkin.internal.equipment.MobEquipmentContainer;
 import com.wanancat.furkin.internal.menu.FurkinPouchMenu;
 import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.network.OpenFurkinScreenPacket;
 import com.wanancat.furkin.internal.network.ResetSkillsPacket;
+import com.wanancat.furkin.internal.network.SelectTabPacket;
 import com.wanancat.furkin.internal.network.UnlockSkillPacket;
 import com.wanancat.furkin.internal.skill.SkillTree;
 import net.minecraft.ChatFormatting;
@@ -18,6 +20,7 @@ import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.Slot;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 
@@ -79,9 +82,36 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
     private static final int FLAT_BOTTOM_V = 220;
     private static final int FLAT_BOTTOM_H = 2;
 
+    /**
+     * 单个空槽框在 {@link #PANEL_TEXTURE} 里的取材矩形。
+     *
+     * <p><b>为什么要单独取一格</b>：行囊页是把整行 blit 出来的（槽框随行数一起带出），
+     * 而装备页只有 4 格 —— 整行会带出 9 个假框。故这里只取一格来铺。</p>
+     *
+     * <p>坐标由逐像素扫描纹理得出：框横跨 {@code x=7..24}、{@code y=17..34}，恰好 18×18
+     * （取证留档 {@code .outputs/m3_probe_slotframe_2026-09-22.txt}）。</p>
+     */
+    private static final int SLOT_FRAME_U = 7;
+    private static final int SLOT_FRAME_V = 17;
+    private static final int SLOT_FRAME_SIZE = 18;
+
+    /**
+     * 「玩家背包段」在 {@link #PANEL_TEXTURE} 里的取材矩形 —— 两页共用同一份数。
+     *
+     * <p>{@code v=126} 起 96 高 = 「物品栏」标签区 + 3 行背包 + 快捷栏 + 面板下沿。
+     * 这一段的<b>槽框是烘死在纹理里的</b>（不来自任何容器），所以哪一页要显示玩家背包，
+     * 哪一页就必须 blit 它 —— 否则物品照画、格子却是空的。</p>
+     *
+     * <p><b>为什么抽成常量</b>：行囊页与装备页各写一遍字面量时，改了一处漏另一处就会出现
+     * 「一页有格子一页没有」（2026-09-22 乌狸截图报「切换到装备页后物品栏 slot 格子没了」）。
+     * 起点偏移不在这里 —— 它是 {@code rows * 18 + 17}，由 {@link #playerSegmentTop()} 统一给出。</p>
+     */
+    private static final int PLAYER_SEGMENT_V = 126;
+    private static final int PLAYER_SEGMENT_H = 96;
+
     public static final int TAB_SKILLS = 0;
     public static final int TAB_POUCH = FurkinPouchMenu.TAB_POUCH;
-    public static final int TAB_EQUIP = 2;
+    public static final int TAB_EQUIP = FurkinPouchMenu.TAB_EQUIP;
 
     private static final int TAB_WIDTH = 52;
     private static final int TAB_HEIGHT = 16;
@@ -249,7 +279,8 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
         int step = TAB_WIDTH + TAB_GAP;
 
         // 开屏落在哪一页：沿用上次停留的页（菜单重开后不该被弹回默认页）。
-        this.menu.setActiveTab(resolveInitialTab());
+        // 走 applyTab 而不是直接 setActiveTab —— 服务端也得知道这一页（Shift 落点靠它分流）。
+        applyTab(resolveInitialTab());
 
         // 列表先加：控件按加入顺序接收点击，列表要让出优先级给页签按钮之外的区域也无妨，
         // 但先加能保证它在内容区「吃掉」点击，不会被后续控件抢先。
@@ -307,11 +338,24 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
         };
     }
 
-    /** 切换页签：只改菜单字段（驱动槽位可见性）与按钮态，并记住本页以备菜单重开。 */
+    /** 点页签按钮：落状态 + 上行同步 + 刷新按钮态。 */
     private void switchTab(int tab) {
+        applyTab(tab);
+        updateTabState();
+    }
+
+    /**
+     * 落页签状态并上行同步。
+     *
+     * <p>本地这一份驱动 {@code Slot#isActive()}（渲染与鼠标命中）；上行那一份给服务端用 ——
+     * {@code quickMoveStack}（Shift 点击）是在<b>服务端</b>执行的，得靠它决定落点是装备槽
+     * 还是行囊（见 {@code FurkinPouchMenu#quickMoveStack}）。两处必须同时更新，故收进
+     * 一个方法：以后新增切页签的入口时，不会再漏掉一半。</p>
+     */
+    private void applyTab(int tab) {
         this.menu.setActiveTab(tab);
         lastTab = tab;
-        updateTabState();
+        FurkinNetwork.channel().sendToServer(new SelectTabPacket(tab));
     }
 
     private void updateTabState() {
@@ -384,21 +428,26 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
         int active = this.menu.getActiveTab();
         if (active == TAB_POUCH) {
             // 行囊页直接套官方 ChestScreen 的分段 blit：上段含标题条与行囊区（槽框行数正好
-            // = 行囊行数），下段固定 96 高（玩家背包 + 快捷栏）。
-            int rows = this.menu.getRows();
-            gui.blit(PANEL_TEXTURE, this.leftPos, this.topPos, 0, 0, this.imageWidth, rows * 18 + 17);
-            gui.blit(PANEL_TEXTURE, this.leftPos, this.topPos + rows * 18 + 17,
-                    0, 126, this.imageWidth, 96);
+            // = 行囊行数），下段是玩家背包段（槽框同样烘死在纹理里）。
+            gui.blit(PANEL_TEXTURE, this.leftPos, this.topPos, 0, 0,
+                    this.imageWidth, playerSegmentTop() - this.topPos);
+            gui.blit(PANEL_TEXTURE, this.leftPos, playerSegmentTop(),
+                    0, PLAYER_SEGMENT_V, this.imageWidth, PLAYER_SEGMENT_H);
             return;
         }
-        // 技能 / 装备页没有槽位，必须自绘底板（原版纹理里烘死了 6 行空槽框）。
-        renderFlatPanel(gui);
         if (active == TAB_EQUIP) {
+            renderEquipPanel(gui);
             renderEquipPage(gui);
         } else {
-            // 只画抬头 / 空态提示；技能行由 SkillListWidget 在控件层绘制（见类注释）。
+            // 技能页整屏净板；只画抬头 / 空态提示，技能行由 SkillListWidget 在控件层绘制。
+            renderFlatPanel(gui);
             renderSkillHeader(gui);
         }
+    }
+
+    /** 玩家背包段的屏幕起点 —— 两页共用（行囊页的第一段也在这里收尾）。 */
+    private int playerSegmentTop() {
+        return this.topPos + this.menu.getRows() * 18 + 17;
     }
 
     /**
@@ -409,6 +458,18 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
      * 颜色，换 GUI 资源包时也不会与其余界面脱节。</p>
      */
     private void renderFlatPanel(GuiGraphics gui) {
+        renderFlatPanel(gui, this.topPos + this.imageHeight - (FLAT_BOTTOM_H + 1));
+    }
+
+    /**
+     * 自绘底板（限定下界）—— 净板只铺到 {@code bodyEndY} 为止，底边视情况补。
+     *
+     * <p>装备页要用这个重载：它的下半屏交给 {@link #renderEquipPanel} 去 blit 官方的玩家背包段，
+     * 而那一整段自带下沿（纹理 220 / 221 两行），净板若铺到底就与它叠在一起。</p>
+     *
+     * @param bodyEndY 净板条铺到哪一行（不含）；恰好等于面板下沿时才补画阴影 + 黑边
+     */
+    private void renderFlatPanel(GuiGraphics gui, int bodyEndY) {
         int left = this.leftPos;
         int width = this.imageWidth;
         // 行囊页把纹理 220 / 221 两行落在面板的 imageHeight-3 / -2 行上，自绘板保持同一落点
@@ -416,28 +477,64 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
         int bottomY = this.topPos + this.imageHeight - (FLAT_BOTTOM_H + 1);
 
         gui.blit(PANEL_TEXTURE, left, this.topPos, 0, FLAT_TOP_V, width, FLAT_TOP_H);
-        for (int y = this.topPos + FLAT_TOP_H; y < bottomY; y += FLAT_BODY_H) {
-            int segment = Math.min(FLAT_BODY_H, bottomY - y);
+        for (int y = this.topPos + FLAT_TOP_H; y < bodyEndY; y += FLAT_BODY_H) {
+            int segment = Math.min(FLAT_BODY_H, bodyEndY - y);
             gui.blit(PANEL_TEXTURE, left, y, 0, FLAT_BODY_V, width, segment);
         }
-        gui.blit(PANEL_TEXTURE, left, bottomY, 0, FLAT_BOTTOM_V, width, FLAT_BOTTOM_H);
+        // 只有下半屏没有别的来源时才补底边（装备页的下段已含 220 / 221 两行）。
+        if (bodyEndY >= bottomY) {
+            gui.blit(PANEL_TEXTURE, left, bottomY, 0, FLAT_BOTTOM_V, width, FLAT_BOTTOM_H);
+        }
+    }
+
+    /**
+     * 装备页底板 —— 上段自绘净板，下段照抄行囊页的玩家背包段。
+     *
+     * <p><b>为什么下段必须照抄</b>：玩家背包那 36 格的槽框是烘死在纹理里的，不来自任何容器；
+     * 行囊页靠第二段 blit 把它们带出来。装备页若只铺净板，那 36 格就只剩物品、没有格子
+     * （2026-09-22 乌狸截图报「切换到装备页后物品栏 slot 格子没了」）。</p>
+     *
+     * <p>上段保持净板 —— 那块位置在行囊页是行囊槽框，装备页换成 4 个装备槽，
+     * 框由 {@link #renderEquipPage} 按槽位坐标单独画（装备槽与行囊首行坐标重合，
+     * 整行 blit 会带出 9 个假框）。</p>
+     */
+    private void renderEquipPanel(GuiGraphics gui) {
+        renderFlatPanel(gui, playerSegmentTop());
+        gui.blit(PANEL_TEXTURE, this.leftPos, playerSegmentTop(),
+                0, PLAYER_SEGMENT_V, this.imageWidth, PLAYER_SEGMENT_H);
     }
 
     @Override
     protected void renderLabels(GuiGraphics gui, int mouseX, int mouseY) {
         gui.drawString(this.font, this.title, this.titleLabelX, this.titleLabelY, COLOR_LABEL, false);
-        // 「物品栏」标签只在槽位真正可见的页显示。
-        if (this.menu.getActiveTab() == TAB_POUCH) {
+        // 「物品栏」标签只在槽位真正可见的页显示 —— 行囊页与装备页都会露出玩家背包。
+        int active = this.menu.getActiveTab();
+        if (active == TAB_POUCH || active == TAB_EQUIP) {
             gui.drawString(this.font, this.playerInventoryTitle,
                     this.inventoryLabelX, this.inventoryLabelY, COLOR_LABEL, false);
         }
     }
 
+    /**
+     * 装备页内容 —— 为每个装备槽画一个空槽框（实时内容由框架的 {@code renderSlot} 画）。
+     *
+     * <p><b>为什么不自己算坐标</b>：装备槽与行囊首行槽位<b>坐标完全重合</b>，所以不能靠坐标
+     * 分辨；而槽位坐标的唯一真相源是 {@code FurkinPouchMenu.registerSlots}。故这里直接遍历
+     * 菜单槽位、按<b>容器身份</b>筛出装备区，再取各槽自己的 {@code x} / {@code y} ——
+     * 菜单里哪天挪了槽位，这里自动跟上（本屏其余布局计算也是这个口径）。</p>
+     */
     private void renderEquipPage(GuiGraphics gui) {
-        gui.drawCenteredString(this.font,
-                Component.translatable("furkin.screen.furkin.equip_placeholder"),
-                this.leftPos + this.imageWidth / 2,
-                this.topPos + this.imageHeight / 2, COLOR_HINT);
+        MobEquipmentContainer equipment = this.menu.getEquipment();
+        for (Slot slot : this.menu.slots) {
+            if (slot.container != equipment) {
+                continue;
+            }
+            // 槽框比槽位坐标向外扩 1px：官方 renderSlot 把物品画在 (leftPos + slot.x) 处，
+            // 而 18×18 的框要再往外一圈 —— 纹理里框落在 (7,17)、槽位在 (8,18)。
+            gui.blit(PANEL_TEXTURE,
+                    this.leftPos + slot.x - 1, this.topPos + slot.y - 1,
+                    SLOT_FRAME_U, SLOT_FRAME_V, SLOT_FRAME_SIZE, SLOT_FRAME_SIZE);
+        }
     }
 
     /** 技能页的抬头与空态提示（技能行本身由 {@link SkillListWidget} 画）。 */
