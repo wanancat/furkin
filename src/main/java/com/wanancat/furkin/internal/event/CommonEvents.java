@@ -8,6 +8,7 @@ import com.wanancat.furkin.internal.config.FurkinServerConfig;
 import com.wanancat.furkin.internal.contract.FurkinCompanionManager;
 import com.wanancat.furkin.internal.contract.FurkinContractHandler;
 import com.wanancat.furkin.internal.contract.FurkinRecordActionHandler;
+import com.wanancat.furkin.internal.equipment.EquipmentSlots;
 import com.wanancat.furkin.internal.growth.CombatParticipationTracker;
 import com.wanancat.furkin.internal.growth.FurkinFeeding;
 import com.wanancat.furkin.internal.growth.FurkinGrowth;
@@ -273,8 +274,10 @@ public final class CommonEvents {
      *
      * <p><b>为什么必须有这一步</b>：绒亲实体死亡后会被世界移除，但档案条目的
      * {@code alive} / {@code summoned} 不会自动变化 —— 不落态就会出现「录里显示在场、
-     * 点收回却报未在场」的错位。死亡快照（等级 / 经验 / 技能 / 外观）一并写录，
-     * 供 M4 复活（FALLEN → COMPANION）按同一身份 UUID 重建。</p>
+     * 点收回却报未在场」的错位。死亡快照（等级 / 经验 / 技能 / 外观 / <b>装备</b>）一并写录，
+     * 供 M4 复活（FALLEN → COMPANION）按同一身份 UUID 重建。
+     * 装备另外还与「关闭掉落」成对（见方法内注释）—— 那一步的时机可靠性由
+     * {@code LivingDeathEvent} 早于掉落的取证保证。</p>
      *
      * <p>复活流程归 M4，本方法只落死亡态，不做任何玩家提示。</p>
      */
@@ -293,6 +296,13 @@ public final class CommonEvents {
             return;
         }
 
+        // 关掉落（M3.2）—— 必须在下面写快照**之前**：让快照里的 ArmorDropChances 也记成 0，
+        // 与实体真实状态一致（否则 M4 复活按快照重建时，掉落概率又回到默认的 0.085）。
+        // 生效时机有取证保证（2026-09-22 javap）：LivingDeathEvent 在 LivingEntity#die 的
+        // offset 0 触发，掉落（dropAllDeathLoot）在同一方法的 offset 162 —— 事件里改掉的
+        // 掉落概率，来得及拦住同一次死亡的掉落物。
+        EquipmentSlots.sealDrops(target);
+
         // D6：死亡即掉落 —— 与收回同口径，必须先倒空行囊再存快照。
         // 快照走 saveWithoutId，会带上 ForgeCaps（行囊 NBT 在其中）；顺序颠倒的话，
         // M4 复活按同一身份 UUID 重建实体、load 快照时会把行囊原样回灌。
@@ -303,7 +313,10 @@ public final class CommonEvents {
         entry.setXp(data.getXp());
         entry.setSkillPoints(data.getSkillPoints());
         entry.setSkillSnapshot(data.serializeNBT().getCompound("skill_levels"));
-        entry.setEntitySnapshot(target.saveWithoutId(new CompoundTag()));
+        // 一次 saveWithoutId 供两个用途：整包外观快照 + 从中摘出的装备快照（M3.2）。
+        CompoundTag snapshot = target.saveWithoutId(new CompoundTag());
+        entry.setEntitySnapshot(snapshot);
+        entry.setEquipmentSnapshot(EquipmentSlots.extractFrom(snapshot));
         if (entry.getSpecies() == null) {
             entry.setSpecies(target.getType());
         }

@@ -4,6 +4,7 @@ import com.wanancat.furkin.internal.FurkinMod;
 import com.wanancat.furkin.internal.capability.FurkinCapability;
 import com.wanancat.furkin.internal.capability.FurkinData;
 import com.wanancat.furkin.internal.config.FurkinServerConfig;
+import com.wanancat.furkin.internal.equipment.EquipmentSlots;
 import com.wanancat.furkin.internal.inventory.PouchDrop;
 import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.network.SyncFurkinDataPacket;
@@ -96,8 +97,12 @@ public final class FurkinCompanionManager {
         PouchDrop.dropAll(target, data.getPouch());
 
         // 实体外观快照：品种 / 毛色 / 坐定 / 跟随等，收回时整包存下。
-        entry.setEntitySnapshot(target.saveWithoutId(new CompoundTag()));
-        // 装备快照：原版实体装备槽 → 录（M3 前为空占位，字段保留）。
+        // 这一份整包快照里**本来就带装备**（原版 Mob 存档自带 ArmorItems），但装备另有专用字段，
+        // 于是在同一份快照上摘一次即可 —— 不为自己再算一遍 saveWithoutId。
+        CompoundTag snapshot = target.saveWithoutId(new CompoundTag());
+        entry.setEntitySnapshot(snapshot);
+        // 装备快照：原版实体装备槽 → 录（M3.2 起填充；此前是空占位）。
+        entry.setEquipmentSnapshot(EquipmentSlots.extractFrom(snapshot));
         entry.setAlive(true);
         entry.setSummoned(false); // 收回：实体不在场。
         archive.putEntry(entry);
@@ -173,6 +178,15 @@ public final class FurkinCompanionManager {
             // 回灌前先清掉新建实体自带的 UUID 与默认外观，避免冲突（快照里含原实体 UUID）。
             living.load(snapshot);
         }
+
+        // 装备铺回（M3.2）：以档案的装备快照为**权威副本**，不搭上面那次 load 的顺风车。
+        // 理由有两条 —— ① 上面整包回灌只在快照非空时才发生，装备不该依赖那个分支；
+        // ② 显式写明来源，免得后人看到「装备怎么回来的」要去翻原版存档格式才知道。
+        // 快照为空（M3.2 之前收回的旧档）时本方法什么都不做，见 EquipmentSlots#applyTo。
+        EquipmentSlots.applyTo(living, entry.getEquipmentSnapshot());
+        // 关掉落（M3.2）：实体每次入世都必须显式设一遍 —— 旧档快照里没有 ArmorDropChances 这个键，
+        // 原版读档对它是「没有就保持默认」，而新建实体的默认值是 0.085 ⇒ 光靠 load 回灌保不住。
+        EquipmentSlots.sealDrops(living);
 
         // 写回能力对象（运行时真相）。
         FurkinData data = living.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);

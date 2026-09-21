@@ -6,6 +6,7 @@ import com.wanancat.furkin.internal.FurkinMod;
 import com.wanancat.furkin.internal.capability.FurkinCapability;
 import com.wanancat.furkin.internal.capability.FurkinData;
 import com.wanancat.furkin.internal.config.FurkinServerConfig;
+import com.wanancat.furkin.internal.equipment.EquipmentSlots;
 import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.network.SyncFurkinDataPacket;
 import com.wanancat.furkin.internal.record.FurkinArchiveData;
@@ -128,6 +129,10 @@ public final class FurkinContractHandler {
         data.setXp(0);
         data.setState(FurkinState.COMPANION);
         data.setCombatMode(FurkinCombatMode.FOLLOW); // 默认跟随（不参战），玩家切档后记忆。
+
+        // 契约即封印装备掉落（M3.2）：装备槽从这一刻起归玩家所有，宠物死亡时不该把它掉出世界。
+        // 与「死亡侧写装备快照」配对，缺一不可 —— 只关掉落而不存快照 = 装备凭空消失（设计稿 §2.3）。
+        EquipmentSlots.sealDrops(target);
 
         // 对 TamableAnimal 的额外动作：置 TAME=true（不撤销，有意接受的白送）。
         if (target instanceof TamableAnimal tamable) {
