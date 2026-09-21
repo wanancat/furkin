@@ -164,21 +164,28 @@ Each effect entry is `{ "type": "...", "params": {...} }`, where `type` refers t
 
 **中文**
 
-| type                 | 说明          |
-| -------------------- | ----------- |
-| `furkin:attribute`   | 属性修正（修改属性值） |
-| `furkin:ability`     | 主动技能        |
-| `furkin:passive`     | 被动技能        |
-| `furkin:interaction` | 交互技能        |
+| type                 | 说明                                    |
+| -------------------- | ------------------------------------- |
+| `furkin:attribute`   | 属性修正（修改属性值）                           |
+| `furkin:ability`     | 主动技能（**占位**：已注册，尚未实现）                 |
+| `furkin:passive`     | 被动技能                                  |
+| `furkin:interaction` | 交互技能（**占位**：已注册，尚未实现）                 |
+
+> `ability` 与 `interaction` 目前只是**类型骨架** —— JSON 引用它们不会报错，但 `apply` / `remove`
+> 是空操作，技能不会产生任何效果。具体能力 / 交互技能留待后续批次实现。
 
 **English**
 
-| type                 | Meaning            |
-| -------------------- | ------------------ |
-| `furkin:attribute`   | Attribute modifier |
-| `furkin:ability`     | Active ability     |
-| `furkin:passive`     | Passive skill      |
-| `furkin:interaction` | Interaction skill  |
+| type                 | Meaning                                                        |
+| -------------------- | -------------------------------------------------------------- |
+| `furkin:attribute`   | Attribute modifier                                             |
+| `furkin:ability`     | Active ability (**placeholder**: registered, not implemented)   |
+| `furkin:passive`     | Passive skill                                                  |
+| `furkin:interaction` | Interaction skill (**placeholder**: registered, not implemented) |
+
+> `ability` and `interaction` are **type skeletons** only — referencing them in JSON is accepted,
+> but `apply` / `remove` are no-ops, so the skill does nothing. Concrete abilities / interactions
+> come later.
 
 `params` 为自由 JSON 对象，由对应效果实现解析。以 `attribute` 为例：
 
@@ -208,74 +215,57 @@ The block name says what the skill does; its fields are all of its values:
 
 **中文**
 
-| params 字段 | 含义                | 取值                                        |
-| --------- | ----------------- | ----------------------------------------- |
-| `trigger` | 触发位点              | `tick`（周期）/ `attack`（攻击时）/ `hurt`（受击时） |
-| 配置块       | 该技能的数值块，块名见下表     | 下列块名之一                                    |
+| params 字段 | 含义                                            | 取值                                        |
+| --------- | --------------------------------------------- | ----------------------------------------- |
+| `trigger` | 触发位点（**必填**；缺省或与期望不符时该块被忽略，技能静默不生效）          | `tick`（周期）/ `attack`（攻击时）/ `hurt`（受击时） |
+| 配置块       | 该技能的数值块，块名见下表                                 | 下列块名之一                                    |
 
-| 块名              | 所属技能                               | 字段（均为必填）                                                        |
-| --------------- | ---------------------------------- | --------------------------------------------------------------- |
-| `harvest`       | `fish_harvest` / `bone_harvest`    | `interval[]`（各等级间隔，tick）、`items[]`（物品池）、`count`（每次份数）            |
-| `forager`       | `forager`                          | `radius`（拾取半径，格）                                                |
-| `feeder`        | `self_feeder`                      | `threshold`（开吃血量比例）、`cooldown`（两次进食间隔，tick）                     |
-| `dodge`         | `nimble_grace`                     | `chancePerLevel`（每级闪避概率）                                        |
-| `nine_lives`    | `nine_lives`                       | `cooldownTicks`（免死冷却，tick）                                       |
-| `night_watch`   | `night_watch`                      | `radius`（生效半径，格）、`durationTicks`（每次刷新的夜视时长，tick）                 |
-| `pack_tactics`  | `pack_tactics`                     | `bonusPerStack[]`（各等级每层加成）、`maxStacks`（叠层上限）、`radius`（计数半径，格） |
-| `bleeding_bite` | `bleeding_bite`                    | `durationTicks`（每次施加的流血时长，tick）、`damagePerSecond[]`（各等级每秒伤害） |
+| 块名              | 所属技能                               | 字段                                                                 |
+| --------------- | ---------------------------------- | ------------------------------------------------------------------ |
+| `harvest`       | `fish_harvest` / `bone_harvest`    | `interval[]`（各等级间隔，tick）、`items[]`（物品池）、`count`（每次份数，选填，默认 1）        |
+| `forager`       | `forager`                          | `radius`（拾取半径，格）                                                 |
+| `feeder`        | `self_feeder`                      | `threshold`（开吃血量比例）、`cooldown`（两次进食间隔，tick）                      |
+| `dodge`         | `nimble_grace`                     | `chancePerLevel`（每级闪避概率）                                         |
+| `nine_lives`    | `nine_lives`                       | `cooldownTicks`（免死冷却，tick）                                        |
+| `night_watch`   | `night_watch`                      | `radius`（生效半径，格）、`durationTicks`（每次刷新的夜视时长，tick）                  |
+| `pack_tactics`  | `pack_tactics`                     | `bonusPerStack[]`（各等级每层加成）、`maxStacks`（叠层上限）、`radius`（计数半径，格）  |
+| `bleeding_bite` | `bleeding_bite`                    | `durationTicks`（每次施加的流血时长，tick）、`damagePerSecond[]`（各等级每秒伤害）      |
 
 时间单位一律用 **tick**（20 tick = 1 秒），与产出 / 进食 / 免死保持一致。
-字段缺失或越界时**该技能整体禁用**，并在服务端日志打 WARN —— 不会静默截断、也不会退回默认值。
+字段缺失或越界时**该技能整体禁用**，并在服务端日志打 WARN —— 不会静默截断、也不会退回默认值。两处例外：
+`harvest` 的 `count` 选填（缺省为 1）；`items` 中的单个未知物品 id **只跳过该候选**，池空了才禁用。
+另，`interval` 项数少于技能等级数时 **取最后一项**（合法简写，不是越界）——`maxLevel 3` 配 `interval[1200]`
+等价于每级都是 1200。
 
 **English**
 
-| params Field | Meaning                                      | Value                                                                        |
-| ------------ | -------------------------------------------- | ---------------------------------------------------------------------------- |
-| `trigger`    | Trigger site                                 | `tick` (periodic) / `attack` (on attacking) / `hurt` (on damaged)              |
-| config block | The skill's value block; see the table below | one of the block names below                                                 |
+| params Field | Meaning                                                                                            | Value                                                                        |
+| ------------ | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `trigger`    | Trigger site (**required**; if absent or mismatched the block is ignored and the skill does nothing) | `tick` (periodic) / `attack` (on attacking) / `hurt` (on damaged)              |
+| config block | The skill's value block; see the table below                                                        | one of the block names below                                                 |
 
-| Block           | Skill                            | Fields (all required)                                                                             |
-| --------------- | -------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `harvest`       | `fish_harvest` / `bone_harvest`  | `interval[]` (per-level interval, tick), `items[]` (item pool), `count` (per yield)                |
-| `forager`       | `forager`                        | `radius` (pickup radius, blocks)                                                                  |
-| `feeder`        | `self_feeder`                    | `threshold` (health ratio to start eating), `cooldown` (between two meals, tick)                   |
-| `dodge`         | `nimble_grace`                   | `chancePerLevel` (dodge chance per level)                                                          |
-| `nine_lives`    | `nine_lives`                     | `cooldownTicks` (death-defy cooldown, tick)                                                        |
-| `night_watch`   | `night_watch`                    | `radius` (effect radius, blocks), `durationTicks` (night-vision duration per refresh, tick)        |
+| Block           | Skill                            | Fields                                                                                              |
+| --------------- | -------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `harvest`       | `fish_harvest` / `bone_harvest`  | `interval[]` (per-level interval, tick), `items[]` (item pool), `count` (per yield, optional, default 1) |
+| `forager`       | `forager`                        | `radius` (pickup radius, blocks)                                                                     |
+| `feeder`        | `self_feeder`                    | `threshold` (health ratio to start eating), `cooldown` (between two meals, tick)                     |
+| `dodge`         | `nimble_grace`                   | `chancePerLevel` (dodge chance per level)                                                            |
+| `nine_lives`    | `nine_lives`                     | `cooldownTicks` (death-defy cooldown, tick)                                                          |
+| `night_watch`   | `night_watch`                    | `radius` (effect radius, blocks), `durationTicks` (night-vision duration per refresh, tick)          |
 | `pack_tactics`  | `pack_tactics`                   | `bonusPerStack[]` (per-level, per-stack bonus), `maxStacks` (stack cap), `radius` (counting radius, blocks) |
-| `bleeding_bite` | `bleeding_bite`                  | `durationTicks` (bleed duration per hit, tick), `damagePerSecond[]` (damage per second per level) |
+| `bleeding_bite` | `bleeding_bite`                  | `durationTicks` (bleed duration per hit, tick), `damagePerSecond[]` (damage per second per level)   |
 
 All durations are in **ticks** (20 ticks = 1 second), consistent with harvest / feeder / nine-lives.
 A missing or out-of-range field disables the whole skill and logs a WARN on the server —
-values are never silently clamped or defaulted.
+values are never silently clamped or defaulted. Two exceptions: `harvest`'s `count` is optional
+(defaults to 1); a single unknown item id in `items` only skips that candidate (the skill is disabled
+only if the pool ends up empty). Also, when `interval` has fewer entries than the skill's levels the
+**last entry is reused** (a legal shorthand, not an out-of-range error) — `maxLevel 3` with
+`interval[1200]` means 1200 ticks at every level.
 
 ---
 
 ## 四、备注 / Notes
-
-**可配置项分两层 / Configurable values come in two layers**
-
-- **全局速率**（`furkin-server.toml`，SERVER 类型、进服同步）：活跃伴侣上限、
-  战斗 / 进食经验系数、递减收益步长与恢复时间、行囊每级格数、复活与重获魂石冷却。
-  客户端另有两项纯界面偏好（`furkin-client.toml`）。
-- **单技能数值**（数据包 `data/furkin/skills/*.json` 的 `effects[].params`，`/reload` 即时生效）：
-  产出间隔与物品池、拾荒半径、进食阈值与冷却、闪避概率、免死冷却、夜视半径与时长、
-  群猎加成 / 层数 / 半径、流血每秒伤害与时长、属性加成量，以及 `maxLevel` 与技能点消耗。
-- **硬编码不开放**（属「刻度」而非「速率」）：经验曲线（照搬玩家公式）、每级 1 技能点、
-  引擎节拍（20 tick）、拾荒与夜视的半径上限（32 格，防呆校验）、行囊内部硬上限。
-
-**English**
-
-- **Global rates** (`furkin-server.toml`, SERVER type, synced on join): active companion limit,
-  combat / feeding XP multipliers, diminishing-returns step and recovery, pouch slots per level,
-  revive and soulstone-reacquire cooldowns. Two client-side UI preferences live in `furkin-client.toml`.
-- **Per-skill values** (datapack `data/furkin/skills/*.json`, `effects[].params`, applied on `/reload`):
-  harvest interval and item pool, forager radius, feeder threshold and cooldown, dodge chance,
-  nine-lives cooldown, night-watch radius and duration, pack-tactics bonus / stacks / radius,
-  bleeding damage per second and duration, attribute amounts, plus `maxLevel` and skill-point cost.
-- **Hardcoded by design** (these are "scales", not "rates"): XP curve (copies the player formula),
-  1 skill point per level, engine tick (20), radius caps for forager / night-watch (32 blocks,
-  a sanity check), internal pouch hard cap.
 
 - 本模组仍处于开发阶段，技能效果与数值可能随版本迭代调整。
 - This mod is still under development; skill effects and values may be adjusted across versions.
