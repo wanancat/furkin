@@ -222,6 +222,7 @@ The block name says what the skill does; its fields are all of its values:
 | `nine_lives`    | `nine_lives`                       | `cooldownTicks`（免死冷却，tick）                                       |
 | `night_watch`   | `night_watch`                      | `radius`（生效半径，格）、`durationTicks`（每次刷新的夜视时长，tick）                 |
 | `pack_tactics`  | `pack_tactics`                     | `bonusPerStack[]`（各等级每层加成）、`maxStacks`（叠层上限）、`radius`（计数半径，格） |
+| `bleeding_bite` | `bleeding_bite`                    | `durationTicks`（每次施加的流血时长，tick）、`damagePerSecond[]`（各等级每秒伤害） |
 
 时间单位一律用 **tick**（20 tick = 1 秒），与产出 / 进食 / 免死保持一致。
 字段缺失或越界时**该技能整体禁用**，并在服务端日志打 WARN —— 不会静默截断、也不会退回默认值。
@@ -242,6 +243,7 @@ The block name says what the skill does; its fields are all of its values:
 | `nine_lives`    | `nine_lives`                     | `cooldownTicks` (death-defy cooldown, tick)                                                        |
 | `night_watch`   | `night_watch`                    | `radius` (effect radius, blocks), `durationTicks` (night-vision duration per refresh, tick)        |
 | `pack_tactics`  | `pack_tactics`                   | `bonusPerStack[]` (per-level, per-stack bonus), `maxStacks` (stack cap), `radius` (counting radius, blocks) |
+| `bleeding_bite` | `bleeding_bite`                  | `durationTicks` (bleed duration per hit, tick), `damagePerSecond[]` (damage per second per level) |
 
 All durations are in **ticks** (20 ticks = 1 second), consistent with harvest / feeder / nine-lives.
 A missing or out-of-range field disables the whole skill and logs a WARN on the server —
@@ -258,11 +260,9 @@ values are never silently clamped or defaulted.
   客户端另有两项纯界面偏好（`furkin-client.toml`）。
 - **单技能数值**（数据包 `data/furkin/skills/*.json` 的 `effects[].params`，`/reload` 即时生效）：
   产出间隔与物品池、拾荒半径、进食阈值与冷却、闪避概率、免死冷却、夜视半径与时长、
-  群猎加成 / 层数 / 半径、属性加成量，以及 `maxLevel` 与技能点消耗。
+  群猎加成 / 层数 / 半径、流血每秒伤害与时长、属性加成量，以及 `maxLevel` 与技能点消耗。
 - **硬编码不开放**（属「刻度」而非「速率」）：经验曲线（照搬玩家公式）、每级 1 技能点、
   引擎节拍（20 tick）、拾荒与夜视的半径上限（32 格，防呆校验）、行囊内部硬上限。
-- **尚未外露**：流血撕咬的每秒伤害与持续时长。原因有二 —— 数值本身待定稿；
-  且 `MobEffect` 只拿得到 `amplifier` / `duration`、拿不到 `params`，需另设通道。
 
 **English**
 
@@ -272,12 +272,10 @@ values are never silently clamped or defaulted.
 - **Per-skill values** (datapack `data/furkin/skills/*.json`, `effects[].params`, applied on `/reload`):
   harvest interval and item pool, forager radius, feeder threshold and cooldown, dodge chance,
   nine-lives cooldown, night-watch radius and duration, pack-tactics bonus / stacks / radius,
-  attribute amounts, plus `maxLevel` and skill-point cost.
+  bleeding damage per second and duration, attribute amounts, plus `maxLevel` and skill-point cost.
 - **Hardcoded by design** (these are "scales", not "rates"): XP curve (copies the player formula),
   1 skill point per level, engine tick (20), radius caps for forager / night-watch (32 blocks,
   a sanity check), internal pouch hard cap.
-- **Not exposed yet**: bleeding-bite damage per second and duration — the values are not final,
-  and `MobEffect` only sees `amplifier` / `duration`, never the params, so it needs its own channel.
 
 - 本模组仍处于开发阶段，技能效果与数值可能随版本迭代调整。
 - This mod is still under development; skill effects and values may be adjusted across versions.

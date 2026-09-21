@@ -73,9 +73,10 @@ public final class SkillPassiveDispatcher {
 
     // ===== 技能 id =====
 
-    /** 流血撕咬（攻击侧）。 */
-    private static final ResourceLocation BLEEDING_BITE =
-            new ResourceLocation(FurkinMod.MODID, "bleeding_bite");
+    // 流血撕咬的技能 id 不在此处另立一份 —— 它由 {@link BleedingSpec#SKILL_ID} 提供。
+    // 这是全项目唯一一个「effect 侧也要知道是哪个技能」的被动：伤害结算写在
+    // MobEffect#applyEffectTick 里，那个方法只拿得到 amplifier、拿不到技能 JSON，
+    // 只能反查规格；把 id 定义在规格类里，施加侧与结算侧就共用同一个入口。
     /** 灵巧身法（受害侧 · 闪避）。 */
     private static final ResourceLocation NIMBLE_GRACE =
             new ResourceLocation(FurkinMod.MODID, "nimble_grace");
@@ -102,6 +103,7 @@ public final class SkillPassiveDispatcher {
     // ===== 数值 =====
     // 被动技能的数值已全部外露到数据包（各自技能 JSON 的 passive params 块），
     // 故本类不再保留数值常量 —— 取块与解析在 SkillParams + 各 Spec 类里：
+    //   流血撕咬 → bleeding_bite{durationTicks,damagePerSecond}（伤害半边由 BleedingEffect 反查）
     //   灵巧身法 → dodge{chancePerLevel}            九命猫 → nine_lives{cooldownTicks}
     //   守夜者   → night_watch{radius,durationTicks} 群猎战术 → pack_tactics{bonusPerStack,maxStacks,radius}
     // 解析结果带缓存，技能树重载（/reload）即失效，改数据不必重启。
@@ -135,10 +137,10 @@ public final class SkillPassiveDispatcher {
             return;
         }
 
-        // 流血撕咬：攻击附加流血，伤害随等级递增（Lv.1/2/3 → 1/2/3 点）。
-        int bleedLevel = data.getSkillLevels().getOrDefault(BLEEDING_BITE, 0);
+        // 流血撕咬：攻击附加流血，每秒伤害与持续时长取自技能 JSON 的 params.bleeding_bite。
+        int bleedLevel = data.getSkillLevels().getOrDefault(BleedingSpec.SKILL_ID, 0);
         if (bleedLevel > 0 && target.isAlive()) {
-            applyBleeding(target, bleedLevel);
+            applyBleeding(attacker, target, bleedLevel);
         }
     }
 
@@ -702,15 +704,46 @@ public final class SkillPassiveDispatcher {
 
     // ===== 工具 =====
 
-    /** 给目标施加流血：持续固定 4 秒，每秒伤害随技能等级递增（Lv.1/2/3 → 1/2/3 点）。 */
-    private static void applyBleeding(LivingEntity target, int level) {
+    /**
+     * 给目标施加流血：时长与每秒伤害都取自技能 JSON 的 {@code params.bleeding_bite}
+     * （{@link BleedingSpec}）。伤害不在本方法算 —— 它写在
+     * {@link com.wanancat.furkin.internal.effect.BleedingEffect#applyEffectTick} 里，
+     * 那里只能按技能反查同一份规格（原因见 {@link BleedingSpec} 类注释）。
+     *
+     * <p><b>取不到规格 = 不施加</b>：与闪避 / 九命 / 群猎口径一致，数据写坏时技能整体禁用，
+     * 而不是退回某个内建默认值 —— 后者会让「数据错了」表现成「数值还是老样子」，最难察觉。
+     * 留痕由 {@link BleedingSpec} 解析时打一次（否定结果进了缓存，不会逐次重复）。</p>
+     *
+     * <p><b>日志分两级</b>：目标原本<b>没有</b>流血时打 INFO（这一击是新挂上的，要把生效中的
+     * dps / 时长印出来供验收），只是在已有流血上叠时长则降为 DEBUG —— 流血挂在攻击位点，
+     * 战斗中每秒触发数次，逐次 INFO 会刷屏（同群猎「只在变化时留痕」的取舍）。</p>
+     *
+     * @param attacker 施加流血的绒亲（仅用于日志归属）
+     * @param target   被咬的目标
+     * @param level    流血撕咬的技能等级（≥ 1）
+     */
+    private static void applyBleeding(LivingEntity attacker, LivingEntity target, int level) {
         // 亡灵免疫：与「中毒」对亡灵无效的原版口径一致，亡灵根本不挂流血（无粒子、无图标、无掉血）。
+        // effect 侧另有一道同名判定 —— 那防的是绕过本方法的施加途径（如 /effect give），
+        // 两层判的不是同一件事，故都保留。
         if (target.isInvertedHealAndHarm()) {
             return;
         }
-        int durationTicks = 4 * 20;
-        int amplifier = level - 1;
-        target.addEffect(new MobEffectInstance(ModMobEffects.BLEEDING.get(), durationTicks, amplifier));
+        BleedingSpec spec = BleedingSpec.of().orElse(null);
+        if (spec == null) {
+            return;
+        }
+        boolean fresh = !target.hasEffect(ModMobEffects.BLEEDING.get());
+        target.addEffect(new MobEffectInstance(ModMobEffects.BLEEDING.get(),
+                spec.durationTicks(), level - 1));
+        if (fresh) {
+            FurkinMod.LOGGER.info("Furkin passive: [{}] bleeding_bite -> {} level={} dps={} duration={}t",
+                    companionTag(attacker), target.getName().getString(), level,
+                    spec.damageForLevel(level), spec.durationTicks());
+        } else {
+            FurkinMod.LOGGER.debug("Furkin passive: [{}] bleeding_bite restacked -> {} level={} duration={}t",
+                    companionTag(attacker), target.getName().getString(), level, spec.durationTicks());
+        }
     }
 
     /**

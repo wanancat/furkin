@@ -12,7 +12,11 @@
     {
       "type": "furkin:passive",
       "params": {
-        "trigger": "attack"
+        "trigger": "attack",
+        "bleeding_bite": {
+          "durationTicks": 80,
+          "damagePerSecond": [1.0, 2.0, 3.0]
+        }
       }
     }
   ]
