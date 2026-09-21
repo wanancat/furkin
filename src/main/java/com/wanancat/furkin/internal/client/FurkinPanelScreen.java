@@ -1,5 +1,6 @@
 package com.wanancat.furkin.internal.client;
 
+import com.wanancat.furkin.internal.FurkinMod;
 import com.wanancat.furkin.internal.config.FurkinClientConfig;
 import com.wanancat.furkin.internal.equipment.EquipBonus;
 import com.wanancat.furkin.internal.equipment.MobEquipmentContainer;
@@ -103,8 +104,13 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
      *
      * <p>{@code EQUIP_SUMMARY_GAP} = 摘要起点与装备槽右缘之间的间隙；
      * {@code SUMMARY_ITEM_GAP} = 摘要里两项之间的间隙（按一个空格宽度取 4px）。</p>
+     *
+     * <p><b>为什么是 8px</b>（2026-09-22 她截图报「摘要和左边装备槽贴太近」）：初版取 2px，
+     * 与槽框右缘（{@code x=80}）几乎贴住，视觉上像被槽框压着。8px 是「一眼能分开」的最小值，
+     * 且仍留得下：可用宽度从 86px 缩到 80px，实测单项 49px 绰绰有余；
+     * 即便日后改用短名映射（两项 ≈78px）也仍在 80px 之内。</p>
      */
-    private static final int EQUIP_SUMMARY_GAP = 2;
+    private static final int EQUIP_SUMMARY_GAP = 8;
     private static final int SUMMARY_ITEM_GAP = 4;
 
     /**
@@ -129,6 +135,14 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
     private static final int TAB_HEIGHT = 16;
     private static final int TAB_GAP = 2;
     private static final int TAB_MARGIN = 8;
+
+    /**
+     * 「摘要放不下」的诊断日志只打一次。
+     *
+     * <p>渲染每帧都会调 {@code renderEquipSummary}，不去重会把日志刷满；而这条日志恰恰是
+     * 「摘要到底能放几项、每项多宽」的<b>唯一硬数据</b> —— 别再靠字宽估算（2026-09-22 已栽一次）。</p>
+     */
+    private boolean summaryWidthLogged;
 
     private static final int SKILL_BUTTON_WIDTH = 22;
     private static final int SKILL_BUTTON_HEIGHT = 14;
@@ -563,10 +577,19 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
     /**
      * 装备页摘要 —— 四个装备槽的属性合计，画在装备槽右侧那一行。
      *
-     * <p><b>为什么只画前 {@link EquipBonus#SUMMARY_MAX} 项</b>：右侧只剩约 87px
-     * （见 {@link #equipSummaryLeft()}），按 MC 字体宽度两项约 72px、三项约 110px
-     * ⇒ 物理上限就是两项。放不下的项不截断、不加省略号，全部交给悬停明细 ——
-     * 摘要里出现半截的值，比不显示更容易被误读。</p>
+     * <p><b>宽度是硬约束，且必须按实际字宽判别</b>（2026-09-22 实机两轮返工）：起点到面板右内边
+     * 只有 {@code equipSummaryRight() - equipSummaryLeft()} = <b>80px</b>（间隙取 8px 后；
+     * 取 2px 时是 86px）。早期按「中文 9px、一项约 34px」目测估算得出「两项放得下」，<b>是错的</b> ——
+     * 实机诊断日志给出的实测值（{@code run_client_2026-09-22_0456.log}）：
+     * {@code available=86px drawn=1/3 widths=[49, 52, 60]}，三项依次是
+     * {@code +13 护甲值} / {@code +3 盔甲韧性} / {@code +0.1 击退抗性}
+     * ⇒ 两项 = 49 + 4 + 52 = <b>105px</b>，间隙取 2 还是 8 都放不下（中文下物理上限就是一项）。
+     * ⇒ 不再按「固定两项」下结论，改为<b>逐项用 {@code font.width(...)} 实测、放不下即停</b>：
+     * 字体、语言、属性名长度任一变化都不会再溢出。硬上限仍是
+     * {@link EquipBonus#SUMMARY_MAX} 项（优先级序列见设计稿 §六 ④）。</p>
+     *
+     * <p>放不下的项<b>不截断、不加省略号</b> —— 摘要里出现半截的值，比不显示更容易被误读；
+     * 完整清单一律交给悬停明细。</p>
      *
      * <p>颜色既写进 {@code Component} 样式、也作为 {@code drawString} 的参数传一遍：
      * 同一个颜色给两个来源，换渲染路径（或样式被吞）时也不会掉色。</p>
@@ -576,14 +599,50 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
         if (bonuses.isEmpty()) {
             return;
         }
+        final int right = equipSummaryRight();
         int x = equipSummaryLeft();
         int y = equipSummaryTop() + 4;
-        for (int i = 0; i < Math.min(EquipBonus.SUMMARY_MAX, bonuses.size()); i++) {
-            EquipBonus.Entry entry = bonuses.get(i);
+        int drawn = 0;
+        for (EquipBonus.Entry entry : bonuses) {
+            if (drawn >= EquipBonus.SUMMARY_MAX) {
+                break;
+            }
             MutableComponent part = EquipBonus.format(entry);
+            int width = this.font.width(part);
+            if (x + (drawn == 0 ? 0 : SUMMARY_ITEM_GAP) + width > right) {
+                break;
+            }
+            if (drawn > 0) {
+                x += SUMMARY_ITEM_GAP;
+            }
             gui.drawString(this.font, part, x, y, EquipBonus.style(entry).getColor(), false);
-            x += this.font.width(part) + SUMMARY_ITEM_GAP;
+            x += width;
+            drawn++;
         }
+        logSummaryOverflowOnce(bonuses, drawn, right);
+    }
+
+    /**
+     * 有属性项没画下时，把「可用宽度 / 各项实测字宽」打一次日志。
+     *
+     * <p>用途是把「摘要能放几项」从估算变成实测数据 —— 换语言、换字体包、或以后新增属性时，
+     * 这条日志直接给出「要不要缩短属性名」的答案，而不是再赌一次目测。</p>
+     */
+    private void logSummaryOverflowOnce(List<EquipBonus.Entry> bonuses, int drawn, int right) {
+        if (drawn >= bonuses.size() || this.summaryWidthLogged) {
+            return;
+        }
+        this.summaryWidthLogged = true;
+        List<Integer> widths = new ArrayList<>();
+        List<String> items = new ArrayList<>();
+        for (EquipBonus.Entry entry : bonuses) {
+            MutableComponent part = EquipBonus.format(entry);
+            widths.add(this.font.width(part));
+            items.add(part.getString());
+        }
+        FurkinMod.LOGGER.info(
+                "[equip summary] available={}px (left={} right={}) drawn={}/{} widths={} items={}",
+                right - equipSummaryLeft(), equipSummaryLeft(), right, drawn, bonuses.size(), widths, items);
     }
 
     /**
@@ -595,6 +654,16 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
      */
     private int equipSummaryLeft() {
         return this.leftPos + 8 + MobEquipmentContainer.SLOT_COUNT * 18 + EQUIP_SUMMARY_GAP;
+    }
+
+    /**
+     * 摘要行右界 —— 面板右内边，与页签 / 抬头共用同一个边距。
+     *
+     * <p>抽成一个方法而不是各写一遍字面量：<b>绘制与命中区必须用同一个边界</b>，
+     * 否则「画得下、却悬停不到」这类差几像素的毛病会改一处漏一处。</p>
+     */
+    private int equipSummaryRight() {
+        return this.leftPos + this.imageWidth - TAB_MARGIN;
     }
 
     /** 摘要行顶端 —— 与装备槽同一行（槽位 y=18）。 */
@@ -612,7 +681,7 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
     private boolean isOverEquipSummary(double mouseX, double mouseY) {
         int top = equipSummaryTop();
         return mouseX >= equipSummaryLeft()
-                && mouseX < this.leftPos + this.imageWidth - TAB_MARGIN
+                && mouseX < equipSummaryRight()
                 && mouseY >= top && mouseY < top + SLOT_FRAME_SIZE;
     }
 
