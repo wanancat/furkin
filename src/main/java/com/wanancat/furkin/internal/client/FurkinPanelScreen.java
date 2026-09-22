@@ -5,6 +5,7 @@ import com.wanancat.furkin.internal.FurkinMod;
 import com.wanancat.furkin.internal.attribute.AttributeDisplay;
 import com.wanancat.furkin.internal.capability.FurkinCapability;
 import com.wanancat.furkin.internal.capability.FurkinData;
+import com.wanancat.furkin.internal.contract.FurkinCombatMode;
 import com.wanancat.furkin.internal.config.FurkinClientConfig;
 import com.wanancat.furkin.internal.equipment.EquipBonus;
 import com.wanancat.furkin.internal.equipment.MobEquipmentContainer;
@@ -12,6 +13,7 @@ import com.wanancat.furkin.internal.growth.FurkinGrowth;
 import com.wanancat.furkin.internal.menu.FurkinPouchMenu;
 import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.network.OpenFurkinScreenPacket;
+import com.wanancat.furkin.internal.network.RecordActionPacket;
 import com.wanancat.furkin.internal.network.ResetSkillsPacket;
 import com.wanancat.furkin.internal.network.SelectTabPacket;
 import com.wanancat.furkin.internal.network.UnlockSkillPacket;
@@ -45,6 +47,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -315,6 +318,12 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
     private final Button[] tabButtons = new Button[3];
     private Button resetButton;
 
+    /** 战斗模式循环按钮（装备页可见；文字即当前档位）。 */
+    private Button modeButton;
+
+    /** 战斗模式按钮宽度 —— 「战斗模式：主动」这类中文字面量的实测安全宽度。 */
+    private static final int MODE_BUTTON_WIDTH = 90;
+
     /** 技能列表的滚动容器（官方组件，见类注释）。非技能页时 {@code visible = false}。 */
     private SkillListWidget skillList;
 
@@ -436,7 +445,38 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
                 .bounds(this.leftPos + TAB_MARGIN, this.topPos + this.imageHeight + 4, 60, 20)
                 .build());
 
+        // 战斗模式循环按钮 —— 面板下沿、洗点按钮右侧（技能页可见，2026-09-22 她定）。
+        // 放这里而非装备槽右侧：那块「摘要区」只有 80px，中文下一项属性就 49~60px
+        // （见 renderEquipSummary 的实测注释），再切一块给按钮会挤掉装备加成摘要。
+        // 下沿这行天然有空位 —— 洗点按钮宽度 60、起点 8，右侧 72 起正好放得下。
+        this.modeButton = this.addRenderableWidget(Button.builder(
+                        Component.translatable("furkin.screen.furkin.combat_mode", "?"),
+                        b -> cycleCombatMode())
+                .bounds(this.leftPos + TAB_MARGIN + 64, this.topPos + this.imageHeight + 4,
+                        MODE_BUTTON_WIDTH, 20)
+                .build());
+
+        // 换屏实例不带旧乐观值过来（重开屏时镜像才是真源）。
+        this.pendingMode = null;
+        this.pendingModeTicks = 0;
+
         updateTabState();
+    }
+
+    /**
+     * 每 tick 校一次乐观值 —— 服务端镜像追平后让位，被拒则超时放弃。
+     *
+     * <p>选择 tick 而非 render：render 每帧 60 次、且可能因窗口最小化而暂停；
+     * tick 稳定 20 次/秒，正好匹配能力同步的节奏。本屏是容器屏，
+     * {@code AbstractContainerScreen#containerTick} 由 {@code Screen#tick} 调用。</p>
+     */
+    @Override
+    public void containerTick() {
+        super.containerTick();
+        reconcilePendingMode();
+        if (this.modeButton != null && this.modeButton.visible) {
+            updateTabState();
+        }
     }
 
     /** 页签的固定展示顺序。 */
@@ -496,9 +536,48 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
         }
         this.resetButton.visible = active == TAB_SKILLS;
         this.resetButton.active = active == TAB_SKILLS;
+        // 战斗模式按钮：**技能页**可见、洗点按钮右侧（2026-09-22 她定 —— 先前误放装备页）。
+        this.modeButton.visible = active == TAB_SKILLS;
+        this.modeButton.active = active == TAB_SKILLS && combatMode() != null;
+        // ⚠️ 显示值：本地乐观值尚未被镜像追平前先show它，追平后让位给镜像
+        // （见 reconcilePendingMode —— 否则连点后的乐观值会永久盖住真值）。
+        this.modeButton.setMessage(Component.translatable("furkin.screen.furkin.combat_mode",
+                Component.translatable(modeKey(displayedCombatMode()))));
         // 非技能页不显示列表容器：它同时负责「吃掉内容区点击」，关掉才轮得到槽位。
         this.skillList.visible = active == TAB_SKILLS;
     }
+
+    /**
+     * 当前该显示的战斗档位 —— 乐观值优先，镜像追平后自动让位。
+     *
+     * <p>服务端回推能力镜像有延迟（{@code setMode} 那次 sync 到下一 tick 才落到客户端），
+     * 这段时间里 {@link #combatMode()} 还是旧值；若直接读它，点完按钮文字不会变
+     * （2026-09-22 她报的「页签点击后没有实时变化文字」）。故先读 {@link #pendingMode}。</p>
+     */
+    private FurkinCombatMode displayedCombatMode() {
+        return pendingMode != null ? pendingMode : combatMode();
+    }
+
+    /**
+     * 镜像追平后清掉乐观值 —— 让 {@link #combatMode()} 重新成为唯一真源。
+     *
+     * <p>判定「追平」= 服务端画像已经等于本地乐观值。若不清理，乐观值会永久压住镜像；
+     * 若服务端<b>拒绝</b>了这次切档（未召唤 / 非主人 / 无效），镜像永远不会等于乐观值，
+     * 此时靠 {@link #PENDING_MODE_TIMEOUT_TICKS} 兜底超时放弃，避免卡在错误显示上。</p>
+     */
+    private void reconcilePendingMode() {
+        if (pendingMode == null) {
+            return;
+        }
+        FurkinCombatMode mirror = combatMode();
+        if (mirror == pendingMode || ++pendingModeTicks > PENDING_MODE_TIMEOUT_TICKS) {
+            pendingMode = null;
+            pendingModeTicks = 0;
+        }
+    }
+
+    /** 连点乐观值的存活上限（tick）—— 服务端拒绝切档时用它兜底放弃，约 2 秒。 */
+    private static final int PENDING_MODE_TIMEOUT_TICKS = 40;
 
     // ===== 渲染 =====
 
@@ -977,6 +1056,65 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
         return companion == null
                 ? null
                 : companion.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
+    }
+
+    /**
+     * 当前战斗模式 —— 读客户端能力镜像（{@code combat_mode} 在 {@code syncNBT} 里，
+     * 服务端切档后会主动下发，见 {@code FurkinCombatModeHandler#setMode}）。
+     * 取不到时返回 {@code null}（按钮置灰）。
+     */
+    private FurkinCombatMode combatMode() {
+        FurkinData data = companionData(companionEntity());
+        return data == null ? null : data.getCombatMode();
+    }
+
+    /**
+     * 上一次点按钮算出的目标档位 —— <b>连点时的基准</b>。
+     *
+     * <p>本镜像要等下一 tick 才被能力数据覆盖，若两次点击落在同一 tick 内（或镜像还没刷新），
+     * {@link #combatMode()} 会返回<b>同一个旧值</b> ⇒ 连点两下只会切一档（第二下算出的
+     * 「下一档」和第一下相同）。故记住本屏自己最后一次的目标，优先用它算下一档。</p>
+     */
+    private FurkinCombatMode pendingMode;
+
+    /** {@link #pendingMode} 已存活的 tick 数 —— 服务端拒绝切档时用它兜底放弃。 */
+    private int pendingModeTicks;
+
+    /** 档位 → lang key（与绒亲录界面同一套 key）。 */
+    private static String modeKey(FurkinCombatMode mode) {
+        return "furkin.combat_mode." + (mode == null ? "follow" : mode.name().toLowerCase(Locale.ROOT));
+    }
+
+    /**
+     * 点「战斗模式」：按当前档位算下一档，上行绒亲录同一套管理动作包。
+     *
+     * <p>复用 {@code RecordActionPacket.SET_COMBAT_MODE} + {@code FurkinCombatModeHandler}
+     * ⇒ 与命令 {@code /furkin mode}、录内按钮<b>同一套规则</b>，不另开链路。</p>
+     *
+     * <p>⚠️ <b>用 4 参构造器</b>（不带 {@code refreshRecord}）—— 本面板<b>不要</b>服务端重发
+     * 绒亲录列表：那会让客户端 {@code open()} 出录界面，点一下面板就被弹走
+     * （2026-09-22 她报「页签点战斗模式→跳转到绒亲录了」）。本面板自己就地刷新
+     * （乐观更新 + {@link #containerTick} 对账），不靠重发。</p>
+     */
+    private void cycleCombatMode() {
+        // 基准优先取本地已点出的目标（连点正确），其次取镜像。
+        FurkinCombatMode current = pendingMode != null ? pendingMode : combatMode();
+        if (current == null) {
+            return;
+        }
+        FurkinCombatMode[] all = FurkinCombatMode.values();
+        FurkinCombatMode next = all[(current.ordinal() + 1) % all.length];
+        pendingMode = next;
+        pendingModeTicks = 0;
+        // 末位不传 refreshRecord ⇒ 默认 false ⇒ 面板点档位不会被拽去录界面。
+        FurkinNetwork.channel().sendToServer(new RecordActionPacket(
+                RecordActionPacket.Action.SET_COMBAT_MODE, this.companionId, null, next));
+        // ⚠️ 本地先乐观更新按钮文字（2026-09-22 她报「点击后没有实时变化」）：
+        // 服务端切档后会回推能力镜像，但那是**下一 tick** 的事，本屏不会自动重刷 ——
+        // 面板是容器屏，没有 onSkillData 那样的刷新入口。先改文字让点击立刻有反馈，
+        // 真值仍以服务端镜像为准（下次 updateTabState / 重开屏会覆盖）。
+        this.modeButton.setMessage(Component.translatable("furkin.screen.furkin.combat_mode",
+                Component.translatable(modeKey(next))));
     }
 
     /** 物种显示名 —— 按实体类型查注册表自解，无需服务端下发（设计稿 §4.1 取证⑧）。 */

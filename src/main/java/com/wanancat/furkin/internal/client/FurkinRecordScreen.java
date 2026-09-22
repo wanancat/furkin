@@ -1,5 +1,6 @@
 package com.wanancat.furkin.internal.client;
 
+import com.wanancat.furkin.internal.contract.FurkinCombatMode;
 import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.network.RecordActionPacket;
 import com.wanancat.furkin.internal.network.RecordListPacket;
@@ -32,11 +33,20 @@ import java.util.UUID;
  * 显示它的管理动作 + 属性区（服务端算好随列表包下发，脱实体可算，见 {@link RecordAttributes}）。
  *
  * <p><b>布局</b>（M5 打磨，2026-09-22 定）：左列表（可选中）+ 右详情卡。管理动作
- * （召唤 / 收回 / 解绑 / 改名 / 重获魂石）从「每条目右侧」移到「右侧详情卡」，按选中
+ * （召唤 / 收回 / 改名 / 模式 / 解绑 / 重获魂石）从「每条目右侧」移到「右侧详情卡」，按选中
  * 条目状态分流。属性区沿用技能页属性区那套「名称 总值 (基础+技能+装备)」配色与格式。</p>
  *
+ * <p><b>详情卡按钮版式</b>（2026-09-22 她定稿，三行两列，锚底）：
+ * <pre>
+ *   存活：  召唤 丨 收回          改动：  重获魂石
+ *           改名 丨 模式                   解绑
+ *           解绑
+ * </pre>
+ * 「收回」仅已召唤时出现（未召唤时第一行只有召唤）；「模式」仅已召唤时可点（未召唤置灰）。</p>
+ *
  * <p>「召唤」按状态分流（未召唤→重建实体；已召唤→传送身边）。管理动作经
- * {@link RecordActionPacket} 上行，服务端统一走 {@code FurkinRecordActionHandler}（规则一套）。</p>
+ * {@link RecordActionPacket} 上行（<b>带 {@code refreshRecord = true}</b>，让服务端回发列表
+ * 刷新本屏），服务端统一走 {@code FurkinRecordActionHandler}（规则一套）。</p>
  *
  * <p><b>端位隔离</b>：本类 {@link OnlyIn}{@code (Dist.CLIENT)}，服务端加载时
  * 方法体被 RuntimeDistCleaner 替换为抛异常。打开入口统一走 {@link #open(List)}，
@@ -45,8 +55,8 @@ import java.util.UUID;
 @OnlyIn(Dist.CLIENT)
 public final class FurkinRecordScreen extends Screen {
 
-    /** 列表数据。 */
-    private final List<RecordListPacket.Entry> entries;
+    /** 列表数据（服务端回发刷新时**就地替换**，见 {@link #acceptRefresh}）。 */
+    private List<RecordListPacket.Entry> entries;
 
     /** 当前选中的条目下标（-1 = 未选中）。 */
     private int selectedIndex = -1;
@@ -92,6 +102,48 @@ public final class FurkinRecordScreen extends Screen {
     /** 打开绒亲录列表界面（客户端专用入口，服务端不可调用）。 */
     public static void open(List<RecordListPacket.Entry> entries) {
         Minecraft.getInstance().setScreen(new FurkinRecordScreen(entries));
+    }
+
+    /**
+     * 服务端回发的<b>刷新</b>数据（`openScreen = false` 的那份）。
+     *
+     * <p><b>就地替换</b>而不是换屏实例（2026-09-22 重做）：换新实例会丢选中
+     * （新屏默认选中第 0 条，而列表按「物种 &gt; 等级 &gt; id」排序、改名或升级会让条目换位，
+     * 按下标记更糟）。就地替换则能<b>按 id 保住选中</b>，也保住了滚动位置。</p>
+     *
+     * @param fresh 服务端刚算出的新列表
+     */
+    public void acceptRefresh(List<RecordListPacket.Entry> fresh) {
+        UUID keep = selectedEntry() == null ? null : selectedEntry().getCompanionId();
+        this.entries = fresh;
+        // 按 id 找回选中（条目可能换位 / 甚至消失 —— 被解绑后就不在列表里了）。
+        this.selectedIndex = -1;
+        if (keep != null) {
+            for (int i = 0; i < fresh.size(); i++) {
+                if (keep.equals(fresh.get(i).getCompanionId())) {
+                    this.selectedIndex = i;
+                    break;
+                }
+            }
+        }
+        // 原选中项没了（被解绑）→ 退回第一条（还有的话）。
+        if (this.selectedIndex < 0 && !fresh.isEmpty()) {
+            this.selectedIndex = 0;
+        }
+        // 整屏重建：条目集合变了，左右两侧都要跟着走（重建会重置滚动，属可接受）。
+        rebuild();
+    }
+
+    /**
+     * 收到刷新包时的总入口 —— <b>不重开屏</b>，交给已在的录界面就地更新。
+     *
+     * <p>若当前屏不是绒亲录（比如她在技能面板上点了档位），则<b>什么都不做</b>：
+     * 那份数据本就不是冲她正看的界面来的，弹屏是错的（2026-09-22 她报的 bug）。</p>
+     */
+    public static void handleRefresh(List<RecordListPacket.Entry> entries) {
+        if (Minecraft.getInstance().screen instanceof FurkinRecordScreen record) {
+            record.acceptRefresh(entries);
+        }
     }
 
     @Override
@@ -140,7 +192,7 @@ public final class FurkinRecordScreen extends Screen {
         if (selected != null) {
             if (!selected.getAttributes().isEmpty()) {
                 RecordAttributeList attrList = new RecordAttributeList(
-                        Math.max(ATTR_LINE_HEIGHT, this.height - 90 - ATTR_LIST_TOP));
+                        Math.max(ATTR_LINE_HEIGHT, detailButtonsTop() - 6 - ATTR_LIST_TOP));
                 List<RecordAttributeList.LineRow> lineRows = new ArrayList<>();
                 for (RecordAttributes.Line line : selected.getAttributes()) {
                     lineRows.add(attrList.new LineRow(line));
@@ -151,6 +203,20 @@ public final class FurkinRecordScreen extends Screen {
             addDetailButtons(selected);
         }
     }
+
+    /**
+     * 详情卡按钮区顶端 —— 属性滚动列表的下界。
+     *
+     * <p><b>为什么抽出来</b>（2026-09-22）：属性列表原先把高度写成 {@code height - 90}，
+     * 这个 90 是「两行按钮」时代的硬编码。按钮加到三行后属性列表仍按旧式算高，
+     * 底缘会伸进按钮区（小窗口下更明显）。改为两边共用本方法 —— 改行数不会再有一边漏改。</p>
+     */
+    private int detailButtonsTop() {
+        return this.height - 40 - DETAIL_BUTTONS_HEIGHT;
+    }
+
+    /** 详情卡按钮区总高 —— 三行按钮（20px）+ 两个行距（4px）。 */
+    private static final int DETAIL_BUTTONS_HEIGHT = 20 * 3 + 4 * 2;
 
     /** 移除右侧详情卡组件（属性列表 + 管理按钮），保留左列表与关闭按钮。 */
     private void clearDetailWidgets() {
@@ -193,7 +259,7 @@ public final class FurkinRecordScreen extends Screen {
         return label.withStyle(ChatFormatting.WHITE);
     }
 
-    /** 右详情卡：管理按钮（两行两列，锚定详情卡底部 —— 属性再多也不被推出屏）。 */
+    /** 右详情卡：管理按钮（三行两列，锚定详情卡底部 —— 属性再多也不被推出屏）。 */
     private void addDetailButtons(RecordListPacket.Entry entry) {
         UUID id = entry.getCompanionId();
         boolean alive = entry.isAlive();
@@ -204,8 +270,10 @@ public final class FurkinRecordScreen extends Screen {
         int rowGap = 4;
         int col2 = DETAIL_LEFT + btnW + gap;
 
-        // 锚底：两行按钮占 20+4+20=44px，底部对齐关闭按钮上方 10px。
-        int y = this.height - 40 - 44;
+        // 锚底：三行按钮占 20×3+4×2=68px，底部对齐关闭按钮上方 10px。
+        // ⚠️ 2026-09-22 加「战斗模式」后由两行（44px）变三行，这里必须同步 ——
+        // 否则第三行会压到关闭按钮上。行数与 detailButtonsTop() 共用同一常量。
+        int y = detailButtonsTop();
 
         if (alive) {
             // 第一行：召唤（左）｜ 收回（右，仅已召唤时）。
@@ -217,12 +285,20 @@ public final class FurkinRecordScreen extends Screen {
                         col2, y, btnW, btnH);
             }
             y += btnH + rowGap;
-            // 第二行：改名（左）｜ 解绑（右）。
+            // 第二行（2026-09-22 她定稿）：改名（左）｜ 模式（右）。
             detailButton(Component.translatable("furkin.screen.record.rename"),
                     btn -> openRename(id, entry), DETAIL_LEFT, y, btnW, btnH);
+            // 战斗模式循环。与命令同门槛 —— 未召唤时不可切（置灰）。
+            Button modeBtn = detailButton(combatModeLabel(entry),
+                    btn -> requestAction(RecordActionPacket.Action.SET_COMBAT_MODE, id, null,
+                            nextMode(entry.getCombatMode())),
+                    col2, y, btnW, btnH);
+            modeBtn.active = summoned;
+            y += btnH + rowGap;
+            // 第三行：解绑（左格，独占一行）。
             detailButton(Component.translatable("furkin.screen.record.unbind"),
                     btn -> requestAction(RecordActionPacket.Action.UNBIND, id, null),
-                    col2, y, btnW, btnH);
+                    DETAIL_LEFT, y, btnW, btnH);
         } else {
             // 已亡：第一行「重获魂石」占左格（2026-09-22 定，不横跨）；第二行「解绑」放左格。
             detailButton(Component.translatable("furkin.screen.record.reacquire_soulstone"),
@@ -235,23 +311,60 @@ public final class FurkinRecordScreen extends Screen {
         }
     }
 
+    /**
+     * 战斗模式按钮文字 —— 显示<b>当前档位</b>（点击切到下一档）。
+     *
+     * <p>与命令 {@code /furkin list} 的口径一致：档位名走 lang（命令侧因不走 lang 而写字面量，
+     * 界面侧一律走 key，中英环境均正确）。</p>
+     */
+    private Component combatModeLabel(RecordListPacket.Entry entry) {
+        return Component.translatable("furkin.screen.record.combat_mode",
+                Component.translatable(modeKey(entry.getCombatMode())));
+    }
+
+    /** 档位 → lang key。 */
+    private static String modeKey(FurkinCombatMode mode) {
+        return "furkin.combat_mode." + mode.name().toLowerCase(java.util.Locale.ROOT);
+    }
+
+    /** 单键循环：follow → passive → protect → aggressive → follow（与命令档位顺序一致）。 */
+    private static FurkinCombatMode nextMode(FurkinCombatMode current) {
+        FurkinCombatMode[] all = FurkinCombatMode.values();
+        return all[(current.ordinal() + 1) % all.length];
+    }
+
     /** 加一个详情卡按钮，并记入 {@link #detailButtons}（刷新详情时精确清除）。 */
-    private void detailButton(Component label, Button.OnPress onPress, int x, int y, int w, int h) {
+    private Button detailButton(Component label, Button.OnPress onPress, int x, int y, int w, int h) {
         Button btn = Button.builder(label, onPress).bounds(x, y, w, h).build();
         addRenderableWidget(btn);
         detailButtons.add(btn);
+        return btn;
     }
 
-    /** 点「召唤」：上行请求召唤包（服务端按状态分流召唤 / 传送）。 */
+    /** 点「召唤」：上行请求召唤包（服务端按状态分流召唤 / 传送）；不关屏（2026-09-22 她定）。 */
     private void requestSummon(UUID companionId) {
         FurkinNetwork.channel().sendToServer(new RequestSummonPacket(companionId));
-        onClose();
     }
 
-    /** 点「收回 / 解绑 / 改名」：上行管理动作包，服务端统一处理。 */
+    /**
+     * 点「收回 / 改名 / 解绑 / 重获魂石 / 战斗模式」：上行管理动作包，服务端统一处理。
+     *
+     * <p><b>不关屏</b>（2026-09-22 她定）：按钮点一下就把界面关掉，等于每看一次状态都要重开录。
+     * 改为留在原地，并<b>向服务端要一份新列表</b>刷新自身 —— 服务端处理完会回发
+     * <b>刷新用途</b>（{@code openScreen = false}）的列表包，经 {@link #handleRefresh}
+     * <b>就地</b>更新本屏（不换屏实例 ⇒ 选中与滚动位置都保住）。</p>
+     */
     private void requestAction(RecordActionPacket.Action action, UUID companionId, String name) {
-        FurkinNetwork.channel().sendToServer(new RecordActionPacket(action, companionId, name));
-        onClose();
+        // 末位 true = 让服务端回发列表刷新本录（本屏不关屏，靠它就地更新）。
+        FurkinNetwork.channel().sendToServer(
+                new RecordActionPacket(action, companionId, name, null, true));
+    }
+
+    /** 点「战斗模式」：上行同一管理动作包，带目标档位（服务端走 FurkinCombatModeHandler）。 */
+    private void requestAction(RecordActionPacket.Action action, UUID companionId, String name,
+                              FurkinCombatMode mode) {
+        FurkinNetwork.channel().sendToServer(
+                new RecordActionPacket(action, companionId, name, mode, true));
     }
 
     /** 打开改名输入框（预填当前名字）。 */

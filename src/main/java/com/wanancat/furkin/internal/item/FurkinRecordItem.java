@@ -51,8 +51,31 @@ public class FurkinRecordItem extends Item {
         return InteractionResultHolder.success(stack);
     }
 
-    /** 打包本人「全部」绒亲列表（含已召唤 / 已收回 / 已死亡），下发给该玩家。 */
-    private void sendRecordList(ServerPlayer player) {
+    /**
+     * 打包本人「全部」绒亲列表（含已召唤 / 已收回 / 已死亡）并<b>开屏</b>下发给该玩家。
+     *
+     * <p>右键绒亲录物品走这里 —— 客户端收到后 {@code setScreen} 打开界面。</p>
+     */
+    public static void sendRecordList(ServerPlayer player) {
+        send(player, true);
+    }
+
+    /**
+     * 打包同上，但下发的是<b>刷新用途</b>的包（客户端不会重开屏，只喂给已在的录界面）。
+     *
+     * <p><b>static 且 public</b>（2026-09-22）：录内按钮点完<b>不再关屏</b>，服务端处理完动作后
+     * 要重发一份列表让界面就地刷新，故 {@code RecordActionPacket} 侧也要调它 ——
+     * 本方法不依赖物品实例，改成工具方法即可复用。</p>
+     *
+     * <p>⚠️ 与 {@link #sendRecordList} 的区别只在 {@code openScreen} 标志：本方法
+     * <b>不重新 setScreen</b>。否则技能面板切档也会被弹进录界面（2026-09-22 她报的 bug）。</p>
+     */
+    public static void refreshRecordList(ServerPlayer player) {
+        send(player, false);
+    }
+
+    /** 打包列表并按 {@code openScreen} 下发（唯一实现，两个入口共用）。 */
+    private static void send(ServerPlayer player, boolean openScreen) {
         FurkinArchiveData archive = FurkinArchiveData.get(player.serverLevel());
         UUID me = player.getUUID();
 
@@ -85,6 +108,7 @@ public class FurkinRecordItem extends Item {
                         entry.getCompanionId(), speciesKey, entry.getLevel(),
                         entry.getXp(), entry.getSkillPoints(), name,
                         entry.isSummoned(), entry.isAlive(),
+                        entry.getCombatMode(),
                         attributes));
             }
         }
@@ -95,7 +119,7 @@ public class FurkinRecordItem extends Item {
 
         FurkinNetwork.channel().send(
                 net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> player),
-                new RecordListPacket(list));
+                new RecordListPacket(list, openScreen));
     }
 
     /**
@@ -103,7 +127,7 @@ public class FurkinRecordItem extends Item {
      * {@code EntityType#getDescriptionId()}。返回的是本地化 key，客户端用
      * {@code Component.translatable} 渲染，中英文环境均正确。
      */
-    private String resolveSpeciesKey(FurkinArchiveEntry entry) {
+    private static String resolveSpeciesKey(FurkinArchiveEntry entry) {
         if (entry.getSpecies() != null) {
             java.util.Optional<FurkinSpecies> species =
                     FurkinSpeciesRegistry.byEntityType(entry.getSpecies());
