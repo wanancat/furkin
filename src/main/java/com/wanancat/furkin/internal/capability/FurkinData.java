@@ -216,10 +216,12 @@ public final class FurkinData {
     }
 
     /**
-     * 序列化为 NBT。能力对象只存原版没有的字段。
+     * 序列化核心字段（不含随身行囊）到 NBT。
+     *
+     * <p>被 {@link #serializeNBT()}（持久化出口）与 {@link #syncNBT()}（网络同步出口）共用，
+     * 二者区别只在于是否附带行囊物品。</p>
      */
-    public CompoundTag serializeNBT() {
-        CompoundTag tag = new CompoundTag();
+    private void writeCore(CompoundTag tag) {
         if (companionId != null) {
             tag.putUUID("companion_id", companionId);
         }
@@ -245,11 +247,34 @@ public final class FurkinData {
             cooldownsTag.putLong(e.getKey().toString(), e.getValue());
         }
         tag.put("cooldowns", cooldownsTag);
+    }
 
+    /**
+     * 序列化为 NBT（持久化出口）。
+     *
+     * <p>含 {@code pouch} 行囊物品 —— 物品随实体 NBT 走（宠物退游戏 / 区块卸载重载都不丢）。
+     * 仅由 {@link FurkinProvider} 在实体存档时调用；网络同步请用 {@link #syncNBT()}。</p>
+     */
+    public CompoundTag serializeNBT() {
+        CompoundTag tag = new CompoundTag();
+        writeCore(tag);
         // 随身行囊：物品随实体 NBT 走（宠物退游戏 / 区块卸载重载都不丢）。
         // 注意与「收回 / 死亡」的区别 —— 那两条路径会先清空并掉落物品再存快照（D6），
         // 否则快照里的 ForgeCaps 会把行囊原样回灌。
         tag.put("pouch", pouch.createTag());
+        return tag;
+    }
+
+    /**
+     * 序列化为 NBT（网络同步出口）。
+     *
+     * <p><b>不含行囊</b>：客户端渲染（头顶 / 面板属性区）只依赖等级 / 经验 / 技能点 / 状态 /
+     * 技能快照，行囊物品由 {@code FurkinPouchMenu}（Container 同步）单独下发，
+     * 不该经此包背最多 27 格物品的 NBT（浪费带宽 + 序列化开销）。</p>
+     */
+    public CompoundTag syncNBT() {
+        CompoundTag tag = new CompoundTag();
+        writeCore(tag);
         return tag;
     }
 
@@ -288,11 +313,10 @@ public final class FurkinData {
     }
 
     /**
-     * 数据深拷贝（用于存档快照 / 网络同步）。
+     * 数据深拷贝（存档快照用，D6 路径留底契约 / 死亡前的状态）。
      *
-     * <p><b>刻意不复制行囊物品</b>：按 D6「行囊只在场」，物品不随档案 / 快照走。
-     * 容器内容另有两条独立通路（实体 NBT 持久化、Menu 增量同步），都不经过本拷贝；
-     * 若在这里复制，网络包会白白背上最多 27 格物品的 NBT。</p>
+     * <p><b>刻意不复制行囊物品</b>：按 D6「行囊只在场」，物品不随快照走。
+     * 容器内容另有两条独立通路（实体 NBT 持久化、Menu 增量同步），都不经过本拷贝。</p>
      */
     public FurkinData copy() {
         FurkinData copy = new FurkinData();

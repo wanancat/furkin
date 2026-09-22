@@ -75,7 +75,7 @@ public final class CommonEvents {
         }
         FurkinNetwork.channel().send(
                 PacketDistributor.PLAYER.with(() -> (ServerPlayer) event.getEntity()),
-                new SyncFurkinDataPacket(target.getId(), data.serializeNBT()));
+                new SyncFurkinDataPacket(target.getId(), data.syncNBT()));
     }
 
     @SubscribeEvent
@@ -301,7 +301,7 @@ public final class CommonEvents {
         entry.setLevel(data.getLevel());
         entry.setXp(data.getXp());
         entry.setSkillPoints(data.getSkillPoints());
-        entry.setSkillSnapshot(data.serializeNBT().getCompound("skill_levels"));
+        entry.setSkillSnapshot(data.syncNBT().getCompound("skill_levels"));
         // 一次 saveWithoutId 供两个用途：整包外观快照 + 从中摘出的装备快照（M3.2）。
         CompoundTag snapshot = target.saveWithoutId(new CompoundTag());
         entry.setEntitySnapshot(snapshot);

@@ -133,7 +133,7 @@ public final class FurkinGrowth {
     private static void syncToClients(LivingEntity companion, FurkinData data) {
         FurkinNetwork.channel().send(
                 PacketDistributor.TRACKING_ENTITY_AND_SELF.with(() -> companion),
-                new SyncFurkinDataPacket(companion.getId(), data.serializeNBT()));
+                new SyncFurkinDataPacket(companion.getId(), data.syncNBT()));
     }
 
     /** 同步写回档案（等级 / 经验 / 技能点），使绒亲录列表读档案即得最新值。 */

@@ -86,7 +86,7 @@ public final class FurkinCompanionManager {
         entry.setLevel(data.getLevel());
         entry.setXp(data.getXp());
         entry.setSkillPoints(data.getSkillPoints());
-        entry.setSkillSnapshot(data.serializeNBT().getCompound("skill_levels"));
+        entry.setSkillSnapshot(data.syncNBT().getCompound("skill_levels"));
         // 物种补写：旧档（加 species 字段前契约的）在此自愈——实体在场时物种必然可得。
         if (entry.getSpecies() == null) {
             entry.setSpecies(target.getType());
@@ -292,7 +292,7 @@ public final class FurkinCompanionManager {
         // 同步能力数据到客户端。
         FurkinNetwork.channel().send(
                 PacketDistributor.TRACKING_ENTITY_AND_SELF.with(() -> living),
-                new SyncFurkinDataPacket(living.getId(), data.serializeNBT()));
+                new SyncFurkinDataPacket(living.getId(), data.syncNBT()));
 
         FurkinMod.LOGGER.info("Furkin summoned: id={} species={} by {}",
                 companionId, species, player.getName().getString());

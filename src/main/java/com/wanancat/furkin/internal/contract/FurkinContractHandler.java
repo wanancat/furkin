@@ -176,7 +176,7 @@ public final class FurkinContractHandler {
         // 同步能力数据到客户端（头顶图标等客户端表现依赖）。
         FurkinNetwork.channel().send(
                 PacketDistributor.TRACKING_ENTITY_AND_SELF.with(() -> target),
-                new SyncFurkinDataPacket(target.getId(), data.serializeNBT()));
+                new SyncFurkinDataPacket(target.getId(), data.syncNBT()));
 
         FurkinMod.LOGGER.info("Furkin contracted: {} (id={}) by {}",
                 target.getName().getString(), companionId, player.getName().getString());

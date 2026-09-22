@@ -117,7 +117,7 @@ public final class FurkinRecordActionHandler {
                         PacketDistributor.TRACKING_ENTITY_AND_SELF.with(() -> target),
                         new SyncFurkinDataPacket(target.getId(),
                                 target.getCapability(FurkinCapability.FURKIN_DATA)
-                                        .orElseGet(FurkinData::new).serializeNBT()));
+                                        .orElseGet(FurkinData::new).syncNBT()));
             }
         }
 
@@ -363,7 +363,7 @@ public final class FurkinRecordActionHandler {
         // 让抬头读到此刻的准确值 —— 数据源仍只有镜像这一份（设计稿 §4.1 定案 N2）。
         FurkinNetwork.channel().send(
                 PacketDistributor.PLAYER.with(() -> player),
-                new SyncFurkinDataPacket(target.getId(), data.serializeNBT()));
+                new SyncFurkinDataPacket(target.getId(), data.syncNBT()));
 
         FurkinNetwork.channel().send(
                 PacketDistributor.PLAYER.with(() -> player),

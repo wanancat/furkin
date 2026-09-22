@@ -119,7 +119,7 @@ public final class SkillProgress {
         // 广播能力数据到客户端。
         FurkinNetwork.channel().send(
                 PacketDistributor.TRACKING_ENTITY_AND_SELF.with(() -> target),
-                new SyncFurkinDataPacket(target.getId(), data.serializeNBT()));
+                new SyncFurkinDataPacket(target.getId(), data.syncNBT()));
 
         FurkinMod.LOGGER.info("Furkin skill unlocked: id={} skill={} -> Lv.{}",
                 companionId, skillId, newLevel);
@@ -161,7 +161,7 @@ public final class SkillProgress {
                 syncToArchive(target, data, archive, entry);
                 FurkinNetwork.channel().send(
                         PacketDistributor.TRACKING_ENTITY_AND_SELF.with(() -> target),
-                        new SyncFurkinDataPacket(target.getId(), data.serializeNBT()));
+                        new SyncFurkinDataPacket(target.getId(), data.syncNBT()));
                 return refund;
             }
         } else {
@@ -207,7 +207,7 @@ public final class SkillProgress {
         entry.setLevel(data.getLevel());
         entry.setXp(data.getXp());
         entry.setSkillPoints(data.getSkillPoints());
-        entry.setSkillSnapshot(data.serializeNBT().getCompound("skill_levels"));
+        entry.setSkillSnapshot(data.syncNBT().getCompound("skill_levels"));
         archive.putEntry(entry);
     }
 

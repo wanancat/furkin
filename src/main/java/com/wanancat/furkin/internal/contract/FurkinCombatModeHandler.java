@@ -91,7 +91,7 @@ public final class FurkinCombatModeHandler {
         // 同步客户端（能力数据里含 combat_mode）。
         FurkinNetwork.channel().send(
                 PacketDistributor.TRACKING_ENTITY_AND_SELF.with(() -> target),
-                new SyncFurkinDataPacket(target.getId(), data.serializeNBT()));
+                new SyncFurkinDataPacket(target.getId(), data.syncNBT()));
 
         FurkinMod.LOGGER.info("Furkin combat mode set: id={} mode={} by {}",
                 companionId, mode.name(), player.getName().getString());
