@@ -526,7 +526,8 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
         }
 
         // 装备页：摘要行只放得下两项，完整清单走悬停（挂在摘要行上，不是槽位上 ——
-        // 槽位本身已有原版物品 tooltip，两者叠在一起会互相遮）。
+        // 两类 tooltip 的 x 区间不相交：装备槽只占到 leftPos+80，摘要区自 leftPos+88 起，
+        // 中间 8px 是死区，同一个像素不可能同时命中两边）。
         if (this.menu.getActiveTab() == TAB_EQUIP) {
             List<EquipBonus.Entry> bonuses = equipBonuses();
             if (!bonuses.isEmpty() && isOverEquipSummary(mouseX, mouseY)) {
@@ -534,6 +535,14 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
                         Optional.empty(), mouseX, mouseY);
             }
         }
+
+        // 槽位物品的原版 tooltip（名称 + 属性修饰符）。
+        // ⚠️ `AbstractContainerScreen.render` 只负责画槽位本身与高亮框，**不会**自己弹 tooltip ——
+        // 每个官方容器屏都要在自己的 render 覆写里显式补这一句（javap 核实：HopperScreen 1 处、
+        // CraftingScreen 2 处）。少了它，行囊 / 装备 / 玩家背包三处的槽位就是「有物品、悬停没反应」。
+        // 内部自带守卫（carrying 为空 && hoveredSlot != null && hoveredSlot.hasItem()），
+        // 拖拽中或悬停空格子都不会弹，所以逐帧无条件调用是安全的。
+        this.renderTooltip(gui, mouseX, mouseY);
     }
 
     /**
