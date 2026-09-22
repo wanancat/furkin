@@ -2,7 +2,7 @@
 
 ![Minecraft](https://img.shields.io/badge/Minecraft-1.20.1-blue)
 
-![Forge](https://img.shields.io/badge/Forge-47.2.0-orange)
+![Forge](https://img.shields.io/badge/Forge-47.0%2B-orange)
 
 ![License](https://img.shields.io/badge/License-MIT-green)
 
@@ -26,21 +26,39 @@ can bring their own creatures in as companions too.
 | Requirement     | Version |
 | --------------- | ------- |
 | Minecraft       | 1.20.1  |
-| Minecraft Forge | 47.2.0  |
+| Minecraft Forge | 47.0+   |
 | Java            | 17      |
 
 **Zero hard dependencies.** No required library mods.
 
 ## Installation
 
-1. Install [Minecraft Forge 1.20.1](https://files.minecraftforge.net) (47.2.0 or later).
+1. Install [Minecraft Forge 1.20.1](https://files.minecraftforge.net) (47.0 or later).
 2. Download the latest `.jar` from the releases.
 3. Drop it into your `.minecraft/mods` folder.
 
 ## Usage
 
-Craft a **Furkin Contract** and right-click any valid animal to bond it as your companion.
-Craft a **Furkin Record** to manage your companions (summon, recall, skill points, equipment).
+- Craft a **Furkin Contract** from wool and paper, then right-click any valid animal to bond it as a companion.
+- Craft a **Furkin Record** from a Furkin Contract and a book to manage your companions
+  (summon, recall, unbind, toggle combat mode, and more).
+
+![Furkin Record](./docs/images/companion_record.png)
+
+- Sneak + right-click your companion to level up its skills and adjust its equipment.
+  It's ready to join you on an adventure.
+
+![Skill panel](./docs/images/skill_panel.png)
+
+- Not happy with your skill point allocation? Craft a **Respec Potion** from a Furkin
+  Contract and a water bottle.
+
+- If your companion falls in battle, pick up the **Furkin Soulstone** it dropped and
+  you can bring it back to the world of the living.
+
+![Revival ritual](./docs/images/revive_ritual.png)
+
+(For that, you'll probably need some wool and a few flowers...)
 
 > Detailed in-game guide coming with the 1.0 release.
 
@@ -56,7 +74,10 @@ FurkinApi.registerSpecies(EntityType.WOLF, ...);
 
 Any registered species works — a zombie, even, if you find it fluffy enough. :)
 
-See the API package for the full surface. A standalone example mod will be provided.
+See the `api` package for the full surface (7 public types). ⚠️ Everything outside `api`
+(especially `internal.*`) is implementation detail, carries no compatibility promise, and may
+change at any time. No separate api jar is published, so this boundary is a **convention**,
+not a compile-time enforcement.
 
 ## Building from Source
 
