@@ -343,11 +343,18 @@ public final class FurkinRecordScreen extends Screen {
     /** 右详情卡固定文字：抬头（名字+物种+Lv/经验/技能点/状态）+「属性」小标题 + 空提示。 */
     private void renderDetail(GuiGraphics gui, RecordListPacket.Entry entry) {
         // 抬头：名字（物种）+ 等级 + 经验 + 技能点 + 状态。
+        // 三个标签复用技能页同一套 key（2026-09-22：原先硬编码中文，英文环境下会露中文）。
         MutableComponent header = entryLabel(entry)
                 .append(Component.literal("（" + speciesDisplay(entry) + "）"))
-                .append(Component.literal("  Lv." + entry.getLevel()))
-                .append(Component.literal("  经验 " + entry.getXp()))
-                .append(Component.literal("  技能点 " + entry.getSkillPoints()))
+                .append(Component.literal("  "))
+                .append(Component.translatable("furkin.screen.furkin.level"))
+                .append(Component.literal(" " + entry.getLevel()))
+                .append(Component.literal("   "))
+                .append(Component.translatable("furkin.screen.furkin.xp"))
+                .append(Component.literal(" " + entry.getXp()))
+                .append(Component.literal("   "))
+                .append(Component.translatable("furkin.screen.furkin.skill_points"))
+                .append(Component.literal(" " + entry.getSkillPoints()))
                 .append(stateSuffix(entry));
         gui.drawString(this.font, header, DETAIL_LEFT, DETAIL_TOP, 0xFFFFFF);
 

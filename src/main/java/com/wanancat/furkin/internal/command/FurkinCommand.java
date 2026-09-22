@@ -18,13 +18,16 @@ import com.wanancat.furkin.internal.growth.FurkinGrowth;
 import com.wanancat.furkin.internal.inventory.FurkinInventory;
 import com.wanancat.furkin.internal.record.FurkinArchiveData;
 import com.wanancat.furkin.internal.record.FurkinArchiveEntry;
+import com.wanancat.furkin.internal.record.FurkinDisplayOrder;
 import com.wanancat.furkin.internal.skill.Skill;
 import com.wanancat.furkin.internal.skill.SkillProgress;
 import com.wanancat.furkin.internal.skill.SkillRegistry;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.commands.CommandBuildContext;
 import net.minecraft.commands.arguments.ResourceLocationArgument;
+import net.minecraft.commands.arguments.item.ItemArgument;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
@@ -37,6 +40,8 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.registries.ForgeRegistries;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -78,10 +83,13 @@ public final class FurkinCommand {
             };
 
     /** 注册命令。 */
-    public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
+    public static void register(CommandDispatcher<CommandSourceStack> dispatcher,
+                                CommandBuildContext buildContext) {
         dispatcher.register(
                 Commands.literal("furkin")
-                        .requires(src -> src.hasPermission(2) || src.getEntity() instanceof ServerPlayer)
+                        // 仅 OP 可用（2026-09-22 乌狸定）：此前对任意玩家开放（因召唤入口曾是命令），
+                        // 现绒亲录界面已补齐玩家侧入口，命令收窄为调试 / 管理用途。
+                        .requires(src -> src.hasPermission(2))
                         .then(Commands.literal("summon")
                                 .then(Commands.argument("pet_id", StringArgumentType.word())
                                         .executes(ctx -> summon(ctx.getSource(),
@@ -111,8 +119,6 @@ public final class FurkinCommand {
                                                 .executes(ctx -> setMode(ctx.getSource(),
                                                         StringArgumentType.getString(ctx, "pet_id"),
                                                         StringArgumentType.getString(ctx, "mode"))))))
-                        .then(Commands.literal("skills")
-                                .executes(ctx -> listSkills(ctx.getSource())))
                         .then(Commands.literal("skill")
                                 .then(Commands.argument("pet_id", StringArgumentType.word())
                                         .then(Commands.argument("skill_id", ResourceLocationArgument.id())
@@ -132,15 +138,19 @@ public final class FurkinCommand {
                                         .then(Commands.literal("clear")
                                                 .executes(ctx -> pouchClear(ctx.getSource(),
                                                         StringArgumentType.getString(ctx, "pet_id"))))
-                                        .then(Commands.argument("item", ResourceLocationArgument.id())
+                                        // ⚠️ item 用 ItemArgument（非 ResourceLocationArgument）—— 后者
+                                        // 没有 listSuggestions，Tab 无补全（2026-09-22 字节码取证）。
+                                        // ItemArgument 走 ItemParser.fillSuggestions → SharedSuggestionProvider
+                                        // .suggestResource，与原版 /give 同源：bone→bone、#tag、NBT 全白送。
+                                        .then(Commands.argument("item", ItemArgument.item(buildContext))
                                                 .executes(ctx -> pouchAdd(ctx.getSource(),
                                                         StringArgumentType.getString(ctx, "pet_id"),
-                                                        ResourceLocationArgument.getId(ctx, "item"), 1))
+                                                        ItemArgument.getItem(ctx, "item").createItemStack(1, false)))
                                                 .then(Commands.argument("count", IntegerArgumentType.integer(1, 6400))
                                                         .executes(ctx -> pouchAdd(ctx.getSource(),
                                                                 StringArgumentType.getString(ctx, "pet_id"),
-                                                                ResourceLocationArgument.getId(ctx, "item"),
-                                                                IntegerArgumentType.getInteger(ctx, "count")))))))
+                                                                ItemArgument.getItem(ctx, "item").createItemStack(
+                                                                        IntegerArgumentType.getInteger(ctx, "count"), false)))))))
         );
     }
 
@@ -158,17 +168,35 @@ public final class FurkinCommand {
             return 0;
         }
 
-        boolean ok = FurkinCompanionManager.summon(player, petId);
-        if (ok) {
-            src.sendSuccess(() -> Component.literal("Summoned companion " + petId), false);
-        } else {
-            src.sendFailure(Component.literal(
-                    "Summon failed (not found / not owner / not alive / already summoned / active limit)"));
+        // 走统一分流（2026-09-22 定）：未召唤 → 重建；已召唤 → 传送到身边。
+        // 与绒亲录点条目同一条路径（FurkinCompanionManager.summonOrTeleport），
+        // 不再出现「录里能拉过来、命令报错」的不一致。
+        FurkinCompanionManager.SummonResult r =
+                FurkinCompanionManager.summonOrTeleport(player, petId);
+        final String sid = shortId(petId.toString());
+        switch (r) {
+            case SUMMONED -> src.sendSuccess(() -> Component.literal("Summoned " + sid), false);
+            case TELEPORTED -> src.sendSuccess(() -> Component.literal("Teleported " + sid + " to you"), false);
+            case NOT_FOUND -> src.sendFailure(Component.literal("No such companion: " + sid));
+            case NOT_OWNER -> src.sendFailure(Component.literal("Not your companion."));
+            case NOT_ALIVE -> src.sendFailure(Component.literal(
+                    sid + " has fallen — revive it with a soulstone."));
+            case ACTIVE_LIMIT -> src.sendFailure(Component.literal("Active companion limit reached."));
+            default -> src.sendFailure(Component.literal("Summon failed (internal error)."));
         }
         return 1;
     }
 
-    /** 列出本人全部绒亲。id 可点击 → 直接复制 id（rename / forget / summon 命令共用）。 */
+    /**
+     * 列出本人全部绒亲。紧凑单行：{@code <短id> 物种 名字 Lv. 经验 技能点 [状态]}。
+     *
+     * <p><b>短 id</b>：UUID 全长 36 字符，10 只就会把聊天栏刷满 —— 显示只留
+     * 前 8 位 + {@code …} + 后 4 位（如 {@code a1b2c3d4…9f0e}），<b>点击复制的仍是完整
+     * UUID</b>（复制的是 {@code ClickEvent} 里的值，与显示文本无关）。</p>
+     *
+     * <p>物种名走本地化（{@code furkin.species.*}，与绒亲录界面同源）；未注册物种回退
+     * 实体 descriptionId。</p>
+     */
     private static int list(CommandSourceStack src) {
         if (!(src.getEntity() instanceof ServerPlayer player)) {
             return 0;
@@ -176,41 +204,85 @@ public final class FurkinCommand {
 
         FurkinArchiveData archive = FurkinArchiveData.get(player.serverLevel());
         UUID me = player.getUUID();
-        src.sendSuccess(() -> Component.literal("Your companions:"), false);
-        int shown = 0;
+
+        // 口径（2026-09-22 定）：物种 > 等级降序 > id 升序，与绒亲录同源（FurkinDisplayOrder）。
+        List<FurkinArchiveEntry> mine = new ArrayList<>();
         for (FurkinArchiveEntry entry : archive.allEntries()) {
             if (me.equals(entry.getOwnerUuid())) {
-                shown++;
-                String speciesStr = entry.getSpecies() == null ? "?"
-                        : net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES.getKey(entry.getSpecies()).toString();
-                String nameStr = entry.getName() == null ? "" : entry.getName().getString();
-                String idStr = entry.getCompanionId().toString();
-                String rest = "  species=" + speciesStr
-                        + "  name=" + nameStr
-                        + "  alive=" + entry.isAlive()
-                        + "  summoned=" + entry.isSummoned()
-                        + "  level=" + entry.getLevel()
-                        + "  xp=" + entry.getXp()
-                        + "  skillPoints=" + entry.getSkillPoints();
-
-                // id 组件：点击直接复制 id 本身（原版 copy_to_clipboard），hover 提示。
-                // （旧设计的 [SUMMON] 前缀已删：id 改为复制后它不再对应任何行为，且 summoned= 字段已表达状态。）
-                src.sendSuccess(() -> Component.literal("  ")
-                        .append(Component.literal(idStr).withStyle(Style.EMPTY
-                                .withColor(ChatFormatting.AQUA)
-                                .withUnderlined(Boolean.TRUE)
-                                .withClickEvent(new ClickEvent(
-                                        ClickEvent.Action.COPY_TO_CLIPBOARD, idStr))
-                                .withHoverEvent(new net.minecraft.network.chat.HoverEvent(
-                                        net.minecraft.network.chat.HoverEvent.Action.SHOW_TEXT,
-                                        Component.literal("Click to copy ID"))))
-                                .append(Component.literal(rest))), false);
+                mine.add(entry);
             }
+        }
+        mine.sort(FurkinDisplayOrder.ARCHIVE);
+
+        src.sendSuccess(() -> Component.literal("Your companions:"), false);
+        int shown = 0;
+        for (FurkinArchiveEntry entry : mine) {
+            shown++;
+            final FurkinArchiveEntry e = entry;
+            final String fullId = e.getCompanionId().toString();
+            final String shortId = shortId(fullId);
+
+            // 名字：自定义名优先，无则用物种名。
+            String nameStr = e.getName() == null ? "" : e.getName().getString();
+
+            // 状态后缀：[在场] 绿 / [已亡] 红 / 存活未在场无后缀。
+            Component state = !e.isAlive()
+                    ? Component.literal(" [已亡]").withStyle(ChatFormatting.RED)
+                    : (e.isSummoned()
+                            ? Component.literal(" [在场]").withStyle(ChatFormatting.GREEN)
+                            : Component.empty());
+
+            // 经验：当前 / 升级所需（与原版面板同口径）。
+            int xpNeed = FurkinGrowth.xpNeededForNextLevel(e.getLevel());
+
+            // id 组件：显示短 id，点击复制完整 id，hover 提示。
+            Component idPart = Component.literal(shortId).withStyle(Style.EMPTY
+                    .withColor(ChatFormatting.AQUA)
+                    .withUnderlined(Boolean.TRUE)
+                    .withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, fullId))
+                    .withHoverEvent(new net.minecraft.network.chat.HoverEvent(
+                            net.minecraft.network.chat.HoverEvent.Action.SHOW_TEXT,
+                            Component.literal(fullId).append(Component.literal("\nClick to copy ID")))));
+
+            src.sendSuccess(() -> Component.literal("  ")
+                    .append(idPart)
+                    .append(Component.literal("  "))
+                    .append(speciesDisplay(e))
+                    .append(nameStr.isEmpty() ? Component.empty()
+                            : Component.literal("  " + nameStr).withStyle(ChatFormatting.WHITE))
+                    .append(Component.literal("  Lv." + e.getLevel()).withStyle(ChatFormatting.YELLOW))
+                    .append(Component.literal("  xp " + e.getXp() + "/" + xpNeed).withStyle(ChatFormatting.GRAY))
+                    .append(Component.literal("  sp " + e.getSkillPoints()).withStyle(ChatFormatting.AQUA))
+                    .append(state), false);
         }
         if (shown == 0) {
             src.sendSuccess(() -> Component.literal("  (none)"), false);
         }
         return 1;
+    }
+
+    /** UUID 压缩显示：前 8 位 + {@code …} + 后 4 位（如 {@code a1b2c3d4…9f0e}）。 */
+    private static String shortId(String full) {
+        if (full.length() <= 13) {
+            return full;
+        }
+        return full.substring(0, 8) + "\u2026" + full.substring(full.length() - 4);
+    }
+
+    /**
+     * 物种显示组件：走物种注册表 nameKey（如 {@code furkin.species.cat}）。
+     * ⚠️ 返回 <b>组件</b>而非字符串 —— 命令在服务端执行，若在此 {@code getString()} 会取
+     * 服务端语言；下发组件则由客户端按自身语言渲染（与绒亲录界面同源）。
+     * 未注册物种回退实体 descriptionId（{@code entity.minecraft.cat}）。
+     */
+    private static Component speciesDisplay(FurkinArchiveEntry entry) {
+        if (entry.getSpecies() == null) {
+            return Component.literal("?");
+        }
+        return com.wanancat.furkin.api.companion.FurkinSpeciesRegistry
+                .byEntityType(entry.getSpecies())
+                .<Component>map(sp -> Component.translatable(sp.getNameKey()))
+                .orElseGet(() -> Component.translatable(entry.getSpecies().getDescriptionId()));
     }
 
     /** 忘记（解绑）一只属于本人的绒亲。走统一处理器（规则一套，与录内按钮同源）。 */
@@ -228,9 +300,10 @@ public final class FurkinCommand {
         }
 
         FurkinRecordActionHandler.Result r = FurkinRecordActionHandler.unbind(player, petId);
+        final String sid = shortId(petId.toString());
         switch (r) {
-            case OK -> src.sendSuccess(() -> Component.literal("Unbound companion " + petId), false);
-            case NOT_FOUND -> src.sendFailure(Component.literal("No such companion: " + petId));
+            case OK -> src.sendSuccess(() -> Component.literal("Unbound " + sid), false);
+            case NOT_FOUND -> src.sendFailure(Component.literal("No such companion: " + sid));
             case NOT_OWNER -> src.sendFailure(Component.literal("Not your companion."));
             default -> src.sendFailure(Component.literal("Unbind failed."));
         }
@@ -252,9 +325,12 @@ public final class FurkinCommand {
         }
 
         FurkinRecordActionHandler.Result r = FurkinRecordActionHandler.rename(player, petId, name);
+        final String sid = shortId(petId.toString());
         switch (r) {
-            case OK -> src.sendSuccess(() -> Component.literal("Renamed companion " + petId), false);
-            case NOT_FOUND -> src.sendFailure(Component.literal("No such companion: " + petId));
+            // 报出「改成了什么」—— 原名不报（改前值意义不大），新名是关键信息。
+            case OK -> src.sendSuccess(() -> Component.literal("Renamed " + sid + " \u2192 ")
+                    .append(Component.literal(name).withStyle(ChatFormatting.WHITE)), false);
+            case NOT_FOUND -> src.sendFailure(Component.literal("No such companion: " + sid));
             case NOT_OWNER -> src.sendFailure(Component.literal("Not your companion."));
             default -> src.sendFailure(Component.literal("Rename failed."));
         }
@@ -309,8 +385,8 @@ public final class FurkinCommand {
         int sp = after == null ? 0 : after.getSkillPoints();
 
         src.sendSuccess(() -> Component.literal(
-                "Added " + amount + " xp to " + petId
-                        + " -> Lv." + newLevel + " (xp=" + newXp + ", skillPoints=" + sp + ")"
+                "Added " + amount + " xp to " + shortId(petId.toString())
+                        + " \u2192 Lv." + newLevel + " (xp=" + newXp + ", sp=" + sp + ")"
                         + (leveled ? " [LEVEL UP]" : "")), false);
         return 1;
     }
@@ -337,28 +413,14 @@ public final class FurkinCommand {
         }
 
         FurkinCombatModeHandler.Result r = FurkinCombatModeHandler.setMode(player, petId, mode);
+        final String sid = shortId(petId.toString());
         switch (r) {
             case OK -> src.sendSuccess(() -> Component.literal(
-                    "Combat mode set to " + mode.name() + " for " + petId), false);
-            case NOT_FOUND -> src.sendFailure(Component.literal("No such companion: " + petId));
+                    "Combat mode set to " + mode.name() + " for " + sid), false);
+            case NOT_FOUND -> src.sendFailure(Component.literal("No such companion: " + sid));
             case NOT_OWNER -> src.sendFailure(Component.literal("Not your companion."));
             case NOT_SUMMONED -> src.sendFailure(Component.literal("Companion is not summoned — summon it first."));
             default -> src.sendFailure(Component.literal("Set mode failed."));
-        }
-        return 1;
-    }
-
-    /** 列出全部技能定义（id + tier + maxLevel + species，调试 / 验收用）。 */
-    private static int listSkills(CommandSourceStack src) {
-        src.sendSuccess(() -> Component.literal("Skills:"), false);
-        for (Skill skill : SkillRegistry.tree().all()) {
-            String speciesStr = skill.getSpecies().isEmpty() ? "(common)"
-                    : skill.getSpecies().toString();
-            src.sendSuccess(() -> Component.literal("  " + skill.getId()
-                    + "  tier=" + skill.getTier()
-                    + "  maxLevel=" + skill.getMaxLevel()
-                    + "  cost=" + skill.getCost()
-                    + "  species=" + speciesStr), false);
         }
         return 1;
     }
@@ -394,9 +456,10 @@ public final class FurkinCommand {
                 player, petId, finalSkillId, SkillRegistry.tree());
 
         switch (r) {
+            // 宠物 id 用短 id；技能 id 是 ResourceLocation（非 UUID）保持完整，截断无意义。
             case OK -> src.sendSuccess(() -> Component.literal(
-                    "Unlocked " + finalSkillId + " for " + petId), false);
-            case NOT_FOUND -> src.sendFailure(Component.literal("No such companion: " + petId));
+                    "Unlocked " + finalSkillId + " for " + shortId(petId.toString())), false);
+            case NOT_FOUND -> src.sendFailure(Component.literal("No such companion: " + shortId(petId.toString())));
             case NOT_OWNER -> src.sendFailure(Component.literal("Not your companion."));
             case NOT_SUMMONED -> src.sendFailure(Component.literal("Companion is not summoned."));
             case SKILL_UNKNOWN -> src.sendFailure(Component.literal("Unknown skill: " + finalSkillId));
@@ -445,15 +508,18 @@ public final class FurkinCommand {
         final int usedSlots = usage[0];
         final int pouchTotal = usage[1];
 
+        // 属性名用官方注册 id 去掉 "generic." 前缀的部分（2026-09-22 取证：
+        // Attributes 的 ldc 常量为 "generic.max_health" 等），不自定义驼峰缩写 ——
+        // 免得与官方文档 / 其它模组对照时对不上号。
         src.sendSuccess(() -> Component.literal(
-                "Inspect " + petId
+                "Inspect " + shortId(petId.toString())
                         + "  Lv." + level
-                        + "  skillPoints=" + skillPoints), false);
+                        + "  sp=" + skillPoints), false);
         src.sendSuccess(() -> Component.literal(String.format(
-                "  attack=%.2f  maxHealth=%.2f (cur=%.2f)  armor=%.2f  speed=%.3f",
+                "  attack_damage=%.2f  max_health=%.2f (cur=%.2f)  armor=%.2f  movement_speed=%.3f",
                 attack, maxHealth, currentHealth, armor, speed)), false);
         src.sendSuccess(() -> Component.literal(
-                "  pouch=" + pouchSlots + " slots (used=" + usedSlots + ", total=" + pouchTotal + ")"), false);
+                "  pouch  " + usedSlots + "/" + pouchSlots + " slots, " + pouchTotal + " items"), false);
         return 1;
     }
 
@@ -463,7 +529,7 @@ public final class FurkinCommand {
      * <p>走容器的 {@link FurkinInventory#addItem} —— 与将来「凭空产出」「拾荒」技能是同一个入口，
      * 所以这条命令验到的堆叠 / 满仓行为，就是那些技能会遇到的行为。</p>
      */
-    private static int pouchAdd(CommandSourceStack src, String petIdRaw, ResourceLocation itemId, int count) {
+    private static int pouchAdd(CommandSourceStack src, String petIdRaw, ItemStack toAdd) {
         if (!(src.getEntity() instanceof ServerPlayer player)) {
             return 0;
         }
@@ -476,9 +542,8 @@ public final class FurkinCommand {
             return 0;
         }
 
-        Item item = ForgeRegistries.ITEMS.getValue(itemId);
-        if (item == null) {
-            src.sendFailure(Component.literal("Unknown item: " + itemId));
+        if (toAdd.isEmpty()) {
+            src.sendFailure(Component.literal("Empty item."));
             return 0;
         }
 
@@ -494,18 +559,47 @@ public final class FurkinCommand {
         }
 
         FurkinInventory pouch = data.getPouch();
-        ItemStack leftover = pouch.addItem(new ItemStack(item, count));
+        ItemStack leftover = pouch.addItem(toAdd.copy());
 
-        int slots = pouch.getContainerSize();
-        int[] usage = pouchUsage(pouch);
-        final int usedSlots = usage[0];
-        final int pouchTotal = usage[1];
+        // 回执（2026-09-22 乌狸定）：只报「谁拿到了什么」或「谁的袋子满了」，
+        // 不报格数 / 总量等容器统计 —— 命令语义是「往里塞东西」，不是查容量。
+        final int placed = toAdd.getCount() - leftover.getCount();
         final int leftoverCount = leftover.getCount();
+        final String petName = companionLabel(target, petId);
+        final String itemName = toAdd.getHoverName().getString();
 
-        src.sendSuccess(() -> Component.literal(
-                "Pouch " + petId + "  slots=" + slots + "  used=" + usedSlots + "  total=" + pouchTotal
-                        + (leftoverCount > 0 ? "  leftover=" + leftoverCount + " (no room)" : "")), false);
+        if (leftoverCount <= 0) {
+            src.sendSuccess(() -> Component.literal("Added ")
+                    .append(Component.literal(placed + "x ").withStyle(ChatFormatting.AQUA))
+                    .append(Component.literal(itemName).withStyle(ChatFormatting.WHITE))
+                    .append(Component.literal(" to " + petName)), false);
+        } else if (placed <= 0) {
+            // 一点没塞进去：只报满了。
+            src.sendSuccess(() -> Component.literal(petName + "'s pouch is full — ")
+                    .append(Component.literal(itemName).withStyle(ChatFormatting.WHITE))
+                    .append(Component.literal(" was not added")), false);
+        } else {
+            // 塞进去一部分：报实际放入量，并说明还有多少没装下。
+            src.sendSuccess(() -> Component.literal("Added ")
+                    .append(Component.literal(placed + "x ").withStyle(ChatFormatting.AQUA))
+                    .append(Component.literal(itemName).withStyle(ChatFormatting.WHITE))
+                    .append(Component.literal(" to " + petName + " — pouch full, "))
+                    .append(Component.literal(leftoverCount + "x").withStyle(ChatFormatting.RED))
+                    .append(Component.literal(" was not added")), false);
+        }
         return 1;
+    }
+
+    /**
+     * 宠物显示标签：优先实体自定义名（命名牌 / 契约命名），无则短 id。
+     * 命令在服务端执行，此处只拼字面量 —— 自定义名已是玩家可见文本，无需再本地化。
+     */
+    private static String companionLabel(LivingEntity target, UUID petId) {
+        Component name = target.getCustomName();
+        if (name != null && !name.getString().isEmpty()) {
+            return name.getString();
+        }
+        return shortId(petId.toString());
     }
 
     /**
@@ -539,15 +633,12 @@ public final class FurkinCommand {
         }
 
         FurkinInventory pouch = data.getPouch();
-        int[] before = pouchUsage(pouch);
-        final int wasUsed = before[0];
-        final int wasTotal = before[1];
-        final int slots = pouch.getContainerSize();
+        final int wasTotal = pouchUsage(pouch)[1];
+        final String petName = companionLabel(target, petId);
         pouch.clearContent();
 
-        src.sendSuccess(() -> Component.literal(
-                "Pouch cleared: " + petId + "  slots=" + slots
-                        + "  removed=" + wasTotal + " items from " + wasUsed + " slots"), false);
+        src.sendSuccess(() -> Component.literal("Cleared " + petName + "'s pouch — removed ")
+                .append(Component.literal(wasTotal + " items").withStyle(ChatFormatting.AQUA)), false);
         return 1;
     }
 

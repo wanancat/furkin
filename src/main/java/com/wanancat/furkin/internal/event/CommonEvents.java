@@ -59,7 +59,7 @@ public final class CommonEvents {
 
     @SubscribeEvent
     public static void onRegisterCommands(RegisterCommandsEvent event) {
-        FurkinCommand.register(event.getDispatcher());
+        FurkinCommand.register(event.getDispatcher(), event.getBuildContext());
     }
 
     /**

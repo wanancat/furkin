@@ -41,6 +41,85 @@ public final class FurkinCompanionManager {
     }
 
     /**
+     * 「召唤或传送」的结果（2026-09-22 定，替代原先的 boolean）。
+     *
+     * <p>为什么要有它：召唤入口有两处 —— 绒亲录点条目（{@code RequestSummonPacket}）
+     * 与命令 {@code /furkin summon}。两者必须走<b>同一套校验与分流</b>（否则会出现
+     * 「录里能把在场宠物拉过来、命令却报错」），且失败时必须能说清<b>具体哪一条</b>
+     * 没通过，而不是含糊地并列五种可能。</p>
+     */
+    public enum SummonResult {
+        /** 未召唤 → 成功重建实体并落地。 */
+        SUMMONED,
+        /** 已召唤 → 成功传送到主人身边。 */
+        TELEPORTED,
+        /** 档案里没有这个 id。 */
+        NOT_FOUND,
+        /** 不是本人的绒亲。 */
+        NOT_OWNER,
+        /** 已亡（FALLEN）—— 应走复活流程。 */
+        NOT_ALIVE,
+        /** 活跃上限已满（仅召唤分支会命中，传送分支不占新名额）。 */
+        ACTIVE_LIMIT,
+        /** 重建实体失败（物种缺失 / 能力不可用等内部错误）。 */
+        REBUILD_FAILED;
+
+        /** 是否算成功（两个成功态）。 */
+        public boolean ok() {
+            return this == SUMMONED || this == TELEPORTED;
+        }
+    }
+
+    /**
+     * 召唤或传送（两个入口共用的唯一分流点）。
+     *
+     * <p>语义（对齐绒亲录，2026-09-22 定）：<b>未召唤</b> → {@link #summon} 重建实体；
+     * <b>已召唤</b> → {@link #teleportToOwner} 传送到主人身边，<b>不报错</b>。
+     * 这正是绒亲录点条目的行为，命令侧原先缺这段分流而以「召唤失败」告终。</p>
+     *
+     * @param player      主人
+     * @param companionId 宠物身份 UUID
+     * @return 具体结果（成功含两种分流态）
+     */
+    public static SummonResult summonOrTeleport(ServerPlayer player, UUID companionId) {
+        if (!(player.level() instanceof ServerLevel serverLevel)) {
+            return SummonResult.NOT_FOUND;
+        }
+
+        FurkinArchiveData archive = FurkinArchiveData.get(serverLevel);
+        FurkinArchiveEntry entry = archive.getEntry(companionId);
+        if (entry == null) {
+            return SummonResult.NOT_FOUND;
+        }
+        if (entry.getOwnerUuid() == null || !entry.getOwnerUuid().equals(player.getUUID())) {
+            return SummonResult.NOT_OWNER;
+        }
+        if (!entry.isAlive()) {
+            return SummonResult.NOT_ALIVE;
+        }
+
+        // 分流：已召唤 → 传送（不占新名额、不校验上限）；未召唤 → 召唤。
+        if (entry.isSummoned()) {
+            boolean teleported = teleportToOwner(player, companionId);
+            // 传送失败通常是「档案标了在场但实体其实丢了」——teleportToOwner 内部已自愈
+            // （把 summoned 改回 false），此处如实报失败即可。
+            return teleported ? SummonResult.TELEPORTED : SummonResult.REBUILD_FAILED;
+        }
+
+        // 未召唤分支：活跃上限只在真正新增实体时校验。
+        if (countSummoned(serverLevel, player.getUUID()) >= FurkinServerConfig.ACTIVE_LIMIT.get()) {
+            FurkinMod.LOGGER.info("Furkin summon blocked: active limit reached for {}",
+                    player.getName().getString());
+            return SummonResult.ACTIVE_LIMIT;
+        }
+
+        boolean summoned = rebuildCompanion(player, entry,
+                player.getX(), player.getY(), player.getZ(),
+                player.getYRot(), player.getXRot(), "summoned");
+        return summoned ? SummonResult.SUMMONED : SummonResult.REBUILD_FAILED;
+    }
+
+    /**
      * 收回一只已召唤的绒亲。
      *
      * <p>流程：校验主人与状态 → 快照写录（等级 / 技能 / 装备）→ 置 {@code summoned=false}

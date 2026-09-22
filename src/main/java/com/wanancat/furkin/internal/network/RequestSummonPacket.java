@@ -42,27 +42,25 @@ public final class RequestSummonPacket {
         ctx.setPacketHandled(true);
     }
 
-    /** 服务端应用：按状态分流执行召唤 / 传送，并按结果回反馈。 */
+    /** 服务端应用：走统一分流（召唤 / 传送），并按结果回反馈。 */
     private static void applyServer(ServerPlayer player, UUID companionId) {
-        // 先看档案状态：已召唤 → 传送；未召唤 → 召唤。
-        boolean summoned = false;
-        var archive = com.wanancat.furkin.internal.record.FurkinArchiveData.get(player.serverLevel());
-        var entry = archive.getEntry(companionId);
-        if (entry != null) {
-            summoned = entry.isSummoned();
-        }
+        // 分流逻辑与命令 /furkin summon 共用同一个入口（2026-09-22 定）：
+        // 未召唤 → 重建实体；已召唤 → 传送到身边。两处规则必须一份代码。
+        FurkinCompanionManager.SummonResult result =
+                FurkinCompanionManager.summonOrTeleport(player, companionId);
 
-        boolean ok = summoned
-                ? FurkinCompanionManager.teleportToOwner(player, companionId)
-                : FurkinCompanionManager.summon(player, companionId);
-        if (ok) {
+        if (result.ok()) {
             player.displayClientMessage(
                     net.minecraft.network.chat.Component.translatable(
-                            summoned ? "furkin.msg.teleported" : "furkin.msg.summoned"), true);
+                            result == FurkinCompanionManager.SummonResult.TELEPORTED
+                                    ? "furkin.msg.teleported"
+                                    : "furkin.msg.summoned"), true);
         } else {
+            // 失败也分流：传送失败与召唤失败文案不同。
+            boolean wasTeleport = result == FurkinCompanionManager.SummonResult.REBUILD_FAILED;
             player.displayClientMessage(
                     net.minecraft.network.chat.Component.translatable(
-                            summoned ? "furkin.msg.teleport_failed" : "furkin.msg.summon_failed"), false);
+                            wasTeleport ? "furkin.msg.teleport_failed" : "furkin.msg.summon_failed"), false);
         }
     }
 }

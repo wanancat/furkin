@@ -7,6 +7,7 @@ import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.network.RecordListPacket;
 import com.wanancat.furkin.internal.record.FurkinArchiveData;
 import com.wanancat.furkin.internal.record.FurkinArchiveEntry;
+import com.wanancat.furkin.internal.record.FurkinDisplayOrder;
 import com.wanancat.furkin.internal.record.RecordAttributes;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
@@ -18,7 +19,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -89,11 +89,9 @@ public class FurkinRecordItem extends Item {
             }
         }
 
-        // 默认排序（2026-09-22 定）：物种 > 等级（降序，高的在前）。
-        // 物种键用下发的 speciesKey（furkin.species.cat 等，注册表回退时是
-        // entity.minecraft.cat）——按 key 排不受客户端语言影响，同物种必相邻。
-        list.sort(Comparator.comparing(RecordListPacket.Entry::getSpeciesName)
-                .thenComparing(RecordListPacket.Entry::getLevel, Comparator.reverseOrder()));
+        // 默认排序（2026-09-22 定）：物种 > 等级（降序）> id（升序）。
+        // 口径集中定义在 FurkinDisplayOrder（与 /furkin list 同源，两处共用一份比较逻辑）。
+        list.sort(FurkinDisplayOrder.RECORD_ENTRY);
 
         FurkinNetwork.channel().send(
                 net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> player),
