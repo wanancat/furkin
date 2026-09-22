@@ -17,6 +17,20 @@ modId="${mod_id}"
 version="${mod_version}"
 displayName="${mod_name}"
 authors="${mod_authors}"
+# 2026-09-23: Forge reads logoFile ONLY from this key (no implicit logo.png fallback).
+# Path is relative to the jar root; ModListScreen loads it via getRootResource, so a
+# top-level src/main/resources/logo.png maps exactly to "logo.png".
+# Verified: javap -v ModInfo (fmlloader-1.20.1-47.2.0) + ModListScreen / PathPackResources
+# sources in forge-1.20.1-47.2.0-sources.jar.
+logoFile="logo.png"
+# WARNING: do NOT put a bare dollar sign anywhere in this file, comments included.
+# This file is expanded by Groovy SimpleTemplate in processResources, so any stray dollar
+# sign outside a real placeholder is parsed as a template expression and breaks the build
+# (hit twice on 2026-09-23: once in a javadoc-style class ref, once in this warning).
+#
+# The artwork is pixel art; default is TRUE (linear filter => blurry). Source of truth:
+# ModInfo lambda "new" index 5 ends with iconst_1 -> Boolean.TRUE, read as key "logoBlur".
+logoBlur=false
 description='''${mod_description}'''
 
 # Dependencies: Forge itself + vanilla MC version range, both mandatory.
