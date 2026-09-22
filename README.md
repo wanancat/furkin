@@ -20,6 +20,7 @@ included (because they're rather fluff~y~).
 - **Contract** — turn any registered species into a companion with a single item, no prior taming required.
 - **Skill tree** — a shared trunk plus species-specific branches.
 - **Equipment** — companions wear vanilla armor (all 4 slots), third-party armor works with zero config.
+- **Travel pouch** — a carry-along inventory that grows with the `travel_pouch` skill level, with shrinking, reclaiming and death-drop handling built in. Finally, someone else carries the cobblestone.
 - **Revival** — a soulstone-based revive system that preserves all growth.
 
 ## Dependencies
