@@ -5,6 +5,8 @@
 # NOTE: keep this file pure ASCII. It is parsed by the Groovy template engine in
 # processResources, which round-trips the text through the platform default charset
 # and replaces non-ASCII characters with '?'. Placeholders are expanded at build time.
+#
+# 2026-09-23: displayName now uses ${mod_name} (ASCII) -- last non-ASCII string removed.
 
 modLoader="javafml"
 loaderVersion="${loader_version_range}"
@@ -13,7 +15,7 @@ license="${mod_license}"
 [[mods]]
 modId="${mod_id}"
 version="${mod_version}"
-displayName="Furkin (绒亲)"
+displayName="${mod_name}"
 authors="${mod_authors}"
 description='''${mod_description}'''
 
