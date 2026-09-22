@@ -40,8 +40,8 @@ public final class FurkinStatusIconRenderer {
     /** 图标边长（世界单位）。 */
     private static final float ICON_SIZE = 0.5f;
 
-    /** 图标悬浮于头顶的高度偏移（世界单位）。 */
-    private static final float Y_OFFSET = 0.4f;
+    /** 图标悬浮于头顶的高度偏移（世界单位）。抬到名牌文字之上，避免图标与名字重叠。 */
+    private static final float Y_OFFSET = 0.8f;
 
     private FurkinStatusIconRenderer() {
     }
