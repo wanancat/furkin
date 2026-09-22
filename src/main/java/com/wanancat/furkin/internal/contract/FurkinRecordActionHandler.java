@@ -1,6 +1,7 @@
 package com.wanancat.furkin.internal.contract;
 
 import com.wanancat.furkin.internal.FurkinMod;
+import com.wanancat.furkin.internal.attribute.AttributeDisplay;
 import com.wanancat.furkin.internal.capability.FurkinCapability;
 import com.wanancat.furkin.internal.capability.FurkinData;
 import com.wanancat.furkin.internal.inventory.FurkinInventory;
@@ -14,6 +15,7 @@ import com.wanancat.furkin.internal.skill.Skill;
 import com.wanancat.furkin.internal.skill.SkillEffectApplier;
 import com.wanancat.furkin.internal.skill.SkillRegistry;
 import com.wanancat.furkin.internal.skill.SkillTree;
+import com.wanancat.furkin.internal.skill.effect.AttributeEffect;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -22,8 +24,10 @@ import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.TamableAnimal;
+import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraftforge.network.NetworkHooks;
 import net.minecraftforge.network.PacketDistributor;
+import net.minecraftforge.registries.ForgeRegistries;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -225,14 +229,18 @@ public final class FurkinRecordActionHandler {
     private static void openMenu(ServerPlayer player, LivingEntity target,
                                  FurkinData data, UUID companionId) {
         FurkinInventory pouch = data.getPouch();
+        int entityId = target.getId();
         NetworkHooks.openScreen(player,
                 new SimpleMenuProvider(
-                        (windowId, inv, p) -> new FurkinPouchMenu(windowId, inv, pouch, companionId, target),
+                        (windowId, inv, p) -> new FurkinPouchMenu(windowId, inv, pouch, companionId, target, entityId),
                         Component.translatable("furkin.screen.furkin.title")),
                 buf -> {
                     // ⚠️ 写入顺序必须与 FurkinPouchMenu.fromNetwork 的读取顺序一致。
                     buf.writeVarInt(pouch.getContainerSize());
                     buf.writeUUID(companionId);
+                    // 实体网络 id：技能页要读实体上的实时属性（生命 / 护甲 / 各属性），
+                    // 而客户端按 UUID 取实体的路是 protected，只有 getEntity(int) 可用（设计稿 §4.1 取证⑥）。
+                    buf.writeVarInt(entityId);
                 });
     }
 
@@ -326,9 +334,41 @@ public final class FurkinRecordActionHandler {
                     unmet));
         }
 
+        // 技能加成表：服务端算（客户端既认不出技能 modifier、也读不到技能 JSON，
+        // 见 AttributeEffect#totalAdditionBonuses 的说明）。
+        // 只收「这只生物身上真有的属性」：技能 modifier 挂不到没有实例的属性上
+        // （AttributeEffect.apply 在 getAttribute == null 时直接返回），报出来就是虚数。
+        List<OpenFurkinScreenPacket.AttributeAmount> skillBonuses = new ArrayList<>();
+        AttributeEffect.totalAdditionBonuses(SkillRegistry.tree(), skillLevels)
+                .forEach((attributeId, sum) -> {
+                    Attribute attribute = ForgeRegistries.ATTRIBUTES.getValue(attributeId);
+                    if (attribute != null && target.getAttributes().hasAttribute(attribute)) {
+                        skillBonuses.add(new OpenFurkinScreenPacket.AttributeAmount(
+                                attributeId.toString(), sum));
+                    }
+                });
+
+        // 非同步属性的权威总值 —— 集合动态得出（N5）：显示集合 ∩ 该生物实有 ∩ 非 client-syncable。
+        // ⚠️ 「该生物实有」这一步由 AttributeDisplay 一并收口，不可省：原版 getAttributeValue 对
+        // 「该生物没注册的属性」抛 IllegalArgumentException（AttributeSupplier#getAttributeInstance），
+        // 不是返 0 —— 2026-09-22 客户端面板崩在渲染线程的同一根因，服务端这边同样会中招。
+        List<OpenFurkinScreenPacket.AttributeAmount> serverTotals = new ArrayList<>();
+        for (Attribute attribute : AttributeDisplay.serverTotalAttributes(target)) {
+            serverTotals.add(new OpenFurkinScreenPacket.AttributeAmount(
+                    AttributeDisplay.idOf(attribute), target.getAttributeValue(attribute)));
+        }
+
+        // 补推一次能力镜像：等级 / 经验只在「升级那一刻」才推（见 FurkinGrowth#addXp 的
+        // `if (leveledUp)`），面板直接读客户端镜像会拿到滞后的零头。开屏与刷新各补一次，
+        // 让抬头读到此刻的准确值 —— 数据源仍只有镜像这一份（设计稿 §4.1 定案 N2）。
         FurkinNetwork.channel().send(
                 PacketDistributor.PLAYER.with(() -> player),
-                new OpenFurkinScreenPacket(companionId, name, skillPoints, views));
+                new SyncFurkinDataPacket(target.getId(), data.serializeNBT()));
+
+        FurkinNetwork.channel().send(
+                PacketDistributor.PLAYER.with(() -> player),
+                new OpenFurkinScreenPacket(companionId, name, skillPoints, views,
+                        skillBonuses, serverTotals));
         return true;
     }
 

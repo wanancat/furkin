@@ -1,9 +1,14 @@
 package com.wanancat.furkin.internal.client;
 
+import com.wanancat.furkin.api.companion.FurkinSpeciesRegistry;
 import com.wanancat.furkin.internal.FurkinMod;
+import com.wanancat.furkin.internal.attribute.AttributeDisplay;
+import com.wanancat.furkin.internal.capability.FurkinCapability;
+import com.wanancat.furkin.internal.capability.FurkinData;
 import com.wanancat.furkin.internal.config.FurkinClientConfig;
 import com.wanancat.furkin.internal.equipment.EquipBonus;
 import com.wanancat.furkin.internal.equipment.MobEquipmentContainer;
+import com.wanancat.furkin.internal.growth.FurkinGrowth;
 import com.wanancat.furkin.internal.menu.FurkinPouchMenu;
 import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.network.OpenFurkinScreenPacket;
@@ -23,15 +28,24 @@ import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.attributes.Attribute;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import net.minecraftforge.registries.ForgeRegistries;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -43,8 +57,10 @@ import java.util.UUID;
  * 不存在「纯 {@code Screen} 里塞一个容器」的做法；而技能页与行囊页又不可能各自
  * 是一个独立屏再互相切 —— 页签切换只能是同一个屏对象的内部状态。故三者共用本类。</p>
  *
- * <p><b>布局</b>：沿用官方 {@code generic_54.png}（176 × <code>114 + rows * 18</code>），
- * 页签画在面板上沿之外、洗点按钮画在下沿之外，故面板内部布局与原版箱子逐像素一致。
+ * <p><b>布局</b>：沿用官方 {@code generic_54.png}（176 × <code>114 + rows * 18 + Δ</code>，
+ * Δ = {@link FurkinPouchMenu#PANEL_EXTRA_HEIGHT} 是技能页抬头由两行变三行所需的那一段，
+ * 三个页签统一加高），页签画在面板上沿之外、洗点按钮画在下沿之外，故面板内部布局与原版箱子
+ * 逐像素一致。
  * 非行囊页时整屏槽位 {@code isActive() == false}（见 {@code FurkinPouchMenu.TabSlot}），
  * 内容区由本类自绘。</p>
  *
@@ -131,8 +147,21 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
     public static final int TAB_POUCH = FurkinPouchMenu.TAB_POUCH;
     public static final int TAB_EQUIP = FurkinPouchMenu.TAB_EQUIP;
 
+    /**
+     * 页签几何。
+     *
+     * <p><b>宽度已到上限</b>：三个页签横向刚好排满面板内宽 ——
+     * {@code TAB_MARGIN + 3 × TAB_WIDTH + 2 × TAB_GAP = 8 + 156 + 4 = 168}，面板只有 176。
+     * 想再宽，只能同时牺牲留白或间隙（故 2026-09-22 乌狸「再加宽一点空间」是按<b>纵向</b>办的）。</p>
+     *
+     * <p><b>高度取 18</b>（原 16）：官方按钮素材是 200×20、九宫格上下各切 4px，压到 16 时中间底板
+     * 只剩 8px，那条「上边框」在视觉上就顶到了文字（乌狸反馈「上边缘因为官方素材具有纹理，
+     * 会显得比下边缘窄」）。抬到 18 让上边不再压着文字；同一轮把面板缩了 12px
+     * （{@link FurkinPouchMenu#PANEL_EXTRA_HEIGHT} 24 → 12），居中后 {@code topPos} 大 6
+     * ⇒ 页签离屏幕顶也宽出 4px。</p>
+     */
     private static final int TAB_WIDTH = 52;
-    private static final int TAB_HEIGHT = 16;
+    private static final int TAB_HEIGHT = 18;
     private static final int TAB_GAP = 2;
     private static final int TAB_MARGIN = 8;
 
@@ -208,7 +237,75 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
     private static final int COLOR_HINT = 0x707070;
     private static final int COLOR_MAXED = 0x2E7D32;
 
+    /**
+     * 技能页抬头三行的纵坐标（相对 {@code topPos}）。
+     *
+     * <p>行距沿用现有口径（8px 字 + 4px 行距 = 12px）：行 1 名称+物种 / 行 2 等级+经验 /
+     * 行 3 技能点+生命。抬头带的下沿就是列表顶（{@link #listTop()}），两者必须一起动。</p>
+     *
+     * <p><b>为什么首行取 6</b>（2026-09-22 乌狸要求「技能页抬头条收掉，留出视觉空间」）：
+     * 技能页不画页签标题，标题条那 17px 留空纯属浪费。首行上移到 6 正是原版
+     * {@code AbstractContainerScreen} 画标题的纵坐标 —— 整块上移 12px 后，让出的这一段
+     * 全归技能列表（{@link #listTop()} 由行 3 派生，自动跟着走）。</p>
+     */
+    private static final int HEADER_ROW_1_Y = 6;
+    private static final int HEADER_ROW_2_Y = 18;
+    private static final int HEADER_ROW_3_Y = 30;
+
+    /**
+     * 抬头「悬停出属性明细」的命中带（相对 {@code topPos}）。
+     *
+     * <p>上沿取 4（比首行文字高 2px 留余量），下沿取 40（收在列表顶 42 之前）——
+     * 与技能行的悬停区（从 {@link #listTop()} 起）严格不重叠，两处 tooltip 不会打架。
+     * 两者都跟着 {@code HEADER_ROW_*_Y} 走，<b>改行位必须同步改这里</b>（否则「画得下、
+     * 却悬停不到」）。</p>
+     */
+    private static final int HEADER_HOVER_TOP_Y = 4;
+    private static final int HEADER_HOVER_BOTTOM_Y = 40;
+
+    /**
+     * 悬停明细要显示的属性 —— <b>N5 起动态枚举</b>（设计稿 §4.1 定案 N5）。
+     *
+     * <p>初版在这里写死 8 项候选（7 条可同步 ＋ 攻击伤害），代价是第三方模组加的属性
+     * （如「最大魔力值」）永远不显示。现在集合由
+     * {@link AttributeDisplay#displayableAttributes(LivingEntity)} 给出 ——
+     * <b>注册表 ∩ 该生物实有 ∩ 未被屏蔽</b>，本类只负责缓存与渲染。</p>
+     *
+     * <p><b>为什么必须缓存</b>：明细是<b>每帧</b>渲染的，而枚举要遍历整个属性注册表并逐条查
+     * {@code hasAttribute}（60fps × 属性条数 × 两次查表）。缓存键取<b>实体类型</b> ——
+     * 同一只宠物类型不变则清单不变；收回再召唤虽然换了实体（类型相同）也照旧复用，
+     * 类型变了（换物种 / 第三方生物）自动重算。</p>
+     *
+     * <p><b>实体不可得时清单为空</b>（不再像定案 2 时期那样列 8 行占位）：动态枚举的前提就是
+     * 「这只生物实有哪些属性」，没有实体就答不出这个问题；而抬头里的生命 / 护甲此时本来
+     * 也已降级为 {@value #UNAVAILABLE}，不会出现「有行无值」的自相矛盾。</p>
+     */
+    private List<Attribute> hoverAttributes = Collections.emptyList();
+
+    /** {@link #hoverAttributes} 的缓存键（实体类型）。 */
+    private EntityType<?> hoverAttributesType;
+
+    /**
+     * 悬停明细配色：属性名 / 总值 / 基础值 / 技能加成 / 装备加成。
+     *
+     * <p>「基础值」= 总 − 技能 − 装备 的残差，改版前在明细里叫「其他」（同一个量，只是显示口径变了）。</p>
+     */
+    private static final ChatFormatting COLOR_ATTR_NAME = ChatFormatting.WHITE;
+    private static final ChatFormatting COLOR_ATTR_TOTAL = ChatFormatting.YELLOW;
+    private static final ChatFormatting COLOR_ATTR_SKILL = ChatFormatting.GREEN;
+    private static final ChatFormatting COLOR_ATTR_EQUIP = ChatFormatting.BLUE;
+    private static final ChatFormatting COLOR_ATTR_BASE = ChatFormatting.GRAY;
+
     private final UUID companionId;
+
+    /**
+     * 最近一次技能快照 —— 「技能加成表」与「服务端权威总值」都从它取。
+     *
+     * <p>之所以整份留住（而不是各剥成两个字段）：这两张表只在开屏 / 刷新时换，
+     * 而 {@code skillBonusOf} / {@code serverTotalOf} 的查表口径属于包自己的契约，
+     * 屏侧复制一份只会多一处可能跑偏的地方。</p>
+     */
+    private OpenFurkinScreenPacket skillData;
 
     private String companionName;
     private int skillPoints;
@@ -246,14 +343,17 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
         this.companionId = menu.getCompanionId();
         this.imageWidth = 176;
         // 高度随行囊行数变：114 = 上段（标题 + 行囊区）与下段（玩家背包）之外的部分。
-        this.imageHeight = 114 + menu.getRows() * 18;
+        // 末尾再 + PANEL_EXTRA_HEIGHT：技能页抬头由两行变三行所需的那一段（三个页签统一加高，
+        // 见 FurkinPouchMenu#PANEL_EXTRA_HEIGHT）。
+        this.imageHeight = 114 + menu.getRows() * 18 + FurkinPouchMenu.PANEL_EXTRA_HEIGHT;
         // ⚠️ 紧跟其后重算「物品栏」标签纵坐标，否则标签与槽位脱钩。
         // 官方 AbstractContainerScreen 构造器里写的是 inventoryLabelY = imageHeight - 94，
         // 而那句的取值时刻在 super(...) 内 —— 那时 imageHeight 还是默认 166，算出来恒为 72。
         // 本屏在 super 之后才改 imageHeight，于是 72 被留了下来：行囊 1 行时正确值是 38，
         // 标签会掉到玩家背包第二行上（2026-09-21 乌狸截图报「物品栏标题错位」）。
         // 官方箱子屏 ContainerScreen 正是这么修的（改完 imageHeight 立刻重算，见其构造器字节码）。
-        // 91 不是巧合：玩家背包首行 y = 103 + (rows - 4) × 18，与本式相减恒为 11px 间隙。
+        // 91 不是巧合：玩家背包首行 y = 103 + (rows - 4) × 18 + Δ，与本式相减恒为 11px 间隙
+        //（Δ 在两边同时出现，自动抵消 —— 故加高不需要动这里）。
         this.inventoryLabelY = this.imageHeight - 94;
     }
 
@@ -277,6 +377,7 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
 
     /** 套用技能快照（不重建控件：技能行是自绘的，数据变了直接重绘即可）。 */
     private void apply(OpenFurkinScreenPacket packet) {
+        this.skillData = packet;
         this.companionName = packet.getName();
         this.skillPoints = packet.getSkillPoints();
         this.skills = packet.getSkills();
@@ -408,14 +509,19 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
         this.renderBackground(gui);
         super.render(gui, mouseX, mouseY, partialTick);
 
-        // 技能行只放得下名字与等级，描述改走悬停 tooltip；前置不满足时一并说明缺什么。
+        // 技能页两处悬停，命中区互不重叠（抬头带下沿 52 < 列表顶 54）：
+        // 抬头带 → 全部属性的明细；技能行 → 描述与前置说明。
         if (this.menu.getActiveTab() == TAB_SKILLS) {
-            int index = skillRowIndexAt(mouseX, mouseY);
-            if (index >= 0) {
-                // 多行 tooltip 必须走「List + Optional」那个重载：`renderTooltip(Font, List<? extends
-                // FormattedCharSequence>, int, int)` 收的不是 Component 列表（javap 核实）。
-                gui.renderTooltip(this.font, skillTooltip(this.skills.get(index)),
-                        Optional.empty(), mouseX, mouseY);
+            if (isOverSkillHeader(mouseX, mouseY)) {
+                gui.renderTooltip(this.font, skillAttributeLines(), Optional.empty(), mouseX, mouseY);
+            } else {
+                int index = skillRowIndexAt(mouseX, mouseY);
+                if (index >= 0) {
+                    // 多行 tooltip 必须走「List + Optional」那个重载：`renderTooltip(Font, List<? extends
+                    // FormattedCharSequence>, int, int)` 收的不是 Component 列表（javap 核实）。
+                    gui.renderTooltip(this.font, skillTooltip(this.skills.get(index)),
+                            Optional.empty(), mouseX, mouseY);
+                }
             }
         }
 
@@ -463,10 +569,15 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
     protected void renderBg(GuiGraphics gui, float partialTick, int mouseX, int mouseY) {
         int active = this.menu.getActiveTab();
         if (active == TAB_POUCH) {
-            // 行囊页直接套官方 ChestScreen 的分段 blit：上段含标题条与行囊区（槽框行数正好
-            // = 行囊行数），下段是玩家背包段（槽框同样烘死在纹理里）。
+            // 行囊页分三段 blit：
+            //   段一 = 标题条 + 行囊区（槽框行数正好 = 行囊行数），高度只能取到行囊区下沿 ——
+            //          再往下取就是**下一行的假槽框**（纹理里烘死了 6 行，而 rows 可能小于 6）；
+            //   段二 = Δ 净板带（补上抬头加高那一段，取自同张纹理的无槽框行）；
+            //   段三 = 玩家背包段（那 36 格槽框同样烘死在纹理里，不 blit 就只有物品没有格子）。
+            int slotAreaBottom = pouchSlotAreaBottom();
             gui.blit(PANEL_TEXTURE, this.leftPos, this.topPos, 0, 0,
-                    this.imageWidth, playerSegmentTop() - this.topPos);
+                    this.imageWidth, slotAreaBottom - this.topPos);
+            blitNetBoard(gui, slotAreaBottom, playerSegmentTop());
             gui.blit(PANEL_TEXTURE, this.leftPos, playerSegmentTop(),
                     0, PLAYER_SEGMENT_V, this.imageWidth, PLAYER_SEGMENT_H);
             return;
@@ -482,9 +593,32 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
         }
     }
 
-    /** 玩家背包段的屏幕起点 —— 两页共用（行囊页的第一段也在这里收尾）。 */
+    /**
+     * 行囊区（含标题条）的下沿 —— 行囊页段一 blit 的高度上限。
+     *
+     * <p>取「标题条 17 + 行囊行数 × 18」。<b>不能取到玩家背包段起点</b>：纹理里行囊槽框
+     * 恒有 6 行，而 {@code rows} 常小于 6，越界那几行会被当成槽框 blit 出来（假格子）。</p>
+     */
+    private int pouchSlotAreaBottom() {
+        return this.topPos + 17 + this.menu.getRows() * 18;
+    }
+
+    /** 玩家背包段的屏幕起点 —— 两页共用（行囊页的段二也在这里收尾）。 */
     private int playerSegmentTop() {
-        return this.topPos + this.menu.getRows() * 18 + 17;
+        return pouchSlotAreaBottom() + FurkinPouchMenu.PANEL_EXTRA_HEIGHT;
+    }
+
+    /**
+     * 竖着铺「净板条」（取自 {@link #PANEL_TEXTURE} 的无槽框行，不新增素材），铺到 {@code bodyEndY} 为止。
+     *
+     * <p>自绘底板与行囊页的 Δ 净板带共用这一段 —— 两处若各写一遍，改了一处就会
+     * 露出「一页净板、一页突兀色块」的不一致。</p>
+     */
+    private void blitNetBoard(GuiGraphics gui, int fromY, int bodyEndY) {
+        for (int y = fromY; y < bodyEndY; y += FLAT_BODY_H) {
+            int segment = Math.min(FLAT_BODY_H, bodyEndY - y);
+            gui.blit(PANEL_TEXTURE, this.leftPos, y, 0, FLAT_BODY_V, this.imageWidth, segment);
+        }
     }
 
     /**
@@ -514,10 +648,7 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
         int bottomY = this.topPos + this.imageHeight - (FLAT_BOTTOM_H + 1);
 
         gui.blit(PANEL_TEXTURE, left, this.topPos, 0, FLAT_TOP_V, width, FLAT_TOP_H);
-        for (int y = this.topPos + FLAT_TOP_H; y < bodyEndY; y += FLAT_BODY_H) {
-            int segment = Math.min(FLAT_BODY_H, bodyEndY - y);
-            gui.blit(PANEL_TEXTURE, left, y, 0, FLAT_BODY_V, width, segment);
-        }
+        blitNetBoard(gui, this.topPos + FLAT_TOP_H, bodyEndY);
         // 只有下半屏没有别的来源时才补底边（装备页的下段已含 220 / 221 两行）。
         if (bodyEndY >= bottomY) {
             gui.blit(PANEL_TEXTURE, left, bottomY, 0, FLAT_BOTTOM_V, width, FLAT_BOTTOM_H);
@@ -543,13 +674,30 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
 
     @Override
     protected void renderLabels(GuiGraphics gui, int mouseX, int mouseY) {
-        gui.drawString(this.font, this.title, this.titleLabelX, this.titleLabelY, COLOR_LABEL, false);
-        // 「物品栏」标签只在槽位真正可见的页显示 —— 行囊页与装备页都会露出玩家背包。
+        // 标题随页签走（2026-09-22 乌狸定）：行囊页「随身行囊」、装备页「绒亲装备」，
+        // 技能页**不画标题** —— 那一行直接留给「名称 + 物种」（见 renderSkillHeader 的行 1）。
+        // 菜单侧传进来的 this.title（「绒亲」）仍保留给旁白 / 日志，只是不再画到面板上。
         int active = this.menu.getActiveTab();
+        Component tabTitle = tabTitle(active);
+        if (tabTitle != null) {
+            gui.drawString(this.font, tabTitle, this.titleLabelX, this.titleLabelY, COLOR_LABEL, false);
+        }
+        // 「物品栏」标签只在槽位真正可见的页显示 —— 行囊页与装备页都会露出玩家背包。
         if (active == TAB_POUCH || active == TAB_EQUIP) {
             gui.drawString(this.font, this.playerInventoryTitle,
                     this.inventoryLabelX, this.inventoryLabelY, COLOR_LABEL, false);
         }
+    }
+
+    /** 页签抬头；技能页无抬头（{@code null}）—— 见 {@link #renderLabels}。 */
+    private static Component tabTitle(int tab) {
+        if (tab == TAB_POUCH) {
+            return Component.translatable("furkin.screen.furkin.title.pouch");
+        }
+        if (tab == TAB_EQUIP) {
+            return Component.translatable("furkin.screen.furkin.title.equip");
+        }
+        return null;
     }
 
     /**
@@ -686,16 +834,28 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
     }
 
     /**
-     * 算出装备合计 —— <b>配置开关的总闸门就在这里</b>。
+     * 算出装备合计（装备页用）。
      *
      * <p>{@code showEquipTooltip} 一关，摘要与悬停明细同时消失（两者是同一份数据的两种呈现，
      * 半开半关只会让玩家说不清自己到底关掉了什么）。判据 7 只测「摘要行消失」，本条同样满足。</p>
+     *
+     * <p>开关的<b>判读</b>统一走 {@link #equipBonusesEnabled()} —— 技能页属性明细里的「装备」项
+     * 也读那一个判据，不各自再读一遍配置。</p>
      */
     private List<EquipBonus.Entry> equipBonuses() {
-        if (!FurkinClientConfig.SHOW_EQUIP_TOOLTIP.get()) {
-            return Collections.emptyList();
-        }
-        return EquipBonus.total(this.menu.getEquipment());
+        return equipBonusesEnabled() ? EquipBonus.total(this.menu.getEquipment()) : Collections.emptyList();
+    }
+
+    /**
+     * 装备加成要不要显示 —— <b>唯一的判读点</b>（2026-09-22 定）。
+     *
+     * <p>三个消费者共用：装备页摘要行、装备页悬停明细、<b>技能页属性明细里的「装备」项</b>。
+     * 批 6 初版那处直接调了 {@code EquipBonus.total(...)}，绕过了开关 —— 关掉开关后装备页隐身、
+     * 技能页却照旧亮着装备数，正是本类自己写过的那种「半开半关」。收到这里后，
+     * 开关一关三处一起隐身，且配置只在这一处被读到。</p>
+     */
+    private static boolean equipBonusesEnabled() {
+        return FurkinClientConfig.SHOW_EQUIP_TOOLTIP.get();
     }
 
     /**
@@ -714,19 +874,254 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
         return lines;
     }
 
-    /** 技能页的抬头与空态提示（技能行本身由 {@link SkillListWidget} 画）。 */
+    /**
+     * 技能页抬头（三行）与空态提示（技能行本身由 {@link SkillListWidget} 画）。
+     *
+     * <p>三行的取数各有出处（设计稿 §4.1 字段表）：名称 / 技能点来自快照包；物种由客户端按
+     * 实体类型自解（注册表双侧填充，无需下发）；等级 / 经验读客户端的能力镜像；生命是
+     * 实体的<b>活值</b> —— 面板开着时宠物挨打 / 回血都看得见，不是开屏那一刻的定格快照。
+     * （护甲 2026-09-22 起不再占抬头位置，只在悬停属性明细里显示，理由见行 3 处注释。）</p>
+     */
     private void renderSkillHeader(GuiGraphics gui) {
-        // 头部第二行（标题条已占第一行）：宠物名 + 技能点。
-        Component header = Component.literal(this.companionName == null ? "" : this.companionName + "  ")
-                .append(Component.translatable("furkin.screen.furkin.skill_points"))
-                .append(Component.literal(": " + this.skillPoints));
-        gui.drawString(this.font, header, this.leftPos + TAB_MARGIN, this.topPos + 18, COLOR_LABEL, false);
+        int x = this.leftPos + TAB_MARGIN;
+        LivingEntity companion = companionEntity();
+
+        // 行 1：名称 ＋ 物种。
+        MutableComponent nameRow = Component.literal(this.companionName == null ? "" : this.companionName);
+        Component species = speciesName(companion);
+        if (species != null) {
+            nameRow.append(Component.literal("  ")).append(species);
+        }
+        gui.drawString(this.font, nameRow, x, this.topPos + HEADER_ROW_1_Y, COLOR_LABEL, false);
+
+        // 行 2：等级 ＋ 经验（当前 / 升级所需）。
+        // 「升级所需」由等级现算（纯算术，客户端可直接调 FurkinGrowth）—— 不必为它多开包字段。
+        FurkinData data = companionData(companion);
+        int level = data == null ? 0 : data.getLevel();
+        int xp = data == null ? 0 : data.getXp();
+        MutableComponent xpRow = Component.translatable("furkin.screen.furkin.level")
+                .append(Component.literal(" " + level))
+                .append(Component.literal("   "))
+                .append(Component.translatable("furkin.screen.furkin.xp"))
+                .append(Component.literal(" " + xp + "/" + FurkinGrowth.xpNeededForNextLevel(level)));
+        gui.drawString(this.font, xpRow, x, this.topPos + HEADER_ROW_2_Y, COLOR_LABEL, false);
+
+        // 行 3：技能点 ＋ 生命。
+        // ⚠️ **护甲已从这一行撤下**（2026-09-22 乌狸定）：三项并排时字面量下限就已顶到 158px，
+        // 而可用宽只有 160px（176 − 2×8）—— 两位小数比一位多出的 6px 就会顶出面板右缘。
+        // 护甲没有丢：它在**悬停属性明细**里照常显示（那是独立 tooltip，不受面板宽度约束）。
+        MutableComponent statusRow = Component.translatable("furkin.screen.furkin.skill_points")
+                .append(Component.literal(" " + this.skillPoints))
+                .append(Component.literal("   "))
+                .append(Component.translatable("furkin.screen.furkin.health"))
+                .append(Component.literal(" " + healthText(companion)));
+        gui.drawString(this.font, statusRow, x, this.topPos + HEADER_ROW_3_Y, COLOR_LABEL, false);
 
         if (this.skills.isEmpty()) {
             gui.drawCenteredString(this.font, Component.translatable("furkin.screen.furkin.empty"),
                     this.leftPos + this.imageWidth / 2,
                     (listTop() + listBottom()) / 2, COLOR_HINT);
         }
+    }
+
+    // ===== 属性区（抬头 + 悬停明细） =====
+
+    /** 实体不可得时的占位 —— 用占位而不是 0：0 会被读成「真实数值就是 0」。 */
+    private static final String UNAVAILABLE = "--";
+
+    /** 数值文本（原版属性格式，最多两位小数）—— 面板上所有数值的统一口径。 */
+    private static String plain(double value) {
+        return ItemStack.ATTRIBUTE_MODIFIER_FORMAT.format(value);
+    }
+
+    /**
+     * 明细括号里的单项文本 —— <b>只有负项带负号</b>，正项不带 {@code +}。
+     *
+     * <p>三项之间已经用 {@code +} 相连，值自己再带一个 {@code +} 会变成 {@code +20+0+13} 那种
+     * 重复号。乌狸的原话示例即 {@code 20+0+0}（设计稿 §4.1 定案 3）。</p>
+     */
+    private static MutableComponent term(double value) {
+        return Component.literal(value < 0.0D ? "-" + plain(-value) : plain(value));
+    }
+
+    /**
+     * 面板对着的实体 —— 客户端唯一的取法（设计稿 §4.1 取证⑥）。
+     *
+     * <p>{@code ClientLevel#getEntity(int)} 是 public，而按 UUID 取实体的
+     * {@code getEntities()} 是 protected ⇒ 服务端必须把 entityId 随菜单下发，屏侧只能靠它。
+     * 取不到（entityId 缺失 / 实体已卸载）时返回 null，字段逐项降级为占位。</p>
+     */
+    private LivingEntity companionEntity() {
+        int entityId = this.menu.getEntityId();
+        if (entityId < 0) {
+            return null;
+        }
+        var level = Minecraft.getInstance().level;
+        if (level == null) {
+            return null;
+        }
+        return level.getEntity(entityId) instanceof LivingEntity living ? living : null;
+    }
+
+    /** 实体的能力镜像（等级 / 经验 / 技能点的真相源 —— 能力挂在所有 {@code LivingEntity} 上，双侧都有）。 */
+    private FurkinData companionData(LivingEntity companion) {
+        return companion == null
+                ? null
+                : companion.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
+    }
+
+    /** 物种显示名 —— 按实体类型查注册表自解，无需服务端下发（设计稿 §4.1 取证⑧）。 */
+    private Component speciesName(LivingEntity companion) {
+        if (companion == null) {
+            return null;
+        }
+        return FurkinSpeciesRegistry.byEntityType(companion.getType())
+                .map(species -> (Component) Component.translatable(species.getNameKey()))
+                .orElse(null);
+    }
+
+    /** 生命文本「当前/上限」；实体不可得时为占位。数值走 {@link #plain}，与其余属性同口径。 */
+    private String healthText(LivingEntity companion) {
+        Double max = readAttribute(companion, Attributes.MAX_HEALTH);
+        return max == null ? UNAVAILABLE : plain(companion.getHealth()) + "/" + plain(max);
+    }
+
+    /**
+     * 读实体某属性的当前值；<b>实体不可得、或该实体根本没注册这条属性</b>时返回 {@code null}。
+     *
+     * <p>必须这么读 —— 原版 {@code LivingEntity#getAttributeValue} 内部走
+     * {@code AttributeSupplier#getAttributeInstance}，属性不在该生物的 supplier 里
+     * <b>直接抛 {@link IllegalArgumentException}</b>，不是返 0。2026-09-22 实机踩到：
+     * 猫身上没有 {@code attack_speed}，面板一悬停就崩在渲染线程
+     * （{@code Can't find attribute minecraft:generic.attack_speed}）。
+     * 安全口径是 {@code getAttributes().hasAttribute(...)} 与 {@code getAttribute(...)}
+     * 这两个（返 false / 返 null）。</p>
+     */
+    private static Double readAttribute(LivingEntity entity, Attribute attribute) {
+        if (entity == null || !entity.getAttributes().hasAttribute(attribute)) {
+            return null;
+        }
+        return entity.getAttributeValue(attribute);
+    }
+
+    /** 鼠标是否落在抬头带（属性明细的命中区）。 */
+    private boolean isOverSkillHeader(double mouseX, double mouseY) {
+        return mouseX >= this.leftPos + TAB_MARGIN
+                && mouseX < this.leftPos + this.imageWidth - TAB_MARGIN
+                && mouseY >= this.topPos + HEADER_HOVER_TOP_Y
+                && mouseY < this.topPos + HEADER_HOVER_BOTTOM_Y;
+    }
+
+    /**
+     * 悬停明细的属性清单 —— 按<b>实体类型</b>缓存（见 {@link #hoverAttributes} 的说明）。
+     *
+     * <p>注意这里<b>只缓存清单、不缓存数值</b>：清单由物种决定（一个会话内基本不变），
+     * 而数值必须是活值（面板开着时宠物挨打 / 回血都要跟着变）。</p>
+     */
+    private List<Attribute> hoverAttributes(LivingEntity companion) {
+        if (companion == null) {
+            return Collections.emptyList();
+        }
+        EntityType<?> type = companion.getType();
+        if (type != this.hoverAttributesType) {
+            this.hoverAttributes = AttributeDisplay.displayableAttributes(companion);
+            this.hoverAttributesType = type;
+        }
+        return this.hoverAttributes;
+    }
+
+    /**
+     * 悬停明细 —— 每项属性<b>一行</b>：{@code 名称 总值 (基础+技能+装备)}，如
+     * {@code 最大生命值 20 (20+0+0)}（2026-09-22 乌狸定，原为「总值 / 技能 / 装备 / 其他」两行）。
+     *
+     * <p><b>三项可加</b>：第一项「基础」取残差（总 − 技能 − 装备），故括号内三数相加
+     * <b>恒等于</b>前面的总值 —— 一行同时验到「服务端技能表」与「客户端装备表」两个来源口径一致。</p>
+     *
+     * <p>括号里的「装备」项<b>受 {@code showEquipTooltip} 管</b>（与装备页摘要 / 悬停同一判据）：
+     * 关掉开关时该项不显示，残差把它吞进去，等式照旧成立（见 {@link #equipBonusesEnabled()}）。</p>
+     *
+     * <p>「总值」取数分两路（设计稿 §4.1 有意接受的不对称）：client-syncable 属性读
+     * <b>客户端实体</b>（实时、权威）；<b>非</b>同步属性（攻击伤害 / 跟随范围 / 击退抗性 /
+     * 攻击击退）客户端那份缺技能 modifier ⇒ 改用<b>服务端下发值</b>。见 {@link #attributeTotal}。</p>
+     *
+     * <p><b>列哪几项是动态的</b>（N5）：清单来自 {@link #hoverAttributes(LivingEntity)}
+     * （注册表 ∩ 该生物实有 ∩ 未屏蔽），第三方模组加的属性会自然出现。</p>
+     */
+    private List<Component> skillAttributeLines() {
+        List<Component> lines = new ArrayList<>();
+        lines.add(Component.translatable("furkin.screen.furkin.attributes").withStyle(ChatFormatting.GRAY));
+
+        LivingEntity companion = companionEntity();
+        Map<ResourceLocation, Double> equipSums = equipAdditionSums();
+        // 「装备」项受装备加成的总开关管（判据同装备页摘要 / 悬停，见 equipBonusesEnabled）：
+        // 关掉时这一项不显示，残差（基础）随即把它吞进去 —— 于是「括号内各项相加 = 前面的总值」
+        // 恒成立，开关怎么拨都不破等式。开关每帧只读一次（提到循环外）。
+        boolean showEquip = equipBonusesEnabled();
+        // 清单已由 AttributeDisplay 收口「注册表 ∩ 该生物实有 ∩ 未屏蔽」，此处不再逐条判
+        // hasAttribute —— 那条判据同时是崩溃防线（getAttributeValue 对未注册属性会抛）。
+        for (Attribute attribute : hoverAttributes(companion)) {
+            ResourceLocation id = ForgeRegistries.ATTRIBUTES.getKey(attribute);
+            if (id == null) {
+                continue;
+            }
+            Double total = attributeTotal(attribute, id, companion);
+            double skill = this.skillData == null ? 0.0D : this.skillData.skillBonusOf(id.toString());
+            double equip = showEquip ? equipSums.getOrDefault(id, 0.0D) : 0.0D;
+            // 「基础」取残差（总 − 技能 − 装备），故三数相加恒等于总值。
+            // 总值读不出时残差同样读不出，同时省掉括号 —— 免得把 -- 当成 0 算出个负数。
+            Double base = total == null ? null : total - skill - equip;
+
+            MutableComponent line = Component.translatable(attribute.getDescriptionId())
+                    .withStyle(COLOR_ATTR_NAME)
+                    .append(Component.literal(" " + (total == null ? UNAVAILABLE : plain(total)))
+                            .withStyle(COLOR_ATTR_TOTAL));
+            if (base != null) {
+                // 三项之间的 "+" 与括号走中性灰（原「技能 / 装备 / 其他」三个标签的位置），
+                // 颜色只留给三个数 —— 与改动前的色义一致：黄=总、灰=基础、绿=技能、蓝=装备。
+                line.append(Component.literal(" (").withStyle(ChatFormatting.GRAY))
+                        .append(term(base).withStyle(COLOR_ATTR_BASE))
+                        .append(Component.literal("+").withStyle(ChatFormatting.GRAY))
+                        .append(term(skill).withStyle(COLOR_ATTR_SKILL));
+                if (showEquip) {
+                    line.append(Component.literal("+").withStyle(ChatFormatting.GRAY))
+                            .append(term(equip).withStyle(COLOR_ATTR_EQUIP));
+                }
+                line.append(Component.literal(")").withStyle(ChatFormatting.GRAY));
+            }
+            lines.add(line);
+        }
+        return lines;
+    }
+
+    /**
+     * 某属性的「总值」；<b>读不出时返回 {@code null}</b>（调用方显示 {@link #UNAVAILABLE}）。
+     *
+     * <p>可同步 ⇒ 读客户端实体（实时）；非同步（攻击伤害）⇒ 客户端那份只有实体类型的默认基值、
+     * 技能 modifier 从不上网（设计稿 §4.1 取证⑦），故取服务端下发值；服务端没给这条
+     * （旧包 / 该属性不在下发之列）则回落到客户端那份 —— 少一段技能加成，但好过显示 0。</p>
+     */
+    private Double attributeTotal(Attribute attribute, ResourceLocation id, LivingEntity companion) {
+        Double local = readAttribute(companion, attribute);
+        if (local == null || attribute.isClientSyncable()) {
+            return local;
+        }
+        Double server = this.skillData == null ? null : this.skillData.serverTotalOf(id.toString());
+        return server != null ? server : local;
+    }
+
+    /** 四个装备槽给出的属性加成（按属性合并，只取 addition —— 与「三段可加」同口径）。 */
+    private Map<ResourceLocation, Double> equipAdditionSums() {
+        Map<ResourceLocation, Double> sums = new HashMap<>();
+        for (EquipBonus.Entry entry : EquipBonus.total(this.menu.getEquipment())) {
+            if (entry.operation() != AttributeModifier.Operation.ADDITION) {
+                continue;
+            }
+            ResourceLocation id = ForgeRegistries.ATTRIBUTES.getKey(entry.attribute());
+            if (id != null) {
+                sums.merge(id, entry.amount(), Double::sum);
+            }
+        }
+        return sums;
     }
 
     /**
@@ -912,9 +1307,14 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
 
     // ===== 布局计算（渲染与命中必须用同一套，故抽出来共用） =====
 
-    /** 技能列表可用区上沿：让出标题条与「名字 + 技能点」两行。 */
+    /**
+     * 技能列表可用区上沿：让出标题条与抬头三行。
+     *
+     * <p>= 第三行文字 y（{@link #HEADER_ROW_3_Y}）＋ 12（行距）。<b>面板加高 Δ 不改变列表可用高度</b>：
+     * {@link #listBottom()} 也随 {@code imageHeight} 同增 Δ，故加高的收益只落在抬头。</p>
+     */
     private int listTop() {
-        return this.topPos + 30;
+        return this.topPos + HEADER_ROW_3_Y + 12;
     }
 
     private int listBottom() {

@@ -39,6 +39,24 @@ import java.util.UUID;
  */
 public class FurkinPouchMenu extends AbstractContainerMenu {
 
+    /**
+     * 面板在「槽位区与玩家背包段之间」额外插入的高度（设计稿 §4.1 定案 N1）。
+     *
+     * <p>技能页抬头由两行变三行（名称+物种 / 等级+经验 / 技能点+生命+护甲），多出的
+     * <b>恰好 12px</b>（原两行的行位 18 / 30 → 三行的 6 / 18 / 30 与列表顶 42，比原口径各留一行）。
+     * 初版按「12 + 一段呼吸位」定为 24；2026-09-22 乌狸反馈「面板高度可以往回缩一下」
+     * ⇒ 去掉那 12px 呼吸位，回到与抬头增量等值的 <b>12</b>（呼吸位由空出的屏高自然给出，
+     * 见下）。三个页签<b>同一高度</b>：{@code imageHeight} 是屏级字段、{@code Slot.y} 是 final，
+     * 按页签给不同高度只能靠「切页时重开菜单」，代价远大于统一加高。</p>
+     *
+     * <p>缩到 12 的连带收益：面板矮 12 ⇒ 居中后 {@code topPos} 大 6 ⇒ 画在面板上沿之外的
+     * 页签离屏幕顶也宽 6px（乌狸同轮反馈「页签上边缘显得窄」）。</p>
+     *
+     * <p><b>常量放在菜单侧</b>：槽位纵坐标（本类的业务）与面板高度（屏侧读它）必须同源 ——
+     * 两处各写一个数，改一处漏一处就会出现「背包槽与格子错位」。</p>
+     */
+    public static final int PANEL_EXTRA_HEIGHT = 12;
+
     /** 行囊列数（与原版箱子一致）。 */
     public static final int COLUMNS = 9;
     /** 玩家背包行数（主背包 3 行）。 */
@@ -67,6 +85,19 @@ public class FurkinPouchMenu extends AbstractContainerMenu {
     private final Entity holder;
 
     /**
+     * 面板对着的那只实体的网络 id —— <b>客户端定位实体唯一的入口</b>。
+     *
+     * <p><b>为什么必须有它</b>（设计稿 §4.1 取证⑥）：{@code ClientLevel#getEntity(int)} 是 public，
+     * 而按 UUID 取实体的 {@code getEntities()} 是 protected ⇒ 客户端手里只有 UUID 是取不到实体的。
+     * 技能页要读实体上的实时属性（生命 / 护甲 / 各属性），必须先拿到这个 int。</p>
+     *
+     * <p><b>为什么走菜单开屏缓冲而不是两个自定义包</b>：它与 {@code companionId} 是同一件事
+     * （「这块面板对着谁」），同源同处；塞进 {@code OpenFurkinScreenPacket} 或
+     * {@code SyncFurkinDataPacket} 都等于把身份拆成两处、各自维护一份。</p>
+     */
+    private final int entityId;
+
+    /**
      * 当前页签 —— 双端各存一份，值来源相同。
      *
      * <p><b>客户端那一份</b>只影响 {@link Slot#isActive()}（渲染与鼠标命中）；
@@ -81,9 +112,9 @@ public class FurkinPouchMenu extends AbstractContainerMenu {
      */
     private int activeTab = TAB_POUCH;
 
-    /** 服务端构造：持有真实容器与实体。 */
+    /** 服务端构造：持有真实容器与实体。{@code entityId} 由调用方给（服务端即 {@code holder.getId()}）。 */
     public FurkinPouchMenu(int windowId, Inventory playerInv, Container pouch,
-                           UUID companionId, Entity holder) {
+                           UUID companionId, Entity holder, int entityId) {
         super(ModMenus.FURKIN_POUCH.get(), windowId);
         this.pouch = pouch;
         this.pouchSlots = pouch.getContainerSize();
@@ -94,6 +125,7 @@ public class FurkinPouchMenu extends AbstractContainerMenu {
         this.rows = Math.max(1, (this.pouchSlots + COLUMNS - 1) / COLUMNS);
         this.companionId = companionId;
         this.holder = holder;
+        this.entityId = entityId;
         // 装备容器只在拿得到活体时才真的有转发目标：客户端 menu 的 holder 是 null
         // （实体不在客户端），此时容器退化为 4 格占位缓冲，内容由容器同步包灌入。
         this.equipment = new MobEquipmentContainer(
@@ -104,10 +136,12 @@ public class FurkinPouchMenu extends AbstractContainerMenu {
 
     /** 客户端网络工厂入口（由 {@link ModMenus} 的方法引用调用）。 */
     public static FurkinPouchMenu fromNetwork(int windowId, Inventory playerInv, FriendlyByteBuf buf) {
+        // ⚠️ 读取顺序必须与 FurkinRecordActionHandler#openMenu 的写入顺序一致。
         int slotCount = buf.readVarInt();
         UUID companionId = buf.readUUID();
+        int entityId = buf.readVarInt();
         return new FurkinPouchMenu(windowId, playerInv,
-                new FurkinInventory(slotCount), companionId, null);
+                new FurkinInventory(slotCount), companionId, null, entityId);
     }
 
     /** 注册全部槽位：行囊区 → 装备区 → 玩家背包（顺序决定 {@link #quickMoveStack} 的分段）。 */
@@ -128,8 +162,10 @@ public class FurkinPouchMenu extends AbstractContainerMenu {
         }
 
         // 玩家背包：位置随行囊行数平移，使面板始终与纹理对齐；两个有槽位的页都要看得见。
+        // 末尾 + PANEL_EXTRA_HEIGHT：抬头加高把那一段净板带插在槽位区与背包段之间，
+        // 背包槽必须跟着下移同样的量，否则槽位与纹理里的格子错开（见 PANEL_EXTRA_HEIGHT）。
         int playerTabs = tabMask(TAB_POUCH) | tabMask(TAB_EQUIP);
-        int offset = (this.rows - 4) * 18;
+        int offset = (this.rows - 4) * 18 + PANEL_EXTRA_HEIGHT;
         for (int r = 0; r < PLAYER_ROWS; r++) {
             for (int c = 0; c < COLUMNS; c++) {
                 this.addSlot(new TabSlot(playerInv, 9 + r * COLUMNS + c,
@@ -179,6 +215,15 @@ public class FurkinPouchMenu extends AbstractContainerMenu {
 
     public UUID getCompanionId() {
         return companionId;
+    }
+
+    /**
+     * 面板对着的实体的网络 id（客户端用它经 {@code ClientLevel#getEntity(int)} 取实体）。
+     *
+     * <p>取不到实体时为 -1（旧包 / 异常），屏侧据此跳过实体相关字段的显示。</p>
+     */
+    public int getEntityId() {
+        return entityId;
     }
 
     public int getActiveTab() {

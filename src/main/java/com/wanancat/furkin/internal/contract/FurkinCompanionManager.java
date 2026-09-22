@@ -110,7 +110,10 @@ public final class FurkinCompanionManager {
         // 移除实体（discard 不触发死亡掉落 / 不广播死亡）。
         target.discard();
 
-        FurkinMod.LOGGER.info("Furkin dismissed: id={} by {}", companionId, player.getName().getString());
+        // health 一并记下：与 summon 那行「restored to x」互为独立来源的两个读数，
+        // 两者相等才说明「保持收回前血量」真的生效（否则看不出写回是生效了还是碰巧撞上 20）。
+        FurkinMod.LOGGER.info("Furkin dismissed: id={} health={} by {}",
+                companionId, target.getHealth(), player.getName().getString());
         return true;
     }
 
@@ -216,6 +219,18 @@ public final class FurkinCompanionManager {
         // 重新 apply，否则收回再召唤后属性加成丢失。
         SkillEffectApplier.applyAll(living, SkillRegistry.tree(), data.getSkillLevels());
 
+        // 血量读数：取自**快照 NBT**，不能取 `living.getHealth()`。原因（javap 取证，2026-09-22 第六轮）：
+        // `load(snapshot)` 内部会走到 `TamableAnimal#readAdditionalSaveData` —— 它先经 super 链读到
+        // `Health` 并 `setHealth`，**紧接着**又读 `Tame` 并调 `setTame(true)`，而 `Wolf#setTame(true)`
+        // 写死了 `setHealth(20.0f)` ⇒ **load 自己就已经把血冲成 20 了**。此刻 `getHealth()` 早已不是
+        // 快照里的真值（第五轮把读数点放在这里，拿到的就是被冲过的 20，日志里 `restored to 20.0` 即此）。
+        // 唯一可靠来源是快照 NBT 的 `Health` 键 —— `LivingEntity#addAdditionalSaveData` 写
+        // `putFloat("Health", getHealth())`，收回时 `saveWithoutId` 现取，是收回那一刻的真值。
+        // 99 = 「任意数值型」，与原版读档同判据；快照缺失（M3.2 前的旧档）时退回运行时读数。
+        float recalledHealth = snapshot != null && snapshot.contains("Health", 99)
+                ? snapshot.getFloat("Health")
+                : living.getHealth();
+
         // 对 TamableAnimal 的额外动作：置 TAME（与契约同路径）。
         if (living instanceof TamableAnimal tamable) {
             tamable.setTame(true);
@@ -227,6 +242,20 @@ public final class FurkinCompanionManager {
             // 应用战斗模式（从档案恢复，跨召唤记忆）。
             data.getCombatMode().applyTo(tamable);
         }
+
+        // 血量写回（2026-09-22 乌狸定案：召唤时「保持收回前的血量」）：
+        // `Wolf#setTame(true)` 的字节码里写死了 `getAttribute(MAX_HEALTH).setBaseValue(20.0d)`
+        // ＋ `setHealth(20.0f)`，会把血量冲掉 —— 这正是「收回再放出就回满到基础生命值上限」的根因。
+        // ⚠️ 本方法里它被调用**两次**：① `load(snapshot)` 顺路调的（见上面读数处的取证）；
+        // ② 下面这段 `TamableAnimal` 分支显式调的一次。所以写回**必须**排在 ② 之后。
+        // 读数值来自快照 NBT（不是 getHealth()），理由见上面。
+        // setHealth 内部自带 clamp(0, 上限)，越界会自行收敛（例如快照血高于当前上限时）。
+        float forcedByTame = living.getHealth(); // 取证用：setTame 强制写下的值（非驯服类生物即原值）
+        living.setHealth(recalledHealth);
+        // 一次召唤一行、非 tick 刷屏：给出「被覆盖成几 / 写回成几 / 上限几」三个互相约束的数，
+        // 免得只能靠肉眼看面板判断写回有没有生效。不需要时可整段删。
+        FurkinMod.LOGGER.info("Furkin summon health: setTame forced {}, restored to {} (max {})",
+                forcedByTame, living.getHealth(), living.getMaxHealth());
 
         // 名字回灌：快照里的 CustomName 是改名前的旧值，需按档案 name 覆盖
         // （未召唤时改名只更新了档案字段，没更新快照，故召唤后强制覆盖一次）。

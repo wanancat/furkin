@@ -185,17 +185,6 @@ public final class CommonEvents {
             return;
         }
 
-        // ===== 临时验收探针（定位受害侧被动不触发，定案后移除）=====
-        // 用来区分两种可能：① 事件根本没到绒亲身上；② 事件到了但技能等级读成 0。
-        FurkinData probe = target.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
-        if (probe != null && probe.isCompanion()) {
-            FurkinMod.LOGGER.info(
-                    "Furkin probe: hurt on companion id={} amount={} health={} attacker={} levels={}",
-                    probe.getCompanionId(), event.getAmount(), target.getHealth(),
-                    source.getEntity() == null ? "none" : source.getEntity().getType().toString(),
-                    probe.getSkillLevels());
-        }
-
         // 受害侧被动（九命猫免死）——必须早于下面的「有实体攻击者」守卫：
         // 摔落 / 虚空这类伤害没有实体来源，若先过守卫就永远进不来，九命猫护不住摔死。
         // （灵巧身法闪避不在这里 —— 它在更早的 onLivingAttack，取消后整个受击流程直接返回。）
