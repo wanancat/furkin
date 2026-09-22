@@ -13,11 +13,13 @@ import com.wanancat.furkin.internal.growth.CombatParticipationTracker;
 import com.wanancat.furkin.internal.growth.FurkinFeeding;
 import com.wanancat.furkin.internal.growth.FurkinGrowth;
 import com.wanancat.furkin.internal.item.FurkinContractItem;
+import com.wanancat.furkin.internal.item.FurkinSoulstoneItem;
 import com.wanancat.furkin.internal.inventory.PouchDrop;
 import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.network.SyncFurkinDataPacket;
 import com.wanancat.furkin.internal.record.FurkinArchiveData;
 import com.wanancat.furkin.internal.record.FurkinArchiveEntry;
+import com.wanancat.furkin.internal.registry.ModItems;
 import com.wanancat.furkin.internal.skill.SkillPassiveDispatcher;
 import com.wanancat.furkin.internal.skill.SkillRegistry;
 import net.minecraft.nbt.CompoundTag;
@@ -27,6 +29,7 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.event.AddReloadListenerEvent;
 import net.minecraftforge.event.RegisterCommandsEvent;
@@ -313,7 +316,25 @@ public final class CommonEvents {
         entry.setSummoned(false); // 实体随死亡被移除，不再是「在场」。
         archive.putEntry(entry);
 
+        // M4.1 死亡掉魂石：在死亡位置生成一枚绑定该宠物身份的魂石（纯钥匙）。
+        // 魂石物品 fireResistant，熔岩烧不掉（虚空掉落 M5 再议，当前不特殊处理）。
+        dropSoulstone(serverLevel, target, companionId);
+
         FurkinMod.LOGGER.info("Furkin fallen: id={} species={}", companionId, target.getType());
+    }
+
+    /** 在死亡位置掉一枚绑定该宠物身份的魂石。 */
+    private static void dropSoulstone(ServerLevel serverLevel, LivingEntity target, UUID companionId) {
+        ItemStack stone = new ItemStack(ModItems.FURKIN_SOULSTONE.get());
+        FurkinSoulstoneItem.bindCompanion(stone, companionId);
+        ItemEntity itemEntity = new ItemEntity(
+                serverLevel,
+                target.getX(), target.getY(), target.getZ(),
+                stone);
+        // 魂石可交易可追踪：不设 pickupDelay（立即可捡）；默认无速度（就地落下）。
+        serverLevel.addFreshEntity(itemEntity);
+        FurkinMod.LOGGER.info("Furkin soulstone dropped: id={} at ({}, {}, {})",
+                companionId, target.getX(), target.getY(), target.getZ());
     }
 
     /** 服务端 tick 兜底：清理脱离战斗超时的追踪记录，防止残留；并驱动周期被动。 */

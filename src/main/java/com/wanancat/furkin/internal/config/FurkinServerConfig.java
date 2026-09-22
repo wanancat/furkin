@@ -65,14 +65,25 @@ public class FurkinServerConfig {
 
     // ===== 复活 =====
 
-    /** 复活冷却时长（秒）。具体数值 M5 平衡时定，占位 600。 */
+    /**
+     * 重获魂石冷却时长（秒）。
+     *
+     * <p><b>语义（2026-09-22 乌狸定案，纠正早期误读）</b>：复活仪式本体<b>零代价、零冷却</b>，
+     * 唯一代价是消耗魂石。本冷却项作用于「绒亲录里重新获取已亡绒亲魂石」这个<b>兜底动作</b>，
+     * 不是复活的冷却 —— 玩家丢失魂石（掉岩浆 / 被捡走）后，去录里重获一枚，受此冷却约束。
+     * 具体数值 M5 平衡时定，占位 600。</p>
+     */
     public static final ForgeConfigSpec.IntValue REVIVE_COOLDOWN_SECONDS = BUILDER
-            .comment("Cooldown in seconds between revives.", "Placeholder until M5 balance.")
+            .comment("Cooldown in seconds for re-acquiring a lost soulstone from the record (NOT for the revive ritual itself, which costs only the soulstone).", "Placeholder until M5 balance.")
             .defineInRange("reviveCooldownSeconds", 600, 0, Integer.MAX_VALUE);
 
-    /** 重获魂石冷却时长（秒）。设计稿要求显著高于常规复活。 */
+    /**
+     * 重获魂石兜底的二次冷却（秒）？—— 已废弃：早期「显著高于常规复活」的语义
+     * 建立在「复活本身有冷却」的错误认知上。现复活零冷却，故此项不再需要独立含义。
+     * 保留占位以兼容旧 config，M5 平衡时决定是否移除或并入其他用途。
+     */
     public static final ForgeConfigSpec.IntValue SOULSTONE_REACQUIRE_COOLDOWN_SECONDS = BUILDER
-            .comment("Cooldown in seconds for re-acquiring a lost soulstone (significantly higher than revive).", "Placeholder until M5 balance.")
+            .comment("Deprecated placeholder: was 're-acquire cooldown significantly higher than revive', but revive has no cooldown now.", "Kept for config compatibility; revisit at M5 balance.")
             .defineInRange("soulstoneReacquireCooldownSeconds", 3600, 0, Integer.MAX_VALUE);
 
     public static final ForgeConfigSpec SPEC = BUILDER.build();
