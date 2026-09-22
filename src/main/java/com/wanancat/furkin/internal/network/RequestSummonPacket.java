@@ -55,12 +55,23 @@ public final class RequestSummonPacket {
                             result == FurkinCompanionManager.SummonResult.TELEPORTED
                                     ? "furkin.msg.teleported"
                                     : "furkin.msg.summoned"), true);
-        } else {
-            // 失败也分流：传送失败与召唤失败文案不同。
-            boolean wasTeleport = result == FurkinCompanionManager.SummonResult.REBUILD_FAILED;
-            player.displayClientMessage(
-                    net.minecraft.network.chat.Component.translatable(
-                            wasTeleport ? "furkin.msg.teleport_failed" : "furkin.msg.summon_failed"), false);
+            return;
         }
+
+        // 失败按具体原因分档（2026-09-22 定）：原先只分「传送失败 / 召唤失败」两档，
+        // 文案又是并列五选一的笼统句，玩家看不出到底卡在哪一条。
+        // 现与命令侧 /furkin summon 的 switch 同分档（同一套 SummonResult 枚举），
+        // 只是把命令侧的英文回执换成本地化 key（此路径由界面按钮触发，须走 lang）。
+        // ACTIVE_LIMIT 带 %s（本世界上限），故传参。
+        net.minecraft.network.chat.Component msg = switch (result) {
+            case NOT_FOUND -> net.minecraft.network.chat.Component.translatable("furkin.msg.summon_not_found");
+            case NOT_OWNER -> net.minecraft.network.chat.Component.translatable("furkin.msg.not_owner");
+            case NOT_ALIVE -> net.minecraft.network.chat.Component.translatable("furkin.msg.summon_not_alive");
+            case ACTIVE_LIMIT -> net.minecraft.network.chat.Component.translatable(
+                    "furkin.msg.active_limit",
+                    com.wanancat.furkin.internal.config.FurkinServerConfig.ACTIVE_LIMIT.get());
+            default -> net.minecraft.network.chat.Component.translatable("furkin.msg.summon_failed");
+        };
+        player.displayClientMessage(msg, false);
     }
 }

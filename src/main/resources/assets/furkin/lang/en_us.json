@@ -10,6 +10,8 @@
   "furkin.msg.active_limit": "Active companion limit reached (%s). Dismiss one before contracting another.",
   "furkin.msg.summoned": "Companion summoned",
   "furkin.msg.summon_failed": "Summon failed (not found / not owner / not alive / already summoned / active limit)",
+  "furkin.msg.summon_not_found": "No such companion",
+  "furkin.msg.summon_not_alive": "This companion has fallen — revive it with a soulstone",
   "furkin.msg.teleported": "Companion teleported to you",
   "furkin.msg.teleport_failed": "Teleport failed (not found / not owner / not alive / not summoned)",
   "furkin.msg.dismissed": "Companion dismissed",

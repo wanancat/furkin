@@ -225,11 +225,14 @@ public final class FurkinCommand {
             // 名字：自定义名优先，无则用物种名。
             String nameStr = e.getName() == null ? "" : e.getName().getString();
 
-            // 状态后缀：[在场] 绿 / [已亡] 红 / 存活未在场无后缀。
+            // 状态后缀：[Fallen] 红 / [Summoned] 绿 / 存活未在场无后缀。
+            // 用词与本命令其余回执同源：死亡那条写的是 "has fallen"、召唤成功写的是 "Summoned"。
+            // （界面侧另有 lang key `furkin.screen.record.state_dead/state_summoned`，
+            //  按「命令侧不走 lang」的既定口径，这里不引用它们。）
             Component state = !e.isAlive()
-                    ? Component.literal(" [已亡]").withStyle(ChatFormatting.RED)
+                    ? Component.literal(" [Fallen]").withStyle(ChatFormatting.RED)
                     : (e.isSummoned()
-                            ? Component.literal(" [在场]").withStyle(ChatFormatting.GREEN)
+                            ? Component.literal(" [Summoned]").withStyle(ChatFormatting.GREEN)
                             : Component.empty());
 
             // 经验：当前 / 升级所需（与原版面板同口径）。
