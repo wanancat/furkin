@@ -1,0 +1,99 @@
+# Changelog
+
+All notable changes to **Furkin (绒亲)** are documented in this file.
+
+本文件记录 Furkin（绒亲）的所有重要变更。
+
+---
+
+## 版本规范 / Versioning
+
+本项目采用 **Forge 官方推荐的版本号格式**：
+
+This project follows the **Forge-recommended version format**:
+
+```
+MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
+```
+
+| 段 / Segment | 含义 / Meaning | 何时递增 / Incremented when |
+|---|---|---|
+| `MCVERSION` | 适用的 Minecraft 版本 / target Minecraft version | 始终与 MC 版本一致 |
+| `MAJORMOD` | 模组主版本 / mod major | 删物品 / 改删既有机制 / 升 MC 版本 |
+| `MAJORAPI` | **API 主版本 / API major** | ⭐ **破坏性 API 变更**：改枚举顺序或变量、改方法返回类型、整体移除 public 方法 |
+| `MINOR` | 次版本 / minor | 加物品 / 加新机制 / 废弃 public 方法 |
+| `PATCH` | 修订 / patch | 修 bug |
+
+**派生两件事 / Two consequences**：
+
+1. **读版本号就能判断 API 兼容性** —— 第三方只需比较 `MAJORAPI` 段。
+   程序内可用 `FurkinApi.getApiVersion()` 查询该段的值。
+   *Third parties only need to compare the `MAJORAPI` segment; it is queryable at runtime via `FurkinApi.getApiVersion()`.*
+2. **本文件以 `#### API Changes` 专节标记所有 API 变更** —— 破坏性的会在条目里明写。
+   *All API changes are collected under a dedicated `#### API Changes` section; breaking ones are called out explicitly.*
+
+> 参考来源 / Reference：Forge 文档《Versioning》——
+> `MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH` 能「区分世界不兼容与 API 不兼容的改动」。
+
+---
+
+## [1.20.1-0.0.1.0] - 2026-09-22
+
+**首个完整版本 / Initial complete version** —— M0 至 M5 全部功能完成。
+*All functionality from M0 through M5 is complete.*
+
+### Added
+
+- **契约系统 / Contract system** —— 将原版猫、狗契约成伙伴：契约物品、命名界面、档案持久化。
+  *Contract vanilla cats and dogs into companions: contract item, naming screen, archive persistence.*
+- **伴侣管理 / Companion management** —— 召唤 / 收回 / 解除契约 / 改名；头顶状态图标；丢失与死亡状态追踪。
+  *Summon / retract / release / rename; overhead status icon; lost & fallen state tracking.*
+- **成长与技能树 / Growth & skill tree** —— 升级曲线、技能点、13 条技能（主干 6 + 猫 4 + 狗 3）；技能数据驱动（JSON，`/reload` 即时生效）。
+  *Level curve, skill points, 13 skills (6 trunk + 4 cat + 3 dog); skill data is JSON-driven and hot-reloadable.*
+- **随身行囊 / Travel pouch** —— 随伙伴同行的背包，格数随 `travel_pouch` 技能等级派生；缩容 / 回收 / 死亡掉落处理。
+  *Carry-along inventory sized by the `travel_pouch` skill level; handles shrinking, reclaiming, and death drops.*
+- **装备系统 / Equipment system** —— 4 格装备槽（头 / 胸 / 腿 / 脚），入档与死亡快照，`setDropChance(0)` 配对关闭掉落。
+  *Four equipment slots (head/chest/legs/feet), archived with the companion, paired death snapshot and drop-chance suppression.*
+- **复活系统 / Revival system** —— 魂石（防火，绑定 `companion_id`）、12 朵花 + 羊毛复活仪式、绒亲录内「重获魂石」兜底（1 钻石 + 600s 每宠物冷却）。
+  *Soulstone (fire-resistant, bound by `companion_id`), a 12-flower + wool revival ritual, and an in-record "reacquire soulstone" fallback (1 diamond + 600s per-pet cooldown).*
+- **绒亲面板 / Furkin panel** —— 容器屏，技能 / 行囊 / 装备三页签；技能页当前属性区（三行抬头 + 悬停全属性明细）。
+  *Container screen with Skill / Pouch / Equipment tabs; the skill tab shows a live attribute area with a hover breakdown.*
+- **绒亲录属性区 / Record attribute area** —— 档案界面内展示伙伴属性。
+  *Companion attributes displayed inside the record screen.*
+- **命令层 / Command layer** —— `/furkin` 命令树，覆盖召唤、档案、技能等调试与操作入口。
+  *A `/furkin` command tree covering summon, archive, skills and other operations.*
+- **自建创造标签页 / Custom creative tab** —— 绒亲品牌 tab，解决四件物品在创造搜索中搜不到的问题。
+  *A dedicated Furkin creative tab so all four items are searchable in creative.*
+- **配置项 / Configuration** —— 客户端与服务端 TOML 配置（含平衡数值）。
+  *Client and server TOML configs, including balance values.*
+- **公开 API / Public API** —— `com.wanancat.furkin.api` 包，供第三方注册物种与响应升级事件。
+  *The `com.wanancat.furkin.api` package for third parties to register species and react to level-ups.*
+
+### API Changes
+
+⭐ **本版本为 API 首次发布 / First public API release.**
+
+- **新增公开 API 包 `com.wanancat.furkin.api`**，含 7 个公开类型：
+  *New public API package `com.wanancat.furkin.api` with 7 public types:*
+  - `FurkinApi` —— 静态入口：`registerSpecies()` / `isRegistered()` / `getSpecies()` / `getApiVersion()`
+  - `api.companion.FurkinSpecies` —— 物种标识
+  - `api.companion.FurkinSpeciesRegistry` —— 物种注册表
+  - `api.companion.IFurkin` —— 伴侣只读查询接口
+  - `api.skill.FurkinSkillEffectType` —— 自定义技能效果类型
+  - `api.skill.FurkinSkillEffectTypeRegistry` —— 效果类型注册表
+  - `api.event.FurkinLevelUpEvent` —— 升级事件（可取消，不可覆写）
+- **`MAJORAPI` 段当前为 `0`** —— 表示 API 尚未承诺稳定，首次正式发布时将进位为 `1`。
+  *`MAJORAPI` is currently `0`, signalling that the API is not yet declared stable.*
+- ⚠️ **边界说明 / Boundary note**：`api` 包以外的所有 furkin 类型（尤其
+  `com.wanancat.furkin.internal.*`）均为**内部实现**，结构随时可能变更，**不在兼容承诺范围内**。
+  本版本**不发布独立的 api jar**，故该边界是**约定**而非编译期约束 —— 请自行只依赖 `api` 包。
+  *Everything outside the `api` package — especially `internal` — is implementation detail and carries no
+  compatibility promise. No separate api jar is published, so this boundary is a convention, not a compile-time
+  enforcement.*
+
+### Notes
+
+- 平衡数值为**初版冻结值**，后续版本可能调整。
+  *Balance values are frozen at their initial set; later versions may adjust them.*
+- ⚠️ 四件物品（契约 / 绒亲录 / 洗点药水 / 魂石）**未挂任何原版创造标签页**，仅出现在自建 furkin tab 中。
+  *The four items appear only in Furkin's own creative tab, not in any vanilla tab.*
