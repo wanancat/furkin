@@ -1,8 +1,15 @@
 package com.wanancat.furkin.internal.item;
 
+import com.wanancat.furkin.internal.contract.FurkinCompanionManager;
+import com.wanancat.furkin.internal.revive.ReviveStructure;
+import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.world.level.Level;
 
 import java.util.UUID;
 
@@ -56,5 +63,46 @@ public class FurkinSoulstoneItem extends Item {
             return null;
         }
         return tag.getUUID(KEY_COMPANION_ID);
+    }
+
+    /**
+     * 复活仪式入口（M4.2）：手持魂石右键中心羊毛，结构判定通过即复活。
+     *
+     * <p>流程：服务端判定 → 目标须为羊毛 → {@link ReviveStructure#matches} 验结构 →
+     * 读魂石绑定的 {@code companionId} → {@link FurkinCompanionManager#revive}（三重校验 +
+     * 重建实体）→ 成功后消耗魂石。</p>
+     *
+     * <p><b>复活本体零代价零冷却</b>，唯一代价 = 消耗这枚魂石（设计稿 §3.4「2026-09-22 修订」）。
+     * 失败一律 {@link InteractionResult#PASS}（不吞事件，结构不对时原版行为照旧）。</p>
+     */
+    @Override
+    public InteractionResult useOn(UseOnContext context) {
+        Level level = context.getLevel();
+
+        // 只在服务端判定 + 执行；客户端返回「由服务端定夺」。
+        if (level.isClientSide) {
+            return InteractionResult.sidedSuccess(false);
+        }
+
+        // 目标方块必须是羊毛（BlockTags.WOOL），且玩家有效。
+        BlockPos center = context.getClickedPos();
+        if (context.getPlayer() instanceof ServerPlayer player) {
+            ItemStack stack = context.getItemInHand();
+            UUID companionId = getBoundCompanion(stack);
+            if (companionId == null) {
+                return InteractionResult.PASS; // 未绑定的魂石（/give 出来的）不参与复活。
+            }
+            if (ReviveStructure.matches(level, center)) {
+                boolean revived = FurkinCompanionManager.revive(player, companionId, center);
+                if (revived) {
+                    // 消耗魂石（纯钥匙，用掉即消失）。
+                    if (!player.isCreative()) {
+                        stack.shrink(1);
+                    }
+                    return InteractionResult.CONSUME;
+                }
+            }
+        }
+        return InteractionResult.PASS;
     }
 }

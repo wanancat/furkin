@@ -13,6 +13,7 @@ import com.wanancat.furkin.internal.record.FurkinArchiveEntry;
 import com.wanancat.furkin.internal.skill.SkillEffectApplier;
 import com.wanancat.furkin.internal.skill.SkillPassiveDispatcher;
 import com.wanancat.furkin.internal.skill.SkillRegistry;
+import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -160,18 +161,101 @@ public final class FurkinCompanionManager {
             return false;
         }
 
+        // 重建实体并落地。召唤的落点 = 玩家所在精确坐标（与旧实现一致）。
+        return rebuildCompanion(player, entry,
+                player.getX(), player.getY(), player.getZ(),
+                player.getYRot(), player.getXRot(), "summoned");
+    }
+
+    /**
+     * 复活一只已亡（且未在场）的绒亲（M4.2）。
+     *
+     * <p>与 {@link #summon} 的区别：不要求 {@code isAlive()}（恰好相反，要求已亡），
+     * 落点是结构中心而非玩家身边。复活本体零代价（魂石即代价，在物品侧扣除）。</p>
+     *
+     * @param player      主人
+     * @param companionId 宠物身份 UUID
+     * @param spawnPos    重建实体落点（结构中心上方）
+     * @return 是否成功复活
+     */
+    public static boolean revive(ServerPlayer player, UUID companionId, BlockPos spawnPos) {
+        if (!(player.level() instanceof ServerLevel serverLevel)) {
+            return false;
+        }
+
+        FurkinArchiveData archive = FurkinArchiveData.get(serverLevel);
+        FurkinArchiveEntry entry = archive.getEntry(companionId);
+        if (entry == null) {
+            return false;
+        }
+
+        // 校验主人。
+        if (entry.getOwnerUuid() == null || !entry.getOwnerUuid().equals(player.getUUID())) {
+            return false;
+        }
+
+        // 校验生命状态（必须已死 —— 存活走召唤，不在此复活）。
+        if (entry.isAlive()) {
+            return false;
+        }
+
+        // 校验是否已在场（理论上已亡必然未在场，双保险）。
+        if (entry.isSummoned()) {
+            return false;
+        }
+
+        // 校验活跃上限（复活同样占用一个活跃名额）。
+        if (countSummoned(serverLevel, player.getUUID()) >= FurkinServerConfig.ACTIVE_LIMIT.get()) {
+            FurkinMod.LOGGER.info("Furkin revive blocked: active limit reached for {}",
+                    player.getName().getString());
+            return false;
+        }
+
+        // 重建实体并落地。alive 的翻转在 rebuildCompanion 的落态段统一处理
+        // （保证「实体建出来才置 alive」），此处不提前写。落点 = 结构中心上方一格。
+        return rebuildCompanion(player, entry,
+                spawnPos.getX() + 0.5, spawnPos.getY() + 1.0, spawnPos.getZ() + 0.5,
+                0.0F, 0.0F, "revived");
+    }
+
+    /**
+     * 重建一只绒亲实体并落地 —— {@link #summon} 与 {@link #revive} 共用的重建段。
+     *
+     * <p>从档案读物种 / 外观 / 装备 / 技能 / 名字 / 血量，按同一身份 UUID 重建实体、
+     * 写回能力、重挂技能效果、重算行囊容量、重置周期被动计时，最后置
+     * {@code summoned=true} 并同步到客户端。</p>
+     *
+     * <p><b>前置校验不在此处</b>：调用方（summon / revive）各自做完「主人 / 生命状态 /
+     * 在场 / 活跃上限」校验后再进本方法，故本方法只负责「重建 + 落地 + 落态」。</p>
+     *
+     * @param player    主人
+     * @param entry     档案条目（须已通过调用方的前置校验）
+     * @param x         落点 X（召唤=玩家坐标，复活=结构中心上方）
+     * @param y         落点 Y
+     * @param z         落点 Z
+     * @param yRot      落点朝向（召唤=玩家朝向，复活=0）
+     * @param xRot      落点俯仰（同上）
+     * @param actionLog 日志动作词（"summoned" / "revived"）
+     * @return 是否成功
+     */
+    private static boolean rebuildCompanion(ServerPlayer player, FurkinArchiveEntry entry,
+                                            double x, double y, double z,
+                                            float yRot, float xRot, String actionLog) {
+        ServerLevel serverLevel = (ServerLevel) player.level();
+        UUID companionId = entry.getCompanionId();
+
         // 重建实体：从档案读物种。
         EntityType<?> species = entry.getSpecies();
         if (species == null) {
-            FurkinMod.LOGGER.warn("Furkin summon failed: no species recorded for id={}", companionId);
+            FurkinMod.LOGGER.warn("Furkin {} failed: no species recorded for id={}", actionLog, companionId);
             return false;
         }
 
         // 按物种创建实体（沿用同一身份 UUID 在能力层体现，实体 UUID 由世界重新分配）。
         Entity created = species.create(serverLevel);
         if (!(created instanceof LivingEntity living)) {
-            FurkinMod.LOGGER.warn("Furkin summon failed: species {} produced non-living entity",
-                    species);
+            FurkinMod.LOGGER.warn("Furkin {} failed: species {} produced non-living entity",
+                    actionLog, species);
             return false;
         }
 
@@ -194,7 +278,7 @@ public final class FurkinCompanionManager {
         // 写回能力对象（运行时真相）。
         FurkinData data = living.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
         if (data == null) {
-            FurkinMod.LOGGER.warn("Furkin summon failed: capability unavailable for species {}", species);
+            FurkinMod.LOGGER.warn("Furkin {} failed: capability unavailable for species {}", actionLog, species);
             return false;
         }
         data.setCompanionId(companionId);
@@ -227,9 +311,14 @@ public final class FurkinCompanionManager {
         // 唯一可靠来源是快照 NBT 的 `Health` 键 —— `LivingEntity#addAdditionalSaveData` 写
         // `putFloat("Health", getHealth())`，收回时 `saveWithoutId` 现取，是收回那一刻的真值。
         // 99 = 「任意数值型」，与原版读档同判据；快照缺失（M3.2 前的旧档）时退回运行时读数。
+        // 复活场景：死亡快照里的 Health 可能是 0（死在那一刻），读出来回灌会得到一个 0 血实体。
+        // 为稳妥，复活时若快照血 <= 0，退回满血（让复活对象以健康状态归来，M4.2 定案口径）。
         float recalledHealth = snapshot != null && snapshot.contains("Health", 99)
                 ? snapshot.getFloat("Health")
                 : living.getHealth();
+        if (recalledHealth <= 0.0F) {
+            recalledHealth = living.getMaxHealth();
+        }
 
         // 对 TamableAnimal 的额外动作：置 TAME（与契约同路径）。
         if (living instanceof TamableAnimal tamable) {
@@ -252,10 +341,10 @@ public final class FurkinCompanionManager {
         // setHealth 内部自带 clamp(0, 上限)，越界会自行收敛（例如快照血高于当前上限时）。
         float forcedByTame = living.getHealth(); // 取证用：setTame 强制写下的值（非驯服类生物即原值）
         living.setHealth(recalledHealth);
-        // 一次召唤一行、非 tick 刷屏：给出「被覆盖成几 / 写回成几 / 上限几」三个互相约束的数，
+        // 一次一行、非 tick 刷屏：给出「被覆盖成几 / 写回成几 / 上限几」三个互相约束的数，
         // 免得只能靠肉眼看面板判断写回有没有生效。不需要时可整段删。
-        FurkinMod.LOGGER.info("Furkin summon health: setTame forced {}, restored to {} (max {})",
-                forcedByTame, living.getHealth(), living.getMaxHealth());
+        FurkinMod.LOGGER.info("Furkin {} health: setTame forced {}, restored to {} (max {})",
+                actionLog, forcedByTame, living.getHealth(), living.getMaxHealth());
 
         // 名字回灌：快照里的 CustomName 是改名前的旧值，需按档案 name 覆盖
         // （未召唤时改名只更新了档案字段，没更新快照，故召唤后强制覆盖一次）。
@@ -267,9 +356,8 @@ public final class FurkinCompanionManager {
             living.setCustomNameVisible(false);
         }
 
-        // 设置召唤位置：玩家附近。
-        living.moveTo(player.getX(), player.getY(), player.getZ(),
-                player.getYRot(), player.getXRot());
+        // 设置落点：召唤在玩家身边，复活在结构中心上方。
+        living.moveTo(x, y, z, yRot, xRot);
 
         // 加入世界。
         serverLevel.addFreshEntity(living);
@@ -285,7 +373,10 @@ public final class FurkinCompanionManager {
         // 「仅在场才计时」—— 不重置的话，收回久了再召唤会立刻补产一个。同在实体入世之后。
         SkillPassiveDispatcher.resetPeriodicTimers(living, data);
 
-        // 置 summoned=true。
+        // 落态：实体已入世 ⇒ summoned=true；复活场景同时把 alive 翻回 true。
+        // 放在此处（而非 revive 的前置校验后）是为保证「只有实体真正建出来才落态」，
+        // 避免 rebuild 中途失败时留下「alive=true 却无实体」的中间态。
+        entry.setAlive(true);
         entry.setSummoned(true);
         FurkinArchiveData.get(serverLevel).putEntry(entry);
 
@@ -294,8 +385,8 @@ public final class FurkinCompanionManager {
                 PacketDistributor.TRACKING_ENTITY_AND_SELF.with(() -> living),
                 new SyncFurkinDataPacket(living.getId(), data.syncNBT()));
 
-        FurkinMod.LOGGER.info("Furkin summoned: id={} species={} by {}",
-                companionId, species, player.getName().getString());
+        FurkinMod.LOGGER.info("Furkin {}: id={} species={} by {}",
+                actionLog, companionId, species, player.getName().getString());
         return true;
     }
 
