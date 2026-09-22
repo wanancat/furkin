@@ -449,8 +449,8 @@ public final class FurkinCompanionManager {
         return true;
     }
 
-    /** 在世界里按 companionId 查找在场绒亲实体。 */
-    private static LivingEntity findLivingByCompanionId(ServerLevel level, UUID companionId) {
+    /** 在世界里按 companionId 查找在场绒亲实体（绒亲录属性区也用：活体路径取数）。 */
+    public static LivingEntity findLivingByCompanionId(ServerLevel level, UUID companionId) {
         for (Entity entity : level.getEntities().getAll()) {
             if (entity instanceof LivingEntity living) {
                 FurkinData data = living.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);

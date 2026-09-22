@@ -2,19 +2,23 @@ package com.wanancat.furkin.internal.item;
 
 import com.wanancat.furkin.api.companion.FurkinSpecies;
 import com.wanancat.furkin.api.companion.FurkinSpeciesRegistry;
+import com.wanancat.furkin.internal.contract.FurkinCompanionManager;
 import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.network.RecordListPacket;
 import com.wanancat.furkin.internal.record.FurkinArchiveData;
 import com.wanancat.furkin.internal.record.FurkinArchiveEntry;
+import com.wanancat.furkin.internal.record.RecordAttributes;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResultHolder;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -64,12 +68,32 @@ public class FurkinRecordItem extends Item {
                 String name = entry.getName() == null
                         ? null
                         : entry.getName().getString();
+                // 属性两条路径（2026-09-22 定）：在场宠物实时读活体（快照只在收回 /
+                // 死亡时落，穿脱装备不更新，走快照必旧值）；已收回 / 已死亡走快照。
+                List<RecordAttributes.Line> attributes;
+                if (entry.isSummoned()) {
+                    LivingEntity living = FurkinCompanionManager
+                            .findLivingByCompanionId(player.serverLevel(), entry.getCompanionId());
+                    // 实体找不到（理论不该发生）→ 回退快照，防御性兜底。
+                    attributes = living != null
+                            ? RecordAttributes.computeLive(living)
+                            : RecordAttributes.compute(entry);
+                } else {
+                    attributes = RecordAttributes.compute(entry);
+                }
                 list.add(new RecordListPacket.Entry(
                         entry.getCompanionId(), speciesKey, entry.getLevel(),
                         entry.getXp(), entry.getSkillPoints(), name,
-                        entry.isSummoned(), entry.isAlive()));
+                        entry.isSummoned(), entry.isAlive(),
+                        attributes));
             }
         }
+
+        // 默认排序（2026-09-22 定）：物种 > 等级（降序，高的在前）。
+        // 物种键用下发的 speciesKey（furkin.species.cat 等，注册表回退时是
+        // entity.minecraft.cat）——按 key 排不受客户端语言影响，同物种必相邻。
+        list.sort(Comparator.comparing(RecordListPacket.Entry::getSpeciesName)
+                .thenComparing(RecordListPacket.Entry::getLevel, Comparator.reverseOrder()));
 
         FurkinNetwork.channel().send(
                 net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> player),

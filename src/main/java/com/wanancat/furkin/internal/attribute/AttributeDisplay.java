@@ -109,6 +109,16 @@ public final class AttributeDisplay {
     }
 
     /**
+     * 属性显示排序秩：优先表内的返回其位次，其余返回 {@code Integer.MAX_VALUE}
+     * （调用方再按 id 字母序收尾）。供「快照字符串列表」这类拿不到实体、
+     * 却想与 {@link #displayableAttributes} 同观感排序的场景用。
+     */
+    public static int displayRank(Attribute attribute) {
+        int index = PREFERRED_ORDER.indexOf(attribute);
+        return index >= 0 ? index : Integer.MAX_VALUE;
+    }
+
+    /**
      * 客户端要显示的属性清单 = <b>注册表 ∩ 该生物实有 ∩ 未被屏蔽</b>，顺序见 {@link #PREFERRED_ORDER}。
      *
      * <p>实体不可得（已卸载 / entityId 缺失）时返回空表 —— 此时面板其余字段本来就已降级为

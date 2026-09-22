@@ -42,6 +42,9 @@ public final class EquipmentSlots {
     /** 原版写装备用的 NBT 键名，与 {@code Mob#addAdditionalSaveData} 逐字一致。 */
     private static final String KEY_ARMOR_ITEMS = "ArmorItems";
 
+    /** {@link #KEY_ARMOR_ITEMS} 的公开别名 —— 供属性计算（RecordAttributes）等只读方复用，避免散落字面量。 */
+    public static final String ARMOR_ITEMS_KEY = KEY_ARMOR_ITEMS;
+
     /** 原版盔甲槽个数（1.20.1 固定 4）。 */
     private static final int ARMOR_COUNT = 4;
 

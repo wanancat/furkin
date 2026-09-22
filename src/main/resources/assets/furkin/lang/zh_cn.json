@@ -93,6 +93,7 @@
   "furkin.screen.record.empty": "你还没有契约任何绒亲",
   "furkin.screen.record.state_summoned": "[在场]",
   "furkin.screen.record.state_dead": "[已亡]",
+  "furkin.screen.record.no_attributes": "暂无属性数据",
   "furkin.screen.rename.title": "为绒亲改名",
   "furkin.screen.rename.hint": "输入名字（留空使用物种名）",
   "furkin.screen.rename.confirm": "确认",
