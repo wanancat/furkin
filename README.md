@@ -1,4 +1,4 @@
-# Furkin (绒亲)
+# Furkin
 
 ![Minecraft](https://img.shields.io/badge/Minecraft-1.20.1-blue)
 
@@ -8,7 +8,8 @@
 
 A lightweight **companion pet framework** for Minecraft Forge. Contract vanilla animals into
 growing, skill-tree'd, equippable, revivable companions — and expose a public API so other mods
-can bring their own creatures in as companions too.
+can bring their own creatures in as companions too. Native support for cats and dogs is
+included (because they're rather fluff~y~).
 
 > 中文说明见 [README.zh-CN.md](./README.zh-CN.md)。
 
@@ -17,7 +18,7 @@ can bring their own creatures in as companions too.
 ## Features
 
 - **Contract** — turn any registered species into a companion with a single item, no prior taming required.
-- **Skill tree** — a shared trunk plus species-specific branches (combat for dogs, scouting for cats).
+- **Skill tree** — a shared trunk plus species-specific branches.
 - **Equipment** — companions wear vanilla armor (all 4 slots), third-party armor works with zero config.
 - **Revival** — a soulstone-based revive system that preserves all growth.
 
@@ -60,8 +61,6 @@ can bring their own creatures in as companions too.
 
 (For that, you'll probably need some wool and a few flowers...)
 
-> Detailed in-game guide coming with the 1.0 release.
-
 ## For Mod Developers
 
 Furkin is designed as a **predecessor mod**: depend on it and register your own species,
@@ -76,8 +75,7 @@ Any registered species works — a zombie, even, if you find it fluffy enough. :
 
 See the `api` package for the full surface (7 public types). ⚠️ Everything outside `api`
 (especially `internal.*`) is implementation detail, carries no compatibility promise, and may
-change at any time. No separate api jar is published, so this boundary is a **convention**,
-not a compile-time enforcement.
+change at any time.
 
 ## Building from Source
 

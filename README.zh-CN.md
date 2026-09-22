@@ -10,7 +10,7 @@
 并开放 API 让其他模组把自己的生物也接入成为绒亲。
 本包原生支持猫猫和狗狗（因为它们相当毛~绒~绒~）
 
-> English docs: [README.md](./README.md)。
+> English docs: [README.md](./README.md).
 
 ---
 
@@ -55,8 +55,6 @@
 ![复活仪式](./docs/images/revive_ritual.png)
 
 （为此，你可能需要一个羊毛和一些花……）
-
-> 详细游戏内指引随 1.0 版本发布。
 
 ## 模组开发者
 
