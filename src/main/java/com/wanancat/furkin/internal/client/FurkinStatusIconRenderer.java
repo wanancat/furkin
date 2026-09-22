@@ -15,6 +15,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.common.ForgeMod;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -74,8 +75,31 @@ public final class FurkinStatusIconRenderer {
                 continue;
             }
 
+            // 距离判定：与原版名牌同进同出（读实体自身 NAMETAG_DISTANCE 属性，
+            // 判定式与 ForgeHooksClient.isNameplateInRenderDistance 一致）。
+            if (!isWithinNameplateDistance(living)) {
+                continue;
+            }
+
             renderIcon(pose, buffers, living, cam);
         }
+    }
+
+    /**
+     * 是否处于名牌渲染距离内。与原版名牌判定同源：
+     * 读实体自身 {@code ForgeMod.NAMETAG_DISTANCE} 属性，比较玩家到实体的平方距离。
+     * 与原版 {@code isNameplateInRenderDistance} 口径一致 ⇒ 图标与名牌严格同进同出。
+     */
+    private static boolean isWithinNameplateDistance(LivingEntity living) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null) {
+            return false;
+        }
+        if (living.getAttribute(ForgeMod.NAMETAG_DISTANCE.get()) == null) {
+            return false;
+        }
+        double dist = living.getAttributeValue(ForgeMod.NAMETAG_DISTANCE.get());
+        return living.distanceToSqr(mc.player) <= dist * dist;
     }
 
     private static void renderIcon(PoseStack pose, MultiBufferSource buffers, LivingEntity living, Vec3 cam) {
