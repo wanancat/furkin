@@ -45,12 +45,12 @@ included (because they're rather fluff~y~).
 - Craft a **Furkin Record** from a Furkin Contract and a book to manage your companions
   (summon, recall, unbind, toggle combat mode, and more).
 
-![Furkin Record](./docs/images/companion_record.png)
+![Furkin Record](./docs/images/companion_record_en_us.png)
 
 - Sneak + right-click your companion to level up its skills and adjust its equipment.
   It's ready to join you on an adventure.
 
-![Skill panel](./docs/images/skill_panel.png)
+![Skill panel](./docs/images/skill_panel_en_us.png)
 
 - Not happy with your skill point allocation? Craft a **Respec Potion** from a Furkin
   Contract and a water bottle.
