@@ -21,7 +21,7 @@ import java.util.UUID;
  * <ul>
  *   <li>存活 + 未召唤：召唤 / 解绑 / 改名</li>
  *   <li>存活 + 已召唤：召唤（=传送身边）/ 收回 / 解绑 / 改名</li>
- *   <li>已死亡：解绑（复活走 M4，不在本界面）</li>
+ *   <li>已死亡：解绑 / 重获魂石（复活走 M4 结构仪式，不在此界面）</li>
  * </ul>
  *
  * <p>「召唤」按状态分流（未召唤→重建实体；已召唤→传送身边）。管理动作经
@@ -88,6 +88,16 @@ public final class FurkinRecordScreen extends Screen {
                         btn -> requestAction(RecordActionPacket.Action.UNBIND, id, null))
                 .bounds(x, y, btnW, 20).build());
         right = x - gap;
+
+        // 重获魂石（已死亡才有，M4.3 兜底）。
+        if (!alive) {
+            x = right - btnW;
+            addRenderableWidget(Button.builder(
+                            Component.translatable("furkin.screen.record.reacquire_soulstone"),
+                            btn -> requestAction(RecordActionPacket.Action.REACQUIRE_SOULSTONE, id, null))
+                    .bounds(x, y, btnW, 20).build());
+            right = x - gap;
+        }
 
         // 改名（存活才有）。
         if (alive) {

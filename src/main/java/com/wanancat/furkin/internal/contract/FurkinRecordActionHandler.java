@@ -4,13 +4,16 @@ import com.wanancat.furkin.internal.FurkinMod;
 import com.wanancat.furkin.internal.attribute.AttributeDisplay;
 import com.wanancat.furkin.internal.capability.FurkinCapability;
 import com.wanancat.furkin.internal.capability.FurkinData;
+import com.wanancat.furkin.internal.config.FurkinServerConfig;
 import com.wanancat.furkin.internal.inventory.FurkinInventory;
+import com.wanancat.furkin.internal.item.FurkinSoulstoneItem;
 import com.wanancat.furkin.internal.menu.FurkinPouchMenu;
 import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.network.OpenFurkinScreenPacket;
 import com.wanancat.furkin.internal.network.SyncFurkinDataPacket;
 import com.wanancat.furkin.internal.record.FurkinArchiveData;
 import com.wanancat.furkin.internal.record.FurkinArchiveEntry;
+import com.wanancat.furkin.internal.registry.ModItems;
 import com.wanancat.furkin.internal.skill.Skill;
 import com.wanancat.furkin.internal.skill.SkillEffectApplier;
 import com.wanancat.furkin.internal.skill.SkillRegistry;
@@ -20,11 +23,16 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.TamableAnimal;
 import net.minecraft.world.entity.ai.attributes.Attribute;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraftforge.network.NetworkHooks;
 import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.registries.ForgeRegistries;
@@ -55,7 +63,10 @@ public final class FurkinRecordActionHandler {
         NOT_FOUND,
         NOT_OWNER,
         NOT_SUMMONED,
-        INVALID_NAME
+        INVALID_NAME,
+        NOT_DEAD,
+        ON_COOLDOWN,
+        NO_DIAMOND
     }
 
     /**
@@ -182,6 +193,98 @@ public final class FurkinRecordActionHandler {
         FurkinMod.LOGGER.info("Furkin renamed: id={} by {}",
                 companionId, player.getName().getString());
         return Result.OK;
+    }
+
+    /**
+     * 重获一枚已亡绒亲的魂石（兜底动作，M4.3）。
+     *
+     * <p><b>语义（设计稿 §3.4.2「重获魂石的代价」）</b>：魂石丢了（掉岩浆 / 被捡走 / 随区块
+     * 丢失）后，到录里为已亡绒亲重获一枚。代价 = <b>1 钻石 + 冷却</b>（数值进 TOML，
+     * M5 平衡再定，占位 600s），且冷却 <b>per-pet</b>（记档案条目，各宠互不影响）。</p>
+     *
+     * <p>校验链：条目存在 → 本人 → <b>已亡</b> → 冷却已过 → 有钻石。全过则扣钻石、
+     * 发一枚绑定该宠物身份的魂石进背包（满则掉脚边）、记下时间戳。</p>
+     *
+     * @param player      主人
+     * @param companionId 宠物身份 UUID
+     * @return 结果枚举（{@code OK} 或具体失败原因，供网络包选反馈文案）
+     */
+    public static Result reacquireSoulstone(ServerPlayer player, UUID companionId) {
+        if (!(player.level() instanceof ServerLevel serverLevel)) {
+            return Result.NOT_FOUND;
+        }
+
+        FurkinArchiveData archive = FurkinArchiveData.get(serverLevel);
+        FurkinArchiveEntry entry = archive.getEntry(companionId);
+        if (entry == null) {
+            return Result.NOT_FOUND;
+        }
+        if (entry.getOwnerUuid() == null || !entry.getOwnerUuid().equals(player.getUUID())) {
+            return Result.NOT_OWNER;
+        }
+        // 只有已亡绒亲才需要重获魂石（存活的没掉魂石这回事）。
+        if (entry.isAlive()) {
+            return Result.NOT_DEAD;
+        }
+
+        // 冷却校验（per-pet）：世界游戏时刻 vs 上次重获时刻 + 冷却秒数×20。
+        long now = serverLevel.getGameTime();
+        long cooldownTicks = FurkinServerConfig.REVIVE_COOLDOWN_SECONDS.get() * 20L;
+        if (entry.getSoulstoneReacquireAt() != 0L
+                && now < entry.getSoulstoneReacquireAt() + cooldownTicks) {
+            return Result.ON_COOLDOWN;
+        }
+
+        // 扣 1 钻石（背包扫描，找到即 shrink）。
+        if (!consumeDiamond(player)) {
+            return Result.NO_DIAMOND;
+        }
+
+        // 发一枚绑定该宠物身份的魂石。
+        ItemStack stone = new ItemStack(ModItems.FURKIN_SOULSTONE.get());
+        FurkinSoulstoneItem.bindCompanion(stone, companionId);
+        giveSoulstone(player, serverLevel, stone);
+
+        // 记时间戳（per-pet 冷却）。
+        entry.setSoulstoneReacquireAt(now);
+        archive.putEntry(entry);
+
+        FurkinMod.LOGGER.info("Furkin soulstone reacquired: id={} by {}",
+                companionId, player.getName().getString());
+        return Result.OK;
+    }
+
+    /** 从玩家背包扣除 1 颗钻石（主手优先，其次扫背包）。 */
+    private static boolean consumeDiamond(ServerPlayer player) {
+        ItemStack main = player.getMainHandItem();
+        if (main.is(Items.DIAMOND)) {
+            if (!player.isCreative()) {
+                main.shrink(1);
+            }
+            return true;
+        }
+        for (ItemStack stack : player.getInventory().items) {
+            if (stack.is(Items.DIAMOND)) {
+                if (!player.isCreative()) {
+                    stack.shrink(1);
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 把魂石放进玩家背包，满则掉脚边（与死亡掉魂石同为 ItemEntity 落物）。 */
+    private static void giveSoulstone(ServerPlayer player, ServerLevel level, ItemStack stone) {
+        if (!player.getInventory().add(stone)) {
+            // 背包满：掉脚边（玩家脚下，非死亡位置）。
+            ItemEntity drop = new ItemEntity(
+                    level, player.getX(), player.getY(), player.getZ(), stone);
+            drop.setPickUpDelay(0);
+            level.addFreshEntity(drop);
+            level.playSound(null, player.getX(), player.getY(), player.getZ(),
+                    SoundEvents.ITEM_PICKUP, SoundSource.PLAYERS, 0.2F, 1.0F);
+        }
     }
 
     /**

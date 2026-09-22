@@ -21,7 +21,8 @@ public final class RecordActionPacket {
     public enum Action {
         DISMISS,
         UNBIND,
-        RENAME
+        RENAME,
+        REACQUIRE_SOULSTONE
     }
 
     private final Action action;
@@ -80,6 +81,19 @@ public final class RecordActionPacket {
                         FurkinRecordActionHandler.rename(player, packet.companionId, packet.name);
                 ok = r == FurkinRecordActionHandler.Result.OK;
                 msgKey = ok ? "furkin.msg.renamed" : "furkin.msg.rename_failed";
+            }
+            case REACQUIRE_SOULSTONE -> {
+                FurkinRecordActionHandler.Result r =
+                        FurkinRecordActionHandler.reacquireSoulstone(player, packet.companionId);
+                ok = r == FurkinRecordActionHandler.Result.OK;
+                msgKey = switch (r) {
+                    case OK -> "furkin.msg.soulstone_reacquired";
+                    case NOT_FOUND, NOT_OWNER -> "furkin.msg.not_owner";
+                    case NOT_DEAD -> "furkin.msg.soulstone_not_dead";
+                    case ON_COOLDOWN -> "furkin.msg.soulstone_cooldown";
+                    case NO_DIAMOND -> "furkin.msg.soulstone_no_diamond";
+                    default -> "furkin.msg.soulstone_reacquire_failed";
+                };
             }
             default -> {
                 return;

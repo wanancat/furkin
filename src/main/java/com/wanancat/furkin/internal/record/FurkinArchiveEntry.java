@@ -67,6 +67,9 @@ public final class FurkinArchiveEntry {
     /** 战斗模式（四档，收回 / 召唤时与能力对象互转，保证跨召唤记忆）。 */
     private FurkinCombatMode combatMode;
 
+    /** 上次「重获魂石」的世界游戏时刻（game time，M4.3 起）。0 = 从未重获（无冷却）。 */
+    private long soulstoneReacquireAt;
+
     public FurkinArchiveEntry(UUID companionId) {
         this.companionId = companionId;
         this.species = null;
@@ -80,6 +83,7 @@ public final class FurkinArchiveEntry {
         this.entitySnapshot = new CompoundTag();
         this.name = null;
         this.combatMode = FurkinCombatMode.FOLLOW;
+        this.soulstoneReacquireAt = 0L;
     }
 
     public UUID getCompanionId() {
@@ -182,6 +186,14 @@ public final class FurkinArchiveEntry {
         this.combatMode = combatMode == null ? FurkinCombatMode.FOLLOW : combatMode;
     }
 
+    public long getSoulstoneReacquireAt() {
+        return soulstoneReacquireAt;
+    }
+
+    public void setSoulstoneReacquireAt(long soulstoneReacquireAt) {
+        this.soulstoneReacquireAt = soulstoneReacquireAt;
+    }
+
     /** 序列化为 NBT。 */
     public CompoundTag serializeNBT() {
         CompoundTag tag = new CompoundTag();
@@ -204,6 +216,7 @@ public final class FurkinArchiveEntry {
             tag.putString("name", Component.Serializer.toJson(name));
         }
         tag.putString("combat_mode", combatMode.name());
+        tag.putLong("soulstone_reacquire_at", soulstoneReacquireAt);
         return tag;
     }
 
@@ -232,6 +245,10 @@ public final class FurkinArchiveEntry {
         entry.combatMode = tag.contains("combat_mode")
                 ? FurkinCombatMode.valueOf(tag.getString("combat_mode"))
                 : FurkinCombatMode.FOLLOW;
+        // 兼容旧档：soulstone_reacquire_at 是 M4.3 新增字段，旧档无则默认 0（无冷却）。
+        entry.soulstoneReacquireAt = tag.contains("soulstone_reacquire_at")
+                ? tag.getLong("soulstone_reacquire_at")
+                : 0L;
         return entry;
     }
 }
