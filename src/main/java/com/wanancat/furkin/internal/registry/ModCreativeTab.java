@@ -28,7 +28,13 @@ public final class ModCreativeTab {
     public static final DeferredRegister<CreativeModeTab> TABS =
             DeferredRegister.create(net.minecraft.core.registries.Registries.CREATIVE_MODE_TAB, FurkinMod.MODID);
 
-    /** furkin 品牌标签页。图标暂用契约物品（占位，M5 美术轮换正式图标）。 */
+    /**
+     * furkin 品牌标签页。图标恒定使用契约物品 —— 这不是「暂用」，而是 API 的唯一选择：
+     * {@link CreativeModeTab.Builder#icon} 收的是 {@code Supplier<ItemStack>}，
+     * 只渲染物品实体，无法接任意 PNG。所以 2026-09-23 定稿的 1024 像素画（=.outputs\logo_clean_1024.png）
+     * 用于 CurseForge 头像与 jar 模组图标（mods.toml 的 logoFile），与此处的 tab 图标互不相干，
+     * 两者不必也不该统一。旧注释里的「M5 轮换正式图标」属不可兑现的承诺，已于同日订正。
+     */
     public static final RegistryObject<CreativeModeTab> FURKIN_TAB = TABS.register("furkin",
             () -> CreativeModeTab.builder()
                     .title(Component.translatable("itemGroup.furkin"))
