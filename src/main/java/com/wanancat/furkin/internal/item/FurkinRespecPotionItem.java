@@ -1,7 +1,6 @@
 package com.wanancat.furkin.internal.item;
 
 import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemStack;
 
 /**
  * 洗点药水 —— 洗点道具（设计稿 §3.2）。
@@ -11,16 +10,13 @@ import net.minecraft.world.item.ItemStack;
  * 服务端统一走 {@code SkillProgress#resetSkills}，并做二次确认。</p>
  *
  * <p>合成：绒亲契约 + 水瓶（配方 {@code data/furkin/recipes/respec_potion.json}）。</p>
+ *
+ * <p>⚠️ <b>不带附魔光效</b> —— 2026-09-22 她定「撤掉」：M2-2.5 起这里有个 {@code isFoil}
+ * 覆写恒返 {@code true}（「与契约一致」），与契约同批一起删，回到原版口径。</p>
  */
 public class FurkinRespecPotionItem extends Item {
 
     public FurkinRespecPotionItem() {
         super(new Item.Properties());
-    }
-
-    @Override
-    public boolean isFoil(ItemStack stack) {
-        // 与契约一致，带一点光泽提示「关键道具」。
-        return true;
     }
 }
