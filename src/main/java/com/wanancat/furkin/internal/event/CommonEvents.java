@@ -165,7 +165,7 @@ public final class CommonEvents {
      */
     @SubscribeEvent
     public static void onLivingAttack(LivingAttackEvent event) {
-        if (event.getEntity().level().isClientSide()) {
+        if (event.getEntity().getLevel().isClientSide()) {
             return;
         }
         // 受害侧早段被动（灵巧身法闪避）：闪避成立则整个受击作废（无伤害 / 无音效 / 无闪帧）。
@@ -179,7 +179,7 @@ public final class CommonEvents {
     @SubscribeEvent
     public static void onLivingHurt(LivingHurtEvent event) {
         // 只在服务端处理。
-        if (event.getEntity().level().isClientSide()) {
+        if (event.getEntity().getLevel().isClientSide()) {
             return;
         }
         LivingEntity target = event.getEntity();
@@ -216,7 +216,7 @@ public final class CommonEvents {
     @SubscribeEvent
     public static void onLivingDeath(LivingDeathEvent event) {
         LivingEntity target = event.getEntity();
-        if (target.level().isClientSide() || !(target.level() instanceof ServerLevel serverLevel)) {
+        if (target.getLevel().isClientSide() || !(target.getLevel() instanceof ServerLevel serverLevel)) {
             return;
         }
 

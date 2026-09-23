@@ -175,8 +175,8 @@ public final class FurkinCommand {
                 FurkinCompanionManager.summonOrTeleport(player, petId);
         final String sid = shortId(petId.toString());
         switch (r) {
-            case SUMMONED -> src.sendSuccess(() -> Component.literal("Summoned " + sid), false);
-            case TELEPORTED -> src.sendSuccess(() -> Component.literal("Teleported " + sid + " to you"), false);
+            case SUMMONED -> src.sendSuccess(Component.literal("Summoned " + sid), false);
+            case TELEPORTED -> src.sendSuccess(Component.literal("Teleported " + sid + " to you"), false);
             case NOT_FOUND -> src.sendFailure(Component.literal("No such companion: " + sid));
             case NOT_OWNER -> src.sendFailure(Component.literal("Not your companion."));
             case NOT_ALIVE -> src.sendFailure(Component.literal(
@@ -202,7 +202,7 @@ public final class FurkinCommand {
             return 0;
         }
 
-        FurkinArchiveData archive = FurkinArchiveData.get(player.serverLevel());
+        FurkinArchiveData archive = FurkinArchiveData.get(player.getLevel());
         UUID me = player.getUUID();
 
         // 口径（2026-09-22 定）：物种 > 等级降序 > id 升序，与绒亲录同源（FurkinDisplayOrder）。
@@ -214,7 +214,7 @@ public final class FurkinCommand {
         }
         mine.sort(FurkinDisplayOrder.ARCHIVE);
 
-        src.sendSuccess(() -> Component.literal("Your companions:"), false);
+        src.sendSuccess(Component.literal("Your companions:"), false);
         int shown = 0;
         for (FurkinArchiveEntry entry : mine) {
             shown++;
@@ -247,7 +247,7 @@ public final class FurkinCommand {
                             net.minecraft.network.chat.HoverEvent.Action.SHOW_TEXT,
                             Component.literal(fullId).append(Component.literal("\nClick to copy ID")))));
 
-            src.sendSuccess(() -> Component.literal("  ")
+            src.sendSuccess(Component.literal("  ")
                     .append(idPart)
                     .append(Component.literal("  "))
                     .append(speciesDisplay(e))
@@ -259,7 +259,7 @@ public final class FurkinCommand {
                     .append(state), false);
         }
         if (shown == 0) {
-            src.sendSuccess(() -> Component.literal("  (none)"), false);
+            src.sendSuccess(Component.literal("  (none)"), false);
         }
         return 1;
     }
@@ -305,7 +305,7 @@ public final class FurkinCommand {
         FurkinRecordActionHandler.Result r = FurkinRecordActionHandler.unbind(player, petId);
         final String sid = shortId(petId.toString());
         switch (r) {
-            case OK -> src.sendSuccess(() -> Component.literal("Unbound " + sid), false);
+            case OK -> src.sendSuccess(Component.literal("Unbound " + sid), false);
             case NOT_FOUND -> src.sendFailure(Component.literal("No such companion: " + sid));
             case NOT_OWNER -> src.sendFailure(Component.literal("Not your companion."));
             default -> src.sendFailure(Component.literal("Unbind failed."));
@@ -331,7 +331,7 @@ public final class FurkinCommand {
         final String sid = shortId(petId.toString());
         switch (r) {
             // 报出「改成了什么」—— 原名不报（改前值意义不大），新名是关键信息。
-            case OK -> src.sendSuccess(() -> Component.literal("Renamed " + sid + " \u2192 ")
+            case OK -> src.sendSuccess(Component.literal("Renamed " + sid + " \u2192 ")
                     .append(Component.literal(name).withStyle(ChatFormatting.WHITE)), false);
             case NOT_FOUND -> src.sendFailure(Component.literal("No such companion: " + sid));
             case NOT_OWNER -> src.sendFailure(Component.literal("Not your companion."));
@@ -355,7 +355,7 @@ public final class FurkinCommand {
         }
 
         // 校验归属（先查档案确认是本人的）。
-        FurkinArchiveData archive = FurkinArchiveData.get(player.serverLevel());
+        FurkinArchiveData archive = FurkinArchiveData.get(player.getLevel());
         FurkinArchiveEntry entry = archive.getEntry(petId);
         if (entry == null) {
             src.sendFailure(Component.literal("No such companion: " + petId));
@@ -371,7 +371,7 @@ public final class FurkinCommand {
         }
 
         // 找在场实体。
-        LivingEntity target = findLivingByCompanionId(player.serverLevel(), petId);
+        LivingEntity target = findLivingByCompanionId(player.getLevel(), petId);
         if (target == null) {
             src.sendFailure(Component.literal("Companion entity not found in world."));
             return 0;
@@ -387,7 +387,7 @@ public final class FurkinCommand {
         int newXp = after == null ? 0 : after.getXp();
         int sp = after == null ? 0 : after.getSkillPoints();
 
-        src.sendSuccess(() -> Component.literal(
+        src.sendSuccess(Component.literal(
                 "Added " + amount + " xp to " + shortId(petId.toString())
                         + " \u2192 Lv." + newLevel + " (xp=" + newXp + ", sp=" + sp + ")"
                         + (leveled ? " [LEVEL UP]" : "")), false);
@@ -418,7 +418,7 @@ public final class FurkinCommand {
         FurkinCombatModeHandler.Result r = FurkinCombatModeHandler.setMode(player, petId, mode);
         final String sid = shortId(petId.toString());
         switch (r) {
-            case OK -> src.sendSuccess(() -> Component.literal(
+            case OK -> src.sendSuccess(Component.literal(
                     "Combat mode set to " + mode.name() + " for " + sid), false);
             case NOT_FOUND -> src.sendFailure(Component.literal("No such companion: " + sid));
             case NOT_OWNER -> src.sendFailure(Component.literal("Not your companion."));
@@ -460,7 +460,7 @@ public final class FurkinCommand {
 
         switch (r) {
             // 宠物 id 用短 id；技能 id 是 ResourceLocation（非 UUID）保持完整，截断无意义。
-            case OK -> src.sendSuccess(() -> Component.literal(
+            case OK -> src.sendSuccess(Component.literal(
                     "Unlocked " + finalSkillId + " for " + shortId(petId.toString())), false);
             case NOT_FOUND -> src.sendFailure(Component.literal("No such companion: " + shortId(petId.toString())));
             case NOT_OWNER -> src.sendFailure(Component.literal("Not your companion."));
@@ -488,7 +488,7 @@ public final class FurkinCommand {
             return 0;
         }
 
-        LivingEntity target = findLivingByCompanionId(player.serverLevel(), petId);
+        LivingEntity target = findLivingByCompanionId(player.getLevel(), petId);
         if (target == null) {
             src.sendFailure(Component.literal("Companion entity not found in world (summon it first)."));
             return 0;
@@ -514,14 +514,14 @@ public final class FurkinCommand {
         // 属性名用官方注册 id 去掉 "generic." 前缀的部分（2026-09-22 取证：
         // Attributes 的 ldc 常量为 "generic.max_health" 等），不自定义驼峰缩写 ——
         // 免得与官方文档 / 其它模组对照时对不上号。
-        src.sendSuccess(() -> Component.literal(
+        src.sendSuccess(Component.literal(
                 "Inspect " + shortId(petId.toString())
                         + "  Lv." + level
                         + "  sp=" + skillPoints), false);
-        src.sendSuccess(() -> Component.literal(String.format(
+        src.sendSuccess(Component.literal(String.format(
                 "  attack_damage=%.2f  max_health=%.2f (cur=%.2f)  armor=%.2f  movement_speed=%.3f",
                 attack, maxHealth, currentHealth, armor, speed)), false);
-        src.sendSuccess(() -> Component.literal(
+        src.sendSuccess(Component.literal(
                 "  pouch  " + usedSlots + "/" + pouchSlots + " slots, " + pouchTotal + " items"), false);
         return 1;
     }
@@ -550,7 +550,7 @@ public final class FurkinCommand {
             return 0;
         }
 
-        LivingEntity target = findLivingByCompanionId(player.serverLevel(), petId);
+        LivingEntity target = findLivingByCompanionId(player.getLevel(), petId);
         if (target == null) {
             src.sendFailure(Component.literal("Companion entity not found in world (summon it first)."));
             return 0;
@@ -572,18 +572,18 @@ public final class FurkinCommand {
         final String itemName = toAdd.getHoverName().getString();
 
         if (leftoverCount <= 0) {
-            src.sendSuccess(() -> Component.literal("Added ")
+            src.sendSuccess(Component.literal("Added ")
                     .append(Component.literal(placed + "x ").withStyle(ChatFormatting.AQUA))
                     .append(Component.literal(itemName).withStyle(ChatFormatting.WHITE))
                     .append(Component.literal(" to " + petName)), false);
         } else if (placed <= 0) {
             // 一点没塞进去：只报满了。
-            src.sendSuccess(() -> Component.literal(petName + "'s pouch is full — ")
+            src.sendSuccess(Component.literal(petName + "'s pouch is full — ")
                     .append(Component.literal(itemName).withStyle(ChatFormatting.WHITE))
                     .append(Component.literal(" was not added")), false);
         } else {
             // 塞进去一部分：报实际放入量，并说明还有多少没装下。
-            src.sendSuccess(() -> Component.literal("Added ")
+            src.sendSuccess(Component.literal("Added ")
                     .append(Component.literal(placed + "x ").withStyle(ChatFormatting.AQUA))
                     .append(Component.literal(itemName).withStyle(ChatFormatting.WHITE))
                     .append(Component.literal(" to " + petName + " — pouch full, "))
@@ -624,7 +624,7 @@ public final class FurkinCommand {
             return 0;
         }
 
-        LivingEntity target = findLivingByCompanionId(player.serverLevel(), petId);
+        LivingEntity target = findLivingByCompanionId(player.getLevel(), petId);
         if (target == null) {
             src.sendFailure(Component.literal("Companion entity not found in world (summon it first)."));
             return 0;
@@ -640,7 +640,7 @@ public final class FurkinCommand {
         final String petName = companionLabel(target, petId);
         pouch.clearContent();
 
-        src.sendSuccess(() -> Component.literal("Cleared " + petName + "'s pouch — removed ")
+        src.sendSuccess(Component.literal("Cleared " + petName + "'s pouch — removed ")
                 .append(Component.literal(wasTotal + " items").withStyle(ChatFormatting.AQUA)), false);
         return 1;
     }

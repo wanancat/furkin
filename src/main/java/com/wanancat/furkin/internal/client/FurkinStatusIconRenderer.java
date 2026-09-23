@@ -2,6 +2,7 @@ package com.wanancat.furkin.internal.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.math.Matrix4f;
 import com.wanancat.furkin.internal.FurkinMod;
 import com.wanancat.furkin.internal.capability.FurkinAttachHandler;
 import com.wanancat.furkin.internal.capability.FurkinData;
@@ -19,15 +20,19 @@ import net.minecraftforge.common.ForgeMod;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
-import org.joml.Matrix4f;
 
 /**
  * 绒亲头顶状态图标渲染（纯客户端）。
  *
- * <p>在 {@link RenderLevelStageEvent.Stage#AFTER_ENTITIES} 阶段（世界矩阵干净），
+ * <p>在 {@link RenderLevelStageEvent.Stage#AFTER_PARTICLES} 阶段（世界矩阵干净），
  * 遍历在场已契约绒亲，在其头顶画一个面向玩家的绒球标识
  * （{@code furkin_mark.png}），作为唯一视觉辨识（设计稿 §3.4.2，
  * 客户端配置 {@code showStatusIcon} 控制开关）。</p>
+ *
+ * <p><b>版本差异</b>：1.20.1 原实现使用 {@code AFTER_ENTITIES}，1.19.2 没有该阶段。
+ * 这里选取 {@code AFTER_PARTICLES}：它位于实体、方块实体和粒子之后，是最接近
+ * 「实体绘制完成」的稳定节点。若实机遮挡关系不理想，后备阶段为
+ * {@code AFTER_WEATHER}。</p>
  *
  * <p><b>端位纪律</b>：本类只在 {@code Dist.CLIENT} 加载，绝不进入逻辑端。</p>
  */
@@ -49,7 +54,7 @@ public final class FurkinStatusIconRenderer {
 
     @SubscribeEvent
     public static void onRenderLevelStage(RenderLevelStageEvent event) {
-        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_ENTITIES) {
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES) {
             return;
         }
         if (!FurkinClientConfig.SHOW_STATUS_ICON.get()) {

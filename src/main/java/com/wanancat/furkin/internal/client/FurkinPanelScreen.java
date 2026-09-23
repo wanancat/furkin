@@ -1,5 +1,8 @@
 package com.wanancat.furkin.internal.client;
 
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.PoseStack;
+
 import com.wanancat.furkin.api.companion.FurkinSpeciesRegistry;
 import com.wanancat.furkin.internal.FurkinMod;
 import com.wanancat.furkin.internal.attribute.AttributeDisplay;
@@ -20,7 +23,7 @@ import com.wanancat.furkin.internal.network.UnlockSkillPacket;
 import com.wanancat.furkin.internal.skill.SkillTree;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiComponent;
 import net.minecraft.client.gui.components.AbstractScrollWidget;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
@@ -177,7 +180,7 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
     private boolean summaryWidthLogged;
 
     private static final int SKILL_BUTTON_WIDTH = 22;
-    private static final int SKILL_BUTTON_HEIGHT = 14;
+    private static final int SKILL_BUTTON_HEIGHT = 20;
 
     /**
      * 行内「+1」按钮直接借<b>官方按钮贴图</b>绘制（{@code widgets.png}），不再自绘色块。
@@ -185,15 +188,12 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
      * <p><b>为什么自绘会突兀</b>：原来用 {@code fill} 画的是自选青绿，它是整屏唯一不跟资源包的
      * 色块 —— 旁边的页签 / 洗点按钮都是官方 {@code Button}，玩家换 GUI 包后两者立刻分家。</p>
      *
-     * <p><b>参数照抄 {@code AbstractButton.renderWidget} 的字节码实参</b>：
-     * {@code (20, 4, 200, 20, 0, v)} = 横向切片 20 / 纵向切片 4 / 贴图 200×20 / u=0 / v 见下。
-     * 官方 {@code blitNineSliced} 内部先做 {@code min(切片, 尺寸/2)} 降级，故 22×14 这种远小于
-     * 200×20 的小按钮也能拼出正常的左右圆角，不需要为素材把按钮做宽。</p>
+     * <p><b>画法照抄 1.19.2 官方 {@code AbstractWidget#renderButton}</b>（javap 核实）：按钮底图是
+     * 「左半 + 右半」两次 blit —— 右半的 u 起点为 {@code 200 − 宽度/2}，纵向整高拉伸。
+     * 1.20.1 用的 {@code GuiGraphics#blitNineSliced} 在 1.19.2 <b>没有对应 API</b>，故改走这条官方
+     * 等价路径：与模组内其它原版 {@code Button} 像素同源，换素材包也不会分家。</p>
      */
-    private static final int BUTTON_SLICE_X = 20;
-    private static final int BUTTON_SLICE_Y = 4;
     private static final int BUTTON_TEX_WIDTH = 200;
-    private static final int BUTTON_TEX_HEIGHT = 20;
 
     /** 官方按钮三态在贴图里的 v 偏移（{@code AbstractButton.getTextureY()} = 46 + state × 20）。 */
     private static final int BUTTON_V_DISABLED = 46;
@@ -228,13 +228,13 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
     /**
      * 行高区间：条目少时宽松（撑满可用区），条目多时收紧到 {@value #ROW_HEIGHT_MIN} 为止。
      *
-     * <p><b>为什么下限是 20 而不是更小</b>：下限若压到十几像素，「铺满可用区」就永远成立 ——
+     * <p><b>为什么下限是 24 而不是更小</b>：下限若压到十几像素，「铺满可用区」就永远成立 ——
      * 内容总高恰好等于控件高度，官方 {@code scrollbarVisible()}（{@code innerHeight > height}）
-     * 永不成立，滚动条一辈子不出现。宁可保持一行读得舒服的 20px、超出部分交给滚动，
+     * 永不成立，滚动条一辈子不出现。宁可保持一行读得舒服的 24px、超出部分交给滚动，
      * 也不要为了「硬塞」把行压扁（8px 字体在 14px 行里没有行距）。</p>
      */
-    private static final int ROW_HEIGHT_MIN = 20;
-    private static final int ROW_HEIGHT_MAX = 26;
+    private static final int ROW_HEIGHT_MIN = 24;
+    private static final int ROW_HEIGHT_MAX = 32;
 
     private static final int COLOR_LABEL = 0x404040;
     private static final int COLOR_HINT = 0x707070;
@@ -431,30 +431,27 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
                 continue;
             }
             final int current = tab;
-            this.tabButtons[tab] = this.addRenderableWidget(Button.builder(
-                            Component.translatable(tabLabelKey(current)),
-                            b -> switchTab(current))
-                    .bounds(this.leftPos + TAB_MARGIN + step * slotIndex, tabY, TAB_WIDTH, TAB_HEIGHT)
-                    .build());
+            this.tabButtons[tab] = this.addRenderableWidget(new Button(
+                    this.leftPos + TAB_MARGIN + step * slotIndex, tabY, TAB_WIDTH, TAB_HEIGHT,
+                    Component.translatable(tabLabelKey(current)),
+                    b -> switchTab(current)));
             slotIndex++;
         }
 
-        this.resetButton = this.addRenderableWidget(Button.builder(
-                        Component.translatable("furkin.screen.furkin.reset"),
-                        b -> confirmReset())
-                .bounds(this.leftPos + TAB_MARGIN, this.topPos + this.imageHeight + 4, 60, 20)
-                .build());
+        this.resetButton = this.addRenderableWidget(new Button(
+                this.leftPos + TAB_MARGIN, this.topPos + this.imageHeight + 4, 60, 20,
+                Component.translatable("furkin.screen.furkin.reset"),
+                b -> confirmReset()));
 
         // 战斗模式循环按钮 —— 面板下沿、洗点按钮右侧（技能页可见，2026-09-22 她定）。
         // 放这里而非装备槽右侧：那块「摘要区」只有 80px，中文下一项属性就 49~60px
         // （见 renderEquipSummary 的实测注释），再切一块给按钮会挤掉装备加成摘要。
         // 下沿这行天然有空位 —— 洗点按钮宽度 60、起点 8，右侧 72 起正好放得下。
-        this.modeButton = this.addRenderableWidget(Button.builder(
-                        Component.translatable("furkin.screen.furkin.combat_mode", "?"),
-                        b -> cycleCombatMode())
-                .bounds(this.leftPos + TAB_MARGIN + 64, this.topPos + this.imageHeight + 4,
-                        MODE_BUTTON_WIDTH, 20)
-                .build());
+        this.modeButton = this.addRenderableWidget(new Button(
+                this.leftPos + TAB_MARGIN + 64, this.topPos + this.imageHeight + 4,
+                MODE_BUTTON_WIDTH, 20,
+                Component.translatable("furkin.screen.furkin.combat_mode", "?"),
+                b -> cycleCombatMode()));
 
         // 换屏实例不带旧乐观值过来（重开屏时镜像才是真源）。
         this.pendingMode = null;
@@ -582,23 +579,23 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
     // ===== 渲染 =====
 
     @Override
-    public void render(GuiGraphics gui, int mouseX, int mouseY, float partialTick) {
+    public void render(PoseStack pose, int mouseX, int mouseY, float partialTick) {
         //AbstractContainerScreen.render 只调 renderBg + Screen.render，不会自绘背景暗化，
         // 这一步必须显式做（官方各容器屏同理）。
-        this.renderBackground(gui);
-        super.render(gui, mouseX, mouseY, partialTick);
+        this.renderBackground(pose);
+        super.render(pose, mouseX, mouseY, partialTick);
 
         // 技能页两处悬停，命中区互不重叠（抬头带下沿 52 < 列表顶 54）：
         // 抬头带 → 全部属性的明细；技能行 → 描述与前置说明。
         if (this.menu.getActiveTab() == TAB_SKILLS) {
             if (isOverSkillHeader(mouseX, mouseY)) {
-                gui.renderTooltip(this.font, skillAttributeLines(), Optional.empty(), mouseX, mouseY);
+                this.renderTooltip(pose, skillAttributeLines(), Optional.empty(), mouseX, mouseY);
             } else {
                 int index = skillRowIndexAt(mouseX, mouseY);
                 if (index >= 0) {
                     // 多行 tooltip 必须走「List + Optional」那个重载：`renderTooltip(Font, List<? extends
                     // FormattedCharSequence>, int, int)` 收的不是 Component 列表（javap 核实）。
-                    gui.renderTooltip(this.font, skillTooltip(this.skills.get(index)),
+                    this.renderTooltip(pose, skillTooltip(this.skills.get(index)),
                             Optional.empty(), mouseX, mouseY);
                 }
             }
@@ -610,7 +607,7 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
         if (this.menu.getActiveTab() == TAB_EQUIP) {
             List<EquipBonus.Entry> bonuses = equipBonuses();
             if (!bonuses.isEmpty() && isOverEquipSummary(mouseX, mouseY)) {
-                gui.renderTooltip(this.font, equipBonusLines(bonuses),
+                this.renderTooltip(pose, equipBonusLines(bonuses),
                         Optional.empty(), mouseX, mouseY);
             }
         }
@@ -621,7 +618,7 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
         // CraftingScreen 2 处）。少了它，行囊 / 装备 / 玩家背包三处的槽位就是「有物品、悬停没反应」。
         // 内部自带守卫（carrying 为空 && hoveredSlot != null && hoveredSlot.hasItem()），
         // 拖拽中或悬停空格子都不会弹，所以逐帧无条件调用是安全的。
-        this.renderTooltip(gui, mouseX, mouseY);
+        this.renderTooltip(pose, mouseX, mouseY);
     }
 
     /**
@@ -654,7 +651,7 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
     }
 
     @Override
-    protected void renderBg(GuiGraphics gui, float partialTick, int mouseX, int mouseY) {
+    protected void renderBg(PoseStack pose, float partialTick, int mouseX, int mouseY) {
         int active = this.menu.getActiveTab();
         if (active == TAB_POUCH) {
             // 行囊页分三段 blit：
@@ -663,21 +660,21 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
             //   段二 = Δ 净板带（补上抬头加高那一段，取自同张纹理的无槽框行）；
             //   段三 = 玩家背包段（那 36 格槽框同样烘死在纹理里，不 blit 就只有物品没有格子）。
             int slotAreaBottom = pouchSlotAreaBottom();
-            gui.blit(PANEL_TEXTURE, this.leftPos, this.topPos, 0, 0,
+            blit(pose, PANEL_TEXTURE, this.leftPos, this.topPos, 0, 0,
                     this.imageWidth, slotAreaBottom - this.topPos);
-            blitNetBoard(gui, slotAreaBottom, playerSegmentTop());
-            gui.blit(PANEL_TEXTURE, this.leftPos, playerSegmentTop(),
+            blitNetBoard(pose, slotAreaBottom, playerSegmentTop());
+            blit(pose, PANEL_TEXTURE, this.leftPos, playerSegmentTop(),
                     0, PLAYER_SEGMENT_V, this.imageWidth, PLAYER_SEGMENT_H);
             return;
         }
         if (active == TAB_EQUIP) {
-            renderEquipPanel(gui);
-            renderEquipPage(gui);
-            renderEquipSummary(gui);
+            renderEquipPanel(pose);
+            renderEquipPage(pose);
+            renderEquipSummary(pose);
         } else {
             // 技能页整屏净板；只画抬头 / 空态提示，技能行由 SkillListWidget 在控件层绘制。
-            renderFlatPanel(gui);
-            renderSkillHeader(gui);
+            renderFlatPanel(pose);
+            renderSkillHeader(pose);
         }
     }
 
@@ -697,15 +694,41 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
     }
 
     /**
+     * 画一块贴图 —— 1.19.2 没有 {@code GuiGraphics#blit(ResourceLocation, ...)}，
+     * 官方等价路径是「先绑贴图，再 {@code GuiComponent.blit}」（blend / shader 由后者自带，javap 核实）。
+     *
+     * <p>默认纹理尺寸取 256×256：与 1.20.1 {@code GuiGraphics#blit(ResourceLocation, x, y, u, v, w, h)}
+     * 的默认值一致（两侧都收敛到 {@code (..., 256, 256)}），故逐像素等价。</p>
+     */
+    private static void blit(PoseStack pose, ResourceLocation texture,
+                             int x, int y, int u, int v, int width, int height) {
+        RenderSystem.setShaderTexture(0, texture);
+        GuiComponent.blit(pose, x, y, u, v, width, height, 256, 256);
+    }
+
+    /**
+     * 画一个官方样式的按钮底图 —— 1.19.2 官方 {@code AbstractWidget#renderButton} 的等价画法：
+     * 左半 {@code u=0} + 右半 {@code u=200−宽度/2} 两次 blit，纵向整高拉伸。
+     *
+     * <p>1.20.1 的 {@code GuiGraphics#blitNineSliced} 在 1.19.2 没有对应 API，故照抄官方两段画法 ——
+     * 与同屏其它原版 {@code Button} 像素同源，不会出现「换素材包后两者分家」。</p>
+     */
+    private static void blitButton(PoseStack pose, int x, int y, int width, int height, int v) {
+        RenderSystem.setShaderTexture(0, AbstractWidget.WIDGETS_LOCATION);
+        GuiComponent.blit(pose, x, y, 0, v, width / 2, height, 256, 256);
+        GuiComponent.blit(pose, x + width / 2, y, BUTTON_TEX_WIDTH - width / 2, v, width / 2, height, 256, 256);
+    }
+
+    /**
      * 竖着铺「净板条」（取自 {@link #PANEL_TEXTURE} 的无槽框行，不新增素材），铺到 {@code bodyEndY} 为止。
      *
      * <p>自绘底板与行囊页的 Δ 净板带共用这一段 —— 两处若各写一遍，改了一处就会
      * 露出「一页净板、一页突兀色块」的不一致。</p>
      */
-    private void blitNetBoard(GuiGraphics gui, int fromY, int bodyEndY) {
+    private void blitNetBoard(PoseStack pose, int fromY, int bodyEndY) {
         for (int y = fromY; y < bodyEndY; y += FLAT_BODY_H) {
             int segment = Math.min(FLAT_BODY_H, bodyEndY - y);
-            gui.blit(PANEL_TEXTURE, this.leftPos, y, 0, FLAT_BODY_V, this.imageWidth, segment);
+            blit(pose, PANEL_TEXTURE, this.leftPos, y, 0, FLAT_BODY_V, this.imageWidth, segment);
         }
     }
 
@@ -716,8 +739,8 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
      * 纯板条、{@code v=220..221} 阴影 + 黑边），故与行囊页逐像素同构；用 blit 而非硬编码
      * 颜色，换 GUI 资源包时也不会与其余界面脱节。</p>
      */
-    private void renderFlatPanel(GuiGraphics gui) {
-        renderFlatPanel(gui, this.topPos + this.imageHeight - (FLAT_BOTTOM_H + 1));
+    private void renderFlatPanel(PoseStack pose) {
+        renderFlatPanel(pose, this.topPos + this.imageHeight - (FLAT_BOTTOM_H + 1));
     }
 
     /**
@@ -728,18 +751,18 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
      *
      * @param bodyEndY 净板条铺到哪一行（不含）；恰好等于面板下沿时才补画阴影 + 黑边
      */
-    private void renderFlatPanel(GuiGraphics gui, int bodyEndY) {
+    private void renderFlatPanel(PoseStack pose, int bodyEndY) {
         int left = this.leftPos;
         int width = this.imageWidth;
         // 行囊页把纹理 220 / 221 两行落在面板的 imageHeight-3 / -2 行上，自绘板保持同一落点
         // （imageHeight-1 那一行原版也不画），两页切换时下沿不会跳。
         int bottomY = this.topPos + this.imageHeight - (FLAT_BOTTOM_H + 1);
 
-        gui.blit(PANEL_TEXTURE, left, this.topPos, 0, FLAT_TOP_V, width, FLAT_TOP_H);
-        blitNetBoard(gui, this.topPos + FLAT_TOP_H, bodyEndY);
+        blit(pose, PANEL_TEXTURE, left, this.topPos, 0, FLAT_TOP_V, width, FLAT_TOP_H);
+        blitNetBoard(pose, this.topPos + FLAT_TOP_H, bodyEndY);
         // 只有下半屏没有别的来源时才补底边（装备页的下段已含 220 / 221 两行）。
         if (bodyEndY >= bottomY) {
-            gui.blit(PANEL_TEXTURE, left, bottomY, 0, FLAT_BOTTOM_V, width, FLAT_BOTTOM_H);
+            blit(pose, PANEL_TEXTURE, left, bottomY, 0, FLAT_BOTTOM_V, width, FLAT_BOTTOM_H);
         }
     }
 
@@ -754,26 +777,26 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
      * 框由 {@link #renderEquipPage} 按槽位坐标单独画（装备槽与行囊首行坐标重合，
      * 整行 blit 会带出 9 个假框）。</p>
      */
-    private void renderEquipPanel(GuiGraphics gui) {
-        renderFlatPanel(gui, playerSegmentTop());
-        gui.blit(PANEL_TEXTURE, this.leftPos, playerSegmentTop(),
+    private void renderEquipPanel(PoseStack pose) {
+        renderFlatPanel(pose, playerSegmentTop());
+        blit(pose, PANEL_TEXTURE, this.leftPos, playerSegmentTop(),
                 0, PLAYER_SEGMENT_V, this.imageWidth, PLAYER_SEGMENT_H);
     }
 
     @Override
-    protected void renderLabels(GuiGraphics gui, int mouseX, int mouseY) {
+    protected void renderLabels(PoseStack pose, int mouseX, int mouseY) {
         // 标题随页签走（2026-09-22 乌狸定）：行囊页「随身行囊」、装备页「绒亲装备」，
         // 技能页**不画标题** —— 那一行直接留给「名称 + 物种」（见 renderSkillHeader 的行 1）。
         // 菜单侧传进来的 this.title（「绒亲」）仍保留给旁白 / 日志，只是不再画到面板上。
         int active = this.menu.getActiveTab();
         Component tabTitle = tabTitle(active);
         if (tabTitle != null) {
-            gui.drawString(this.font, tabTitle, this.titleLabelX, this.titleLabelY, COLOR_LABEL, false);
+            this.font.draw(pose, tabTitle, this.titleLabelX, this.titleLabelY, COLOR_LABEL);
         }
         // 「物品栏」标签只在槽位真正可见的页显示 —— 行囊页与装备页都会露出玩家背包。
         if (active == TAB_POUCH || active == TAB_EQUIP) {
-            gui.drawString(this.font, this.playerInventoryTitle,
-                    this.inventoryLabelX, this.inventoryLabelY, COLOR_LABEL, false);
+            this.font.draw(pose, this.playerInventoryTitle,
+                    this.inventoryLabelX, this.inventoryLabelY, COLOR_LABEL);
         }
     }
 
@@ -796,7 +819,7 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
      * 菜单槽位、按<b>容器身份</b>筛出装备区，再取各槽自己的 {@code x} / {@code y} ——
      * 菜单里哪天挪了槽位，这里自动跟上（本屏其余布局计算也是这个口径）。</p>
      */
-    private void renderEquipPage(GuiGraphics gui) {
+    private void renderEquipPage(PoseStack pose) {
         MobEquipmentContainer equipment = this.menu.getEquipment();
         for (Slot slot : this.menu.slots) {
             if (slot.container != equipment) {
@@ -804,7 +827,7 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
             }
             // 槽框比槽位坐标向外扩 1px：官方 renderSlot 把物品画在 (leftPos + slot.x) 处，
             // 而 18×18 的框要再往外一圈 —— 纹理里框落在 (7,17)、槽位在 (8,18)。
-            gui.blit(PANEL_TEXTURE,
+            blit(pose, PANEL_TEXTURE,
                     this.leftPos + slot.x - 1, this.topPos + slot.y - 1,
                     SLOT_FRAME_U, SLOT_FRAME_V, SLOT_FRAME_SIZE, SLOT_FRAME_SIZE);
         }
@@ -830,7 +853,7 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
      * <p>颜色既写进 {@code Component} 样式、也作为 {@code drawString} 的参数传一遍：
      * 同一个颜色给两个来源，换渲染路径（或样式被吞）时也不会掉色。</p>
      */
-    private void renderEquipSummary(GuiGraphics gui) {
+    private void renderEquipSummary(PoseStack pose) {
         List<EquipBonus.Entry> bonuses = equipBonuses();
         if (bonuses.isEmpty()) {
             return;
@@ -851,7 +874,7 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
             if (drawn > 0) {
                 x += SUMMARY_ITEM_GAP;
             }
-            gui.drawString(this.font, part, x, y, EquipBonus.style(entry).getColor(), false);
+            this.font.draw(pose, part, x, y, EquipBonus.style(entry).getColor());
             x += width;
             drawn++;
         }
@@ -970,7 +993,7 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
      * 实体的<b>活值</b> —— 面板开着时宠物挨打 / 回血都看得见，不是开屏那一刻的定格快照。
      * （护甲 2026-09-22 起不再占抬头位置，只在悬停属性明细里显示，理由见行 3 处注释。）</p>
      */
-    private void renderSkillHeader(GuiGraphics gui) {
+    private void renderSkillHeader(PoseStack pose) {
         int x = this.leftPos + TAB_MARGIN;
         LivingEntity companion = companionEntity();
 
@@ -980,7 +1003,7 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
         if (species != null) {
             nameRow.append(Component.literal("  ")).append(species);
         }
-        gui.drawString(this.font, nameRow, x, this.topPos + HEADER_ROW_1_Y, COLOR_LABEL, false);
+        this.font.draw(pose, nameRow, x, this.topPos + HEADER_ROW_1_Y, COLOR_LABEL);
 
         // 行 2：等级 ＋ 经验（当前 / 升级所需）。
         // 「升级所需」由等级现算（纯算术，客户端可直接调 FurkinGrowth）—— 不必为它多开包字段。
@@ -992,7 +1015,7 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
                 .append(Component.literal("   "))
                 .append(Component.translatable("furkin.screen.furkin.xp"))
                 .append(Component.literal(" " + xp + "/" + FurkinGrowth.xpNeededForNextLevel(level)));
-        gui.drawString(this.font, xpRow, x, this.topPos + HEADER_ROW_2_Y, COLOR_LABEL, false);
+        this.font.draw(pose, xpRow, x, this.topPos + HEADER_ROW_2_Y, COLOR_LABEL);
 
         // 行 3：技能点 ＋ 生命。
         // ⚠️ **护甲已从这一行撤下**（2026-09-22 乌狸定）：三项并排时字面量下限就已顶到 158px，
@@ -1003,10 +1026,10 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
                 .append(Component.literal("   "))
                 .append(Component.translatable("furkin.screen.furkin.health"))
                 .append(Component.literal(" " + healthText(companion)));
-        gui.drawString(this.font, statusRow, x, this.topPos + HEADER_ROW_3_Y, COLOR_LABEL, false);
+        this.font.draw(pose, statusRow, x, this.topPos + HEADER_ROW_3_Y, COLOR_LABEL);
 
         if (this.skills.isEmpty()) {
-            gui.drawCenteredString(this.font, Component.translatable("furkin.screen.furkin.empty"),
+            GuiComponent.drawCenteredString(pose, this.font, Component.translatable("furkin.screen.furkin.empty"),
                     this.leftPos + this.imageWidth / 2,
                     (listTop() + listBottom()) / 2, COLOR_HINT);
         }
@@ -1277,7 +1300,7 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
      * <p>在 {@link SkillListWidget#renderContents} 里调用 —— 框架已经把 pose 平移了
      * {@code -scrollAmount}，故此处一律用<b>未滚动的绝对坐标</b>，滚动由框架负责。</p>
      */
-    private void renderSkillRow(GuiGraphics gui, int index, boolean hoveredRow, boolean hoveredButton) {
+    private void renderSkillRow(PoseStack pose, int index, boolean hoveredRow, boolean hoveredButton) {
         OpenFurkinScreenPacket.SkillView skill = this.skills.get(index);
         int rowHeight = rowHeight();
         int y = rowY(index);
@@ -1289,17 +1312,17 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
         boolean enabled = buttonEnabled(skill);
 
         if (hoveredRow) {
-            gui.fill(left, y, right, y + rowHeight, 0x22FFFFFF);
+            GuiComponent.fill(pose, left, y, right, y + rowHeight, 0x22FFFFFF);
         }
 
         int textY = y + (rowHeight - 8) / 2;
-        gui.drawString(this.font, Component.translatable(skill.getNameKey()), left + 2, textY,
-                COLOR_LABEL, false);
+        this.font.draw(pose, Component.translatable(skill.getNameKey()), left + 2, textY,
+                COLOR_LABEL);
         String levelText = skill.isInfinite()
                 ? String.valueOf(skill.getCurrentLevel())
                 : skill.getCurrentLevel() + "/" + skill.getMaxLevel();
-        gui.drawString(this.font, levelText, left + SKILL_LEVEL_COLUMN, textY,
-                maxed ? COLOR_MAXED : COLOR_HINT, false);
+        this.font.draw(pose, levelText, left + SKILL_LEVEL_COLUMN, textY,
+                maxed ? COLOR_MAXED : COLOR_HINT);
 
         // 按钮左缘走共用出口（见 buttonLeft）：渲染与命中必须同源，且已右收留出滚动条间隙。
         int bx = buttonLeft();
@@ -1308,11 +1331,8 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
         int textureV = enabled
                 ? (hoveredButton ? BUTTON_V_HOVER : BUTTON_V_NORMAL)
                 : BUTTON_V_DISABLED;
-        gui.blitNineSliced(AbstractWidget.WIDGETS_LOCATION, bx, by,
-                SKILL_BUTTON_WIDTH, SKILL_BUTTON_HEIGHT,
-                BUTTON_SLICE_X, BUTTON_SLICE_Y, BUTTON_TEX_WIDTH, BUTTON_TEX_HEIGHT,
-                0, textureV);
-        gui.drawCenteredString(this.font, Component.literal("+1"),
+        blitButton(pose, bx, by, SKILL_BUTTON_WIDTH, SKILL_BUTTON_HEIGHT, textureV);
+        GuiComponent.drawCenteredString(pose, this.font, Component.literal("+1"),
                 bx + SKILL_BUTTON_WIDTH / 2, by + (SKILL_BUTTON_HEIGHT - 8) / 2,
                 enabled ? COLOR_BUTTON_TEXT : COLOR_BUTTON_TEXT_OFF);
     }
@@ -1329,6 +1349,23 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
             }
         }
         return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    /**
+     * 滚轮路由 —— 1.19.2 的 {@code AbstractScrollWidget.mouseScrolled} 要求控件已获得焦点；
+     * 面板初开时列表尚未聚焦，首次滚轮会被直接忽略。鼠标位于列表范围时先补焦，
+     * 再复用官方滚动逻辑，避免要求玩家先点击一次。
+     */
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+        if (this.skillList != null && this.skillList.visible
+                && mouseX >= listLeft() && mouseX < listLeft() + listWidth() + SCROLLBAR_WIDTH
+                && mouseY >= listTop() && mouseY < listBottom()) {
+            this.setFocused(this.skillList);
+            this.skillList.focusForScroll();
+            return this.skillList.mouseScrolled(mouseX, mouseY, delta);
+        }
+        return super.mouseScrolled(mouseX, mouseY, delta);
     }
 
     /**
@@ -1388,13 +1425,20 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
      * <p>框架负责：剪裁（{@code enableScissor}）、内容平移（{@code pose.translate(0, -scrollAmount)}）、
      * 滚动条绘制与拖动、滚轮。本类只回答「内容多高」「一格滚多少」「怎么画内容」。</p>
      *
-     * <p>不画官方那圈 {@code renderBorder} 边框（覆盖 {@code renderBackground} 为空）：列表区
-     * 的底板由 {@link #renderFlatPanel} 提供，加边框会与面板样式打架。</p>
+     * <p>1.19.2 的 {@code renderBackground} 是 {@code private}，子类无法覆写或调用。当前
+     * 覆写公开的 {@code renderButton}，沿用官方裁剪、滚动位移、内容绘制与滚动条绘制，
+     * 仅省略黑色背景和边框。迁移细节与迁回 1.20.1 的处理见
+     * {@code docs/wp6-scroll-widget-api.md}。</p>
      */
     private final class SkillListWidget extends AbstractScrollWidget {
 
         SkillListWidget(int x, int y, int width, int height) {
             super(x, y, width, height, Component.empty());
+        }
+
+        /** 为未点击时的滚轮路由补上控件内部焦点；{@code Screen#setFocused} 不会设置此布尔值。 */
+        void focusForScroll() {
+            setFocused(true);
         }
 
         /** 内容总高 = 行数 × 行高；超过控件高度即出现滚动条（框架的 {@code scrollbarVisible}）。 */
@@ -1403,36 +1447,63 @@ public class FurkinPanelScreen extends AbstractContainerScreen<FurkinPouchMenu> 
             return FurkinPanelScreen.this.skills.size() * rowHeight();
         }
 
+        /** 1.19.2 将它声明为抽象方法；语义与 1.20.1 官方默认实现相同。 */
+        @Override
+        protected boolean scrollbarVisible() {
+            return getInnerHeight() > getHeight();
+        }
+
         /** 滚轮一格 = 一行。 */
         @Override
         protected double scrollRate() {
             return rowHeight();
         }
 
-        /** 列表区不加官方边框（底板已由 renderBg 画好）。 */
+        /**
+         * 复用 1.19.2 官方 {@code renderButton} 的绘制流程，但不调用其私有背景方法。
+         *
+         * <p>只省略黑色背景和边框；裁剪、滚动位移、内容绘制与官方滚动条仍按下述顺序执行。</p>
+         */
         @Override
-        protected void renderBackground(GuiGraphics gui) {
+        public void renderButton(PoseStack pose, int mouseX, int mouseY, float partialTick) {
+            if (!this.visible) {
+                return;
+            }
+
+            enableScissor(
+                    this.x + 1,
+                    this.y + 1,
+                    this.x + this.width - 1,
+                    this.y + this.height - 1);
+
+            pose.pushPose();
+            pose.translate(0.0D, -scrollAmount(), 0.0D);
+            renderContents(pose, mouseX, mouseY, partialTick);
+            pose.popPose();
+
+            disableScissor();
+            renderDecorations(pose);
         }
 
         /**
          * 人读支持。
          *
-         * <p>{@code updateWidgetNarration} 在 {@code AbstractWidget} 里是抽象方法，而
-         * {@code AbstractScrollWidget} <b>并没有</b>实现它（javap 确认：它的方法表里没有这一项），
-         * 故任何子类都必须自己补上，否则编译不过。这里退回按钮的默认念白。</p>
+         * <p>1.19.2 的念白入口是 {@code NarratableEntry} 继承来的
+         * {@code updateNarration}；1.20.1 才拆成 final {@code updateNarration} 与
+         * protected {@code updateWidgetNarration}。这里仍复用按钮的默认念白。</p>
          */
         @Override
-        protected void updateWidgetNarration(NarrationElementOutput narration) {
+        public void updateNarration(NarrationElementOutput narration) {
             this.defaultButtonNarrationText(narration);
         }
 
         @Override
-        protected void renderContents(GuiGraphics gui, int mouseX, int mouseY, float partialTick) {
+        protected void renderContents(PoseStack pose, int mouseX, int mouseY, float partialTick) {
             // 渲染用的是「未滚动的绝对坐标」（框架已把 pose 平移 -scrollAmount），
             // 而鼠标坐标是屏幕坐标 —— 两者相差一个滚动量，命中一律走 rowScreenY。
             int hoveredRow = rowIndexAtScreen(mouseY);
             for (int i = 0; i < FurkinPanelScreen.this.skills.size(); i++) {
-                renderSkillRow(gui, i, hoveredRow == i, buttonHit(mouseX, mouseY, i));
+                renderSkillRow(pose, i, hoveredRow == i, buttonHit(mouseX, mouseY, i));
             }
         }
 

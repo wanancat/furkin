@@ -44,7 +44,7 @@ public final class PouchDrop {
             return false;
         }
         // 掉落是服务端行为：客户端侧调用会凭空生成客户端物品实体。
-        if (!(owner.level() instanceof ServerLevel level)) {
+        if (!(owner.getLevel() instanceof ServerLevel level)) {
             return false;
         }
         Containers.dropContents(level, owner, pouch);
@@ -63,7 +63,7 @@ public final class PouchDrop {
         if (owner == null || stacks == null || stacks.isEmpty()) {
             return false;
         }
-        if (!(owner.level() instanceof ServerLevel level)) {
+        if (!(owner.getLevel() instanceof ServerLevel level)) {
             return false;
         }
         double x = owner.getX();

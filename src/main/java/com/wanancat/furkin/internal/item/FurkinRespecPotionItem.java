@@ -1,5 +1,6 @@
 package com.wanancat.furkin.internal.item;
 
+import com.wanancat.furkin.internal.registry.ModCreativeTab;
 import net.minecraft.world.item.Item;
 
 /**
@@ -17,6 +18,6 @@ import net.minecraft.world.item.Item;
 public class FurkinRespecPotionItem extends Item {
 
     public FurkinRespecPotionItem() {
-        super(new Item.Properties());
+        super(new Item.Properties().tab(ModCreativeTab.FURKIN_TAB));
     }
 }

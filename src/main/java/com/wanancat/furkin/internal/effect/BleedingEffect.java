@@ -1,6 +1,7 @@
 package com.wanancat.furkin.internal.effect;
 
 import com.wanancat.furkin.internal.skill.BleedingSpec;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectCategory;
 import net.minecraft.world.entity.LivingEntity;
@@ -37,7 +38,7 @@ public final class BleedingEffect extends MobEffect {
         // 客户端那次 hurt 本身无副作用（LivingEntity#hurt 在 isClientSide 时直接 return false，
         // 不减血、不闪红、不发声），但没必要跑 —— 更要紧的是别让客户端去读技能树：
         // 技能树只挂在服务端数据包重载事件上，多人游戏下客户端是一棵空树。
-        if (entity.level().isClientSide()) {
+        if (entity.getLevel().isClientSide()) {
             return;
         }
         // 亡灵免疫（与中毒一致）。施加侧另有一道同名判定，那道是为了让亡灵「连效果都不挂」，
@@ -55,7 +56,7 @@ public final class BleedingEffect extends MobEffect {
         if (damage <= 0.0f) {
             return;
         }
-        entity.hurt(entity.damageSources().generic(), damage);
+        entity.hurt(DamageSource.GENERIC, damage);
     }
 
     @Override

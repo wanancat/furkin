@@ -1,5 +1,6 @@
 package com.wanancat.furkin.internal.item;
 
+import com.wanancat.furkin.internal.registry.ModCreativeTab;
 import net.minecraft.world.item.Item;
 
 /**
@@ -21,6 +22,6 @@ public class FurkinContractItem extends Item {
 
     public FurkinContractItem() {
         // 温和成本（金锭 / 青金石 / 纸一级），配方归 SERVER TOML —— 设计稿 §3.1。
-        super(new Item.Properties());
+        super(new Item.Properties().tab(ModCreativeTab.FURKIN_TAB));
     }
 }

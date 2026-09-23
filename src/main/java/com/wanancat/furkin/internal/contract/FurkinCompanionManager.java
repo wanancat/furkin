@@ -82,9 +82,7 @@ public final class FurkinCompanionManager {
      * @return 具体结果（成功含两种分流态）
      */
     public static SummonResult summonOrTeleport(ServerPlayer player, UUID companionId) {
-        if (!(player.level() instanceof ServerLevel serverLevel)) {
-            return SummonResult.NOT_FOUND;
-        }
+        ServerLevel serverLevel = player.getLevel();
 
         FurkinArchiveData archive = FurkinArchiveData.get(serverLevel);
         FurkinArchiveEntry entry = archive.getEntry(companionId);
@@ -152,7 +150,7 @@ public final class FurkinCompanionManager {
             return false;
         }
 
-        if (!(target.level() instanceof ServerLevel serverLevel)) {
+        if (!(target.getLevel() instanceof ServerLevel serverLevel)) {
             return false;
         }
 
@@ -208,9 +206,7 @@ public final class FurkinCompanionManager {
      * @return 是否成功召唤
      */
     public static boolean summon(ServerPlayer player, UUID companionId) {
-        if (!(player.level() instanceof ServerLevel serverLevel)) {
-            return false;
-        }
+        ServerLevel serverLevel = player.getLevel();
 
         FurkinArchiveData archive = FurkinArchiveData.get(serverLevel);
         FurkinArchiveEntry entry = archive.getEntry(companionId);
@@ -258,9 +254,7 @@ public final class FurkinCompanionManager {
      * @return 是否成功复活
      */
     public static boolean revive(ServerPlayer player, UUID companionId, BlockPos spawnPos) {
-        if (!(player.level() instanceof ServerLevel serverLevel)) {
-            return false;
-        }
+        ServerLevel serverLevel = player.getLevel();
 
         FurkinArchiveData archive = FurkinArchiveData.get(serverLevel);
         FurkinArchiveEntry entry = archive.getEntry(companionId);
@@ -320,7 +314,7 @@ public final class FurkinCompanionManager {
     private static boolean rebuildCompanion(ServerPlayer player, FurkinArchiveEntry entry,
                                             double x, double y, double z,
                                             float yRot, float xRot, String actionLog) {
-        ServerLevel serverLevel = (ServerLevel) player.level();
+        ServerLevel serverLevel = (ServerLevel) player.getLevel();
         UUID companionId = entry.getCompanionId();
 
         // 重建实体：从档案读物种。
@@ -480,9 +474,7 @@ public final class FurkinCompanionManager {
      * @return 是否成功传送
      */
     public static boolean teleportToOwner(ServerPlayer player, UUID companionId) {
-        if (!(player.level() instanceof ServerLevel serverLevel)) {
-            return false;
-        }
+        ServerLevel serverLevel = player.getLevel();
 
         // 从档案确认主人与生命状态。
         FurkinArchiveData archive = FurkinArchiveData.get(serverLevel);

@@ -6,7 +6,6 @@ import com.wanancat.furkin.internal.config.FurkinClientConfig;
 import com.wanancat.furkin.internal.config.FurkinServerConfig;
 import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.registry.BuiltinSpecies;
-import com.wanancat.furkin.internal.registry.ModCreativeTab;
 import com.wanancat.furkin.internal.registry.ModItems;
 import com.wanancat.furkin.internal.registry.ModMenus;
 import com.wanancat.furkin.internal.registry.ModMobEffects;
@@ -42,9 +41,6 @@ public class FurkinMod {
 
         // 物品注册。
         ModItems.register(modBus);
-
-        // 创造模式标签页（M5 自建 furkin 品牌 tab，解决创造搜索搜不到）。
-        ModCreativeTab.register(modBus);
 
         // MobEffect 注册（流血等）。
         ModMobEffects.register(modBus);

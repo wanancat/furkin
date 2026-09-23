@@ -79,7 +79,7 @@ public final class FurkinRecordActionHandler {
      */
     public static boolean dismiss(ServerPlayer player, UUID companionId) {
         // 先定位在场实体（dismiss 需要实体引用，而非仅 UUID）。
-        LivingEntity target = findLivingByCompanionId(player.serverLevel(), companionId);
+        LivingEntity target = findLivingByCompanionId(player.getLevel(), companionId);
         if (target == null) {
             return false;
         }
@@ -105,9 +105,7 @@ public final class FurkinRecordActionHandler {
      * @return 结果枚举
      */
     public static Result unbind(ServerPlayer player, UUID companionId) {
-        if (!(player.level() instanceof ServerLevel serverLevel)) {
-            return Result.NOT_FOUND;
-        }
+        ServerLevel serverLevel = player.getLevel();
 
         FurkinArchiveData archive = FurkinArchiveData.get(serverLevel);
         FurkinArchiveEntry entry = archive.getEntry(companionId);
@@ -149,9 +147,7 @@ public final class FurkinRecordActionHandler {
      * @return 结果枚举
      */
     public static Result rename(ServerPlayer player, UUID companionId, String name) {
-        if (!(player.level() instanceof ServerLevel serverLevel)) {
-            return Result.NOT_FOUND;
-        }
+        ServerLevel serverLevel = player.getLevel();
 
         FurkinArchiveData archive = FurkinArchiveData.get(serverLevel);
         FurkinArchiveEntry entry = archive.getEntry(companionId);
@@ -210,9 +206,7 @@ public final class FurkinRecordActionHandler {
      * @return 结果枚举（{@code OK} 或具体失败原因，供网络包选反馈文案）
      */
     public static Result reacquireSoulstone(ServerPlayer player, UUID companionId) {
-        if (!(player.level() instanceof ServerLevel serverLevel)) {
-            return Result.NOT_FOUND;
-        }
+        ServerLevel serverLevel = player.getLevel();
 
         FurkinArchiveData archive = FurkinArchiveData.get(serverLevel);
         FurkinArchiveEntry entry = archive.getEntry(companionId);
@@ -363,7 +357,7 @@ public final class FurkinRecordActionHandler {
      * @return 是否成功回发（实体不存在 / 非本人返回 false）。
      */
     public static boolean refreshScreen(ServerPlayer player, UUID companionId) {
-        LivingEntity target = findLivingByCompanionId(player.serverLevel(), companionId);
+        LivingEntity target = findLivingByCompanionId(player.getLevel(), companionId);
         if (target == null) {
             return false;
         }
@@ -400,7 +394,7 @@ public final class FurkinRecordActionHandler {
         if (custom != null) {
             name = custom.getString();
         } else {
-            FurkinArchiveData archive = FurkinArchiveData.get(player.serverLevel());
+            FurkinArchiveData archive = FurkinArchiveData.get(player.getLevel());
             FurkinArchiveEntry entry = archive.getEntry(companionId);
             if (entry != null && entry.getName() != null) {
                 name = entry.getName().getString();

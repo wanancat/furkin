@@ -1,5 +1,6 @@
 package com.wanancat.furkin.internal.client;
 
+import com.mojang.blaze3d.vertex.PoseStack;
 import com.wanancat.furkin.internal.contract.FurkinCombatMode;
 import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.network.RecordActionPacket;
@@ -8,13 +9,14 @@ import com.wanancat.furkin.internal.network.RequestSummonPacket;
 import com.wanancat.furkin.internal.record.RecordAttributes;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiComponent;
 import net.minecraft.client.gui.components.AbstractSelectionList;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
@@ -130,7 +132,7 @@ public final class FurkinRecordScreen extends Screen {
         if (this.selectedIndex < 0 && !fresh.isEmpty()) {
             this.selectedIndex = 0;
         }
-        // 整屏重建：条目集合变了，左右两侧都要跟着走（重建会重置滚动，属可接受）。
+        // 整屏重建：条目集合变了，左右两侧都要跟着走；rebuild 内负责恢复滚动量。
         rebuild();
     }
 
@@ -154,6 +156,7 @@ public final class FurkinRecordScreen extends Screen {
 
     /** 按当前选中态重建：左列表（原版滚动列表）+ 右属性滚动列表 + 锚底按钮。 */
     private void rebuild() {
+        double previousScroll = listWidget == null ? 0.0D : listWidget.getScrollAmount();
         clearWidgets();
 
         // 左列表：AbstractSelectionList（自带滚动条 / 滚轮 / 拖拽），条目自绘。
@@ -167,13 +170,13 @@ public final class FurkinRecordScreen extends Screen {
         if (selectedIndex >= 0 && selectedIndex < rows.size()) {
             listWidget.setSelected(rows.get(selectedIndex));
         }
+        listWidget.setScrollAmount(previousScroll);
         addRenderableWidget(listWidget);
 
         // 关闭按钮（固定底部，只加一次）。
-        addRenderableWidget(Button.builder(Component.translatable("furkin.screen.record.close"),
-                        btn -> onClose())
-                .bounds(this.width / 2 - 40, this.height - 30, 80, 20)
-                .build());
+        addRenderableWidget(new Button(this.width / 2 - 40, this.height - 30, 80, 20,
+                Component.translatable("furkin.screen.record.close"),
+                btn -> onClose()));
 
         // 右详情卡：属性滚动列表 + 管理按钮（锚定底部）。
         refreshDetail();
@@ -335,7 +338,7 @@ public final class FurkinRecordScreen extends Screen {
 
     /** 加一个详情卡按钮，并记入 {@link #detailButtons}（刷新详情时精确清除）。 */
     private Button detailButton(Component label, Button.OnPress onPress, int x, int y, int w, int h) {
-        Button btn = Button.builder(label, onPress).bounds(x, y, w, h).build();
+        Button btn = new Button(x, y, w, h, label, onPress);
         addRenderableWidget(btn);
         detailButtons.add(btn);
         return btn;
@@ -370,7 +373,7 @@ public final class FurkinRecordScreen extends Screen {
     /** 打开改名输入框（预填当前名字）。 */
     private void openRename(UUID companionId, RecordListPacket.Entry entry) {
         String current = entry.hasName() ? entry.getName() : "";
-        RenameScreen.open(companionId, current);
+        RenameScreen.open(this, companionId, current);
     }
 
     /** 右详情卡抬头里的物种显示名：speciesKey 是本地化 key，转成已本地化文本。 */
@@ -432,33 +435,34 @@ public final class FurkinRecordScreen extends Screen {
     }
 
     @Override
-    public void render(GuiGraphics gui, int mouseX, int mouseY, float partialTick) {
-        renderBackground(gui);
+    public void render(PoseStack pose, int mouseX, int mouseY, float partialTick) {
+        renderBackground(pose);
 
         // 标题。
-        gui.drawCenteredString(this.font, this.title, this.width / 2, 15, 0xFFFFFF);
+        GuiComponent.drawCenteredString(pose, this.font, this.title, this.width / 2, 15, 0xFFFFFF);
 
         // 右详情卡：选中条目的头部信息 + 属性区文字。
         RecordListPacket.Entry selected = selectedEntry();
         if (selected != null) {
-            renderDetail(gui, selected);
+            renderDetail(pose, selected);
         }
 
         if (entries.isEmpty()) {
-            gui.drawCenteredString(this.font,
+            GuiComponent.drawCenteredString(pose, this.font,
                     Component.translatable("furkin.screen.record.empty"),
                     this.width / 2, this.height / 2, 0xAAAAAA);
         }
 
-        super.render(gui, mouseX, mouseY, partialTick);
+        super.render(pose, mouseX, mouseY, partialTick);
     }
 
     /** 右详情卡固定文字：抬头（名字+物种+Lv/经验/技能点/状态）+「属性」小标题 + 空提示。 */
-    private void renderDetail(GuiGraphics gui, RecordListPacket.Entry entry) {
+    private void renderDetail(PoseStack pose, RecordListPacket.Entry entry) {
         // 抬头：名字（物种）+ 等级 + 经验 + 技能点 + 状态。
         // 三个标签复用技能页同一套 key（2026-09-22：原先硬编码中文，英文环境下会露中文）。
-        MutableComponent header = entryLabel(entry)
-                .append(Component.literal("（" + speciesDisplay(entry) + "）"))
+        MutableComponent name = entryLabel(entry);
+        // 物种、等级、经验、技能点和状态优先保留；名字只占扣除这些信息后的剩余宽度。
+        MutableComponent details = Component.literal("（" + speciesDisplay(entry) + "）")
                 .append(Component.literal("  "))
                 .append(Component.translatable("furkin.screen.furkin.level"))
                 .append(Component.literal(" " + entry.getLevel()))
@@ -469,19 +473,59 @@ public final class FurkinRecordScreen extends Screen {
                 .append(Component.translatable("furkin.screen.furkin.skill_points"))
                 .append(Component.literal(" " + entry.getSkillPoints()))
                 .append(stateSuffix(entry));
-        gui.drawString(this.font, header, DETAIL_LEFT, DETAIL_TOP, 0xFFFFFF);
+
+        int maxWidth = this.width - DETAIL_LEFT - 8;
+        int detailsWidth = this.font.width(details);
+        if (detailsWidth >= maxWidth) {
+            drawTruncatedString(pose, details, DETAIL_LEFT, DETAIL_TOP, 0xFFFFFF, maxWidth);
+        } else {
+            int nameWidth = drawTruncatedString(pose, name, DETAIL_LEFT, DETAIL_TOP,
+                    0xFFFFFF, maxWidth - detailsWidth);
+            GuiComponent.drawString(pose, this.font, details,
+                    DETAIL_LEFT + nameWidth, DETAIL_TOP, 0xFFFFFF);
+        }
 
         // 「属性」小标题（属性行本身在滚动列表里）。
-        gui.drawString(this.font,
+        GuiComponent.drawString(pose, this.font,
                 Component.translatable("furkin.screen.furkin.attributes").withStyle(ChatFormatting.GRAY),
                 DETAIL_LEFT, DETAIL_TOP + 20, 0xFFFFFF);
 
         // 无属性提示（空列表不建组件，这里补提示）。
         if (entry.getAttributes().isEmpty()) {
-            gui.drawString(this.font,
+            GuiComponent.drawString(pose, this.font,
                     Component.translatable("furkin.screen.record.no_attributes").withStyle(ChatFormatting.GRAY),
                     DETAIL_LEFT, ATTR_LIST_TOP, 0xAAAAAA);
         }
+    }
+
+    /** 按像素宽度绘制单行组件，返回实际绘制宽度；超宽时截断并追加省略号，样式由 Font.split 保留。 */
+    private int drawTruncatedString(PoseStack pose, Component text, int x, int y, int color, int maxWidth) {
+        if (maxWidth <= 0) {
+            return 0;
+        }
+        int textWidth = this.font.width(text);
+        if (textWidth <= maxWidth) {
+            GuiComponent.drawString(pose, this.font, text, x, y, color);
+            return textWidth;
+        }
+
+        String ellipsis = "...";
+        int ellipsisWidth = this.font.width(ellipsis);
+        if (maxWidth <= ellipsisWidth) {
+            String shortened = this.font.plainSubstrByWidth(ellipsis, maxWidth);
+            GuiComponent.drawString(pose, this.font, shortened, x, y, color);
+            return this.font.width(shortened);
+        }
+
+        List<FormattedCharSequence> lines = this.font.split(text, maxWidth - ellipsisWidth);
+        if (lines.isEmpty()) {
+            return 0;
+        }
+        FormattedCharSequence first = lines.get(0);
+        int firstWidth = this.font.width(first);
+        GuiComponent.drawString(pose, this.font, first, x, y, color);
+        GuiComponent.drawString(pose, this.font, ellipsis, x + firstWidth, y, color);
+        return firstWidth + ellipsisWidth;
     }
 
     /**
@@ -544,7 +588,7 @@ public final class FurkinRecordScreen extends Screen {
             }
 
             @Override
-            public void render(GuiGraphics gui, int index, int top, int left, int width, int height,
+            public void render(PoseStack pose, int index, int top, int left, int width, int height,
                                int mouseX, int mouseY, boolean hovering, float partialTick) {
                 RecordListPacket.Entry entry = entries.get(this.index);
                 boolean selected = FurkinRecordScreen.this.selectedIndex == this.index;
@@ -552,12 +596,13 @@ public final class FurkinRecordScreen extends Screen {
                 // 原先 left+width-7 比 thumb 左缘多 2px，黄底压过滚动条一点点）。
                 int rowRight = RecordEntryList.this.getScrollbarPosition();
                 if (selected) {
-                    gui.fill(left + 1, top, rowRight, top + height, 0x66FFFF55);
+                    GuiComponent.fill(pose, left + 1, top, rowRight, top + height, 0x66FFFF55);
                 } else if (hovering) {
-                    gui.fill(left + 1, top, rowRight, top + height, 0x22FFFFFF);
+                    GuiComponent.fill(pose, left + 1, top, rowRight, top + height, 0x22FFFFFF);
                 }
-                gui.drawString(FurkinRecordScreen.this.font,
-                        listLabel(entry, selected), left + 4, top + (height - 8) / 2, 0xFFFFFF);
+                int textLeft = left + 4;
+                drawTruncatedString(pose, listLabel(entry, selected), textLeft,
+                        top + (height - 8) / 2, 0xFFFFFF, rowRight - textLeft - 4);
             }
 
             @Override
@@ -588,6 +633,21 @@ public final class FurkinRecordScreen extends Screen {
             setRenderBackground(false);
             setRenderTopAndBottom(false);
             setRenderSelection(false);   // 同 RecordEntryList：原版选中框超宽，关掉。
+        }
+
+        /**
+         * 将只显示一部分的属性行裁切在列表视口内。
+         *
+         * <p>1.19.2 的 {@code AbstractSelectionList.renderList(...)} 没有启用裁剪：
+         * 只要条目与 {@code y0}/{@code y1} 相交就会完整绘制，滚动时文字可能进入
+         * 上方固定的“属性”标题区域。此处沿用官方
+         * {@code AbstractScrollWidget.renderButton(...)} 的裁剪方式。</p>
+         */
+        @Override
+        public void render(PoseStack pose, int mouseX, int mouseY, float partialTick) {
+            enableScissor(this.x0, this.y0, this.x1, this.y1);
+            super.render(pose, mouseX, mouseY, partialTick);
+            disableScissor();
         }
 
         /** ⚠️ 基类写死 220，不覆写条目起点会算到屏幕外（见 RecordEntryList 同名注释）。 */
@@ -622,9 +682,9 @@ public final class FurkinRecordScreen extends Screen {
             }
 
             @Override
-            public void render(GuiGraphics gui, int index, int top, int left, int width, int height,
+            public void render(PoseStack pose, int index, int top, int left, int width, int height,
                                int mouseX, int mouseY, boolean hovering, float partialTick) {
-                gui.drawString(FurkinRecordScreen.this.font,
+                GuiComponent.drawString(pose, FurkinRecordScreen.this.font,
                         attributeLine(line), left, top + 1, 0xFFFFFF);
             }
         }

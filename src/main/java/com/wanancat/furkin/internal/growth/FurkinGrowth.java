@@ -119,7 +119,7 @@ public final class FurkinGrowth {
 
     /** 解析主人（可能 null —— 主人离线但宠物仍在场时）。 */
     private static ServerPlayer resolveOwner(LivingEntity companion) {
-        if (companion.level() instanceof ServerLevel serverLevel) {
+        if (companion.getLevel() instanceof ServerLevel serverLevel) {
             var ownerUuid = companion.getCapability(FurkinCapability.FURKIN_DATA)
                     .map(FurkinData::getOwnerUuid).orElse(null);
             if (ownerUuid != null) {
@@ -138,7 +138,7 @@ public final class FurkinGrowth {
 
     /** 同步写回档案（等级 / 经验 / 技能点），使绒亲录列表读档案即得最新值。 */
     private static void syncToArchive(LivingEntity companion, FurkinData data) {
-        if (!(companion.level() instanceof ServerLevel serverLevel)) {
+        if (!(companion.getLevel() instanceof ServerLevel serverLevel)) {
             return;
         }
         UUID companionId = data.getCompanionId();

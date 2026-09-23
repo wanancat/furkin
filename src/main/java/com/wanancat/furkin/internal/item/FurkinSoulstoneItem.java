@@ -2,6 +2,7 @@ package com.wanancat.furkin.internal.item;
 
 import com.wanancat.furkin.internal.contract.FurkinCompanionManager;
 import com.wanancat.furkin.internal.revive.ReviveStructure;
+import com.wanancat.furkin.internal.registry.ModCreativeTab;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerPlayer;
@@ -37,7 +38,7 @@ public class FurkinSoulstoneItem extends Item {
 
     public FurkinSoulstoneItem() {
         // fireResistant：熔岩烧不掉；stacksTo(1)：钥匙逐枚管理，不堆叠。
-        super(new Item.Properties().fireResistant().stacksTo(1));
+        super(new Item.Properties().fireResistant().stacksTo(1).tab(ModCreativeTab.FURKIN_TAB));
     }
 
     /**

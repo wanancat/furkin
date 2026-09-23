@@ -51,9 +51,7 @@ public final class FurkinCombatModeHandler {
         if (mode == null) {
             return Result.INVALID_MODE;
         }
-        if (!(player.level() instanceof ServerLevel serverLevel)) {
-            return Result.NOT_FOUND;
-        }
+        ServerLevel serverLevel = player.getLevel();
 
         FurkinArchiveData archive = FurkinArchiveData.get(serverLevel);
         FurkinArchiveEntry entry = archive.getEntry(companionId);

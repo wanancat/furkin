@@ -46,7 +46,7 @@ public final class ConfirmContractPacket {
             return;
         }
         ctx.enqueueWork(() -> {
-            Entity entity = player.serverLevel().getEntity(packet.entityId);
+            Entity entity = player.getLevel().getEntity(packet.entityId);
             if (entity instanceof net.minecraft.world.entity.LivingEntity target) {
                 FurkinContractHandler.executeContract(player, target, player.getMainHandItem(), packet.name);
             }

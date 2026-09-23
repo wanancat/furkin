@@ -1,9 +1,10 @@
 package com.wanancat.furkin.internal.client;
 
+import com.mojang.blaze3d.vertex.PoseStack;
 import com.wanancat.furkin.internal.network.ConfirmContractPacket;
 import com.wanancat.furkin.internal.network.FurkinNetwork;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiComponent;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
@@ -47,21 +48,21 @@ public final class ContractNameScreen extends Screen {
         this.nameInput = new EditBox(this.font, cx - 100, this.height / 2 - 20, 200, 20,
                 Component.translatable("furkin.screen.contract_name.hint"));
         this.nameInput.setMaxLength(32);
-        this.nameInput.setHint(Component.translatable("furkin.screen.contract_name.hint"));
+        String hint = Component.translatable("furkin.screen.contract_name.hint").getString();
+        this.nameInput.setSuggestion(hint);
+        this.nameInput.setResponder(value -> this.nameInput.setSuggestion(value.isEmpty() ? hint : null));
         addRenderableWidget(this.nameInput);
 
         // 确认按钮。
-        this.confirmBtn = Button.builder(Component.translatable("furkin.screen.contract_name.confirm"),
-                        btn -> confirm())
-                .bounds(cx - 100, this.height / 2 + 10, 95, 20)
-                .build();
+        this.confirmBtn = new Button(cx - 100, this.height / 2 + 10, 95, 20,
+                Component.translatable("furkin.screen.contract_name.confirm"),
+                btn -> confirm());
         addRenderableWidget(this.confirmBtn);
 
         // 取消按钮。
-        addRenderableWidget(Button.builder(Component.translatable("furkin.screen.contract_name.cancel"),
-                        btn -> onClose())
-                .bounds(cx + 5, this.height / 2 + 10, 95, 20)
-                .build());
+        addRenderableWidget(new Button(cx + 5, this.height / 2 + 10, 95, 20,
+                Component.translatable("furkin.screen.contract_name.cancel"),
+                btn -> onClose()));
 
         setInitialFocus(this.nameInput);
     }
@@ -74,10 +75,10 @@ public final class ContractNameScreen extends Screen {
     }
 
     @Override
-    public void render(GuiGraphics gui, int mouseX, int mouseY, float partialTick) {
-        renderBackground(gui);
-        gui.drawCenteredString(this.font, this.title, this.width / 2, this.height / 2 - 45, 0xFFFFFF);
-        super.render(gui, mouseX, mouseY, partialTick);
+    public void render(PoseStack pose, int mouseX, int mouseY, float partialTick) {
+        renderBackground(pose);
+        GuiComponent.drawCenteredString(pose, this.font, this.title, this.width / 2, this.height / 2 - 45, 0xFFFFFF);
+        super.render(pose, mouseX, mouseY, partialTick);
     }
 
     @Override

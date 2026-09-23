@@ -30,9 +30,10 @@ import net.minecraft.world.entity.monster.Monster;
  * AGGRESSIVE       ✓        ✓                              ✓
  * </pre>
  *
- * <p>实现：{@link #applyTo} 按档位增删目标（Forge 的 {@code GoalSelector.removeAllGoals}
- * 按类型删除可用）。<b>TargetGoal 构造时绑定 mob 引用，不能跨实体共用</b>，故每次
- * apply 时按需 {@code new} 一套；通过「先按类型清、再按档位重挂」保持幂等。</p>
+ * <p>实现：{@link #applyTo} 按档位增删目标（1.19.2 通过
+ * {@code GoalSelector#getAvailableGoals()} 按类型删除可用目标）。<b>TargetGoal 构造时
+ * 绑定 mob 引用，不能跨实体共用</b>，故每次 apply 时按需 {@code new} 一套；
+ * 通过「先按类型清、再按档位重挂」保持幂等。</p>
  *
  * <p>行动目标 {@code MeleeAttackGoal} 恒挂（无目标时 canUse 为 false，不影响跟随 / 坐下）。</p>
  */
@@ -91,15 +92,17 @@ public enum FurkinCombatMode {
 
     /**
      * 移除本模组可能挂上的全部攻击目标（含近战行动目标）。
-     * 按类型删除（GoalSelector.removeAllGoals），不依赖实例引用。
+     * 按类型删除（1.19.2 的 {@code GoalSelector} 没有谓词版 removeAllGoals，
+     * 官方可用入口是 {@code getAvailableGoals()}），不依赖实例引用。
      */
     private static void removeAllCombatTargets(TamableAnimal animal) {
-        animal.targetSelector.removeAllGoals(goal ->
-                goal instanceof HurtByTargetGoal
-                        || goal instanceof OwnerHurtByTargetGoal
-                        || goal instanceof OwnerHurtTargetGoal
-                        || goal instanceof NearestAttackableTargetGoal);
-        animal.goalSelector.removeAllGoals(goal -> goal instanceof MeleeAttackGoal);
+        animal.targetSelector.getAvailableGoals().removeIf(wrapped ->
+                wrapped.getGoal() instanceof HurtByTargetGoal
+                        || wrapped.getGoal() instanceof OwnerHurtByTargetGoal
+                        || wrapped.getGoal() instanceof OwnerHurtTargetGoal
+                        || wrapped.getGoal() instanceof NearestAttackableTargetGoal);
+        animal.goalSelector.getAvailableGoals().removeIf(wrapped ->
+                wrapped.getGoal() instanceof MeleeAttackGoal);
     }
 
     /** 本模式是否至少「被动反击」级。 */

@@ -1,6 +1,7 @@
 package com.wanancat.furkin.internal.network;
 
 import com.wanancat.furkin.internal.contract.FurkinCompanionManager;
+import com.wanancat.furkin.internal.item.FurkinRecordItem;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkEvent;
@@ -55,6 +56,9 @@ public final class RequestSummonPacket {
                             result == FurkinCompanionManager.SummonResult.TELEPORTED
                                     ? "furkin.msg.teleported"
                                     : "furkin.msg.summoned"), true);
+            // 录内召唤/传送后不关屏，必须复用既有刷新入口回发最新列表；
+            // 否则服务端状态虽已改变，当前界面仍显示旧状态。
+            FurkinRecordItem.refreshRecordList(player);
             return;
         }
 

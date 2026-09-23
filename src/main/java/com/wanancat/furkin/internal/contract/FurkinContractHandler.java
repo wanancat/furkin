@@ -71,7 +71,7 @@ public final class FurkinContractHandler {
         }
 
         // 边界③：活跃上限（契约当场即在场，与召唤共用同一上限，见 FurkinCompanionManager）。
-        if (target.level() instanceof ServerLevel sl
+        if (target.getLevel() instanceof ServerLevel sl
                 && countActive(sl, player.getUUID()) >= FurkinServerConfig.ACTIVE_LIMIT.get()) {
             FurkinMod.LOGGER.info("Furkin contract blocked: active limit reached for {}",
                     player.getName().getString());
@@ -109,7 +109,7 @@ public final class FurkinContractHandler {
         }
 
         // 防御性复检活跃上限（正常情况下前置已拦，这里兜底）。
-        if (target.level() instanceof ServerLevel sl
+        if (target.getLevel() instanceof ServerLevel sl
                 && countActive(sl, player.getUUID()) >= FurkinServerConfig.ACTIVE_LIMIT.get()) {
             player.displayClientMessage(
                     Component.translatable("furkin.msg.active_limit",
@@ -148,7 +148,7 @@ public final class FurkinContractHandler {
         Component petName = resolveName(name, target);
 
         // 建档（契约即建档）。
-        if (target.level() instanceof ServerLevel serverLevel) {
+        if (target.getLevel() instanceof ServerLevel serverLevel) {
             FurkinArchiveEntry entry = new FurkinArchiveEntry(companionId);
             entry.setOwnerUuid(ownerUuid);
             entry.setSpecies(target.getType());

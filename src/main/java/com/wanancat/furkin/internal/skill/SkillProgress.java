@@ -56,7 +56,7 @@ public final class SkillProgress {
      * @param tree        技能树（加载好的只读视图）
      */
     public static Result tryUnlock(ServerPlayer player, UUID companionId, ResourceLocation skillId, SkillTree tree) {
-        ServerLevel level = player.serverLevel();
+        ServerLevel level = player.getLevel();
         FurkinArchiveData archive = FurkinArchiveData.get(level);
         FurkinArchiveEntry entry = archive.getEntry(companionId);
         if (entry == null) {
@@ -134,7 +134,7 @@ public final class SkillProgress {
      * @return 退还的技能点数（未召唤且档案有技能时也返回退点数；找不到/非本人返回 0）。
      */
     public static int resetSkills(ServerPlayer player, UUID companionId, SkillTree tree) {
-        ServerLevel level = player.serverLevel();
+        ServerLevel level = player.getLevel();
         FurkinArchiveData archive = FurkinArchiveData.get(level);
         FurkinArchiveEntry entry = archive.getEntry(companionId);
         if (entry == null || !player.getUUID().equals(entry.getOwnerUuid())) {
@@ -180,7 +180,7 @@ public final class SkillProgress {
 
     /** 判断某绒亲是否为「本人契约且已召唤」——洗点等动作的前置校验（避免白耗道具）。 */
     public static boolean isOwnedAndSummoned(ServerPlayer player, UUID companionId) {
-        FurkinArchiveData archive = FurkinArchiveData.get(player.serverLevel());
+        FurkinArchiveData archive = FurkinArchiveData.get(player.getLevel());
         FurkinArchiveEntry entry = archive.getEntry(companionId);
         return entry != null
                 && player.getUUID().equals(entry.getOwnerUuid())
@@ -189,14 +189,14 @@ public final class SkillProgress {
 
     /** 读取某绒亲当前技能点数（优先在场实体能力，未召唤则读档案）。 */
     public static int skillPointsOf(ServerPlayer player, UUID companionId) {
-        LivingEntity target = findLivingByCompanionId(player.serverLevel(), companionId);
+        LivingEntity target = findLivingByCompanionId(player.getLevel(), companionId);
         if (target != null) {
             FurkinData data = target.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
             if (data != null) {
                 return data.getSkillPoints();
             }
         }
-        FurkinArchiveData archive = FurkinArchiveData.get(player.serverLevel());
+        FurkinArchiveData archive = FurkinArchiveData.get(player.getLevel());
         FurkinArchiveEntry entry = archive.getEntry(companionId);
         return entry == null ? 0 : entry.getSkillPoints();
     }

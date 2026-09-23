@@ -9,6 +9,7 @@ import com.wanancat.furkin.internal.record.FurkinArchiveData;
 import com.wanancat.furkin.internal.record.FurkinArchiveEntry;
 import com.wanancat.furkin.internal.record.FurkinDisplayOrder;
 import com.wanancat.furkin.internal.record.RecordAttributes;
+import com.wanancat.furkin.internal.registry.ModCreativeTab;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResultHolder;
@@ -35,7 +36,7 @@ import java.util.UUID;
 public class FurkinRecordItem extends Item {
 
     public FurkinRecordItem() {
-        super(new Item.Properties().stacksTo(1));
+        super(new Item.Properties().stacksTo(1).tab(ModCreativeTab.FURKIN_TAB));
     }
 
     @Override
@@ -76,7 +77,7 @@ public class FurkinRecordItem extends Item {
 
     /** 打包列表并按 {@code openScreen} 下发（唯一实现，两个入口共用）。 */
     private static void send(ServerPlayer player, boolean openScreen) {
-        FurkinArchiveData archive = FurkinArchiveData.get(player.serverLevel());
+        FurkinArchiveData archive = FurkinArchiveData.get(player.getLevel());
         UUID me = player.getUUID();
 
         List<RecordListPacket.Entry> list = new ArrayList<>();
@@ -96,7 +97,7 @@ public class FurkinRecordItem extends Item {
                 List<RecordAttributes.Line> attributes;
                 if (entry.isSummoned()) {
                     LivingEntity living = FurkinCompanionManager
-                            .findLivingByCompanionId(player.serverLevel(), entry.getCompanionId());
+                            .findLivingByCompanionId(player.getLevel(), entry.getCompanionId());
                     // 实体找不到（理论不该发生）→ 回退快照，防御性兜底。
                     attributes = living != null
                             ? RecordAttributes.computeLive(living)

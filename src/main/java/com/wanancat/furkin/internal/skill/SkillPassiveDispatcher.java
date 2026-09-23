@@ -12,7 +12,6 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
@@ -233,14 +232,14 @@ public final class SkillPassiveDispatcher {
             return;
         }
         // 原版口径：带 BYPASSES_INVULNERABILITY 标签的伤害（/kill、虚空）救不了。
-        if (event.getSource().is(DamageTypeTags.BYPASSES_INVULNERABILITY)) {
+        if (event.getSource().isBypassInvul()) {
             return;
         }
         NineLivesSpec spec = NineLivesSpec.of(NINE_LIVES).orElse(null);
         if (spec == null) {
             return;
         }
-        long now = victim.level().getGameTime();
+        long now = victim.getLevel().getGameTime();
         long readyAt = data.getCooldowns().getOrDefault(NINE_LIVES, 0L);
         if (now < readyAt) {
             // 冷却中挨致命伤 —— 这正是「看不出有没有生效」的现场，必须留痕。
@@ -284,7 +283,7 @@ public final class SkillPassiveDispatcher {
         entity.addEffect(new MobEffectInstance(MobEffects.REGENERATION, 900, 1));
         entity.addEffect(new MobEffectInstance(MobEffects.ABSORPTION, 100, 1));
         entity.addEffect(new MobEffectInstance(MobEffects.FIRE_RESISTANCE, 800, 0));
-        entity.level().broadcastEntityEvent(entity, (byte) 35);
+        entity.getLevel().broadcastEntityEvent(entity, (byte) 35);
     }
 
     // ===== 周期侧 =====
@@ -339,7 +338,7 @@ public final class SkillPassiveDispatcher {
         if (levels.getOrDefault(NIGHT_WATCH, 0) <= 0) {
             return;
         }
-        if (companion.level().isDay()) {
+        if (companion.getLevel().isDay()) {
             return;
         }
         NightWatchSpec spec = NightWatchSpec.of(NIGHT_WATCH).orElse(null);
@@ -417,7 +416,7 @@ public final class SkillPassiveDispatcher {
      */
     private static void updateHarvest(LivingEntity companion, FurkinData data,
                                       Map<ResourceLocation, Integer> levels) {
-        long now = companion.level().getGameTime();
+        long now = companion.getLevel().getGameTime();
         for (Map.Entry<ResourceLocation, Integer> entry : levels.entrySet()) {
             int level = entry.getValue();
             if (level <= 0) {
@@ -516,12 +515,12 @@ public final class SkillPassiveDispatcher {
             return;
         }
         // 与官方同源的门：mobGriefing 关掉时绒亲不自动拾取 —— 服主一个开关即可停用。
-        if (!ForgeEventFactory.getMobGriefingEvent(companion.level(), companion)) {
+        if (!ForgeEventFactory.getMobGriefingEvent(companion.getLevel(), companion)) {
             return;
         }
         double radius = spec.radius();
         AABB area = companion.getBoundingBox().inflate(radius, radius, radius);
-        for (ItemEntity item : companion.level().getEntitiesOfClass(ItemEntity.class, area)) {
+        for (ItemEntity item : companion.getLevel().getEntitiesOfClass(ItemEntity.class, area)) {
             if (item.isRemoved() || item.getItem().isEmpty() || item.hasPickUpDelay()) {
                 continue;
             }
@@ -589,7 +588,7 @@ public final class SkillPassiveDispatcher {
         if (maxHealth <= 0.0f || companion.getHealth() >= maxHealth * spec.threshold()) {
             return;
         }
-        long now = companion.level().getGameTime();
+        long now = companion.getLevel().getGameTime();
         Long nextAt = data.getCooldowns().get(SELF_FEEDER);
         if (nextAt != null && now < nextAt) {
             return;
@@ -608,7 +607,7 @@ public final class SkillPassiveDispatcher {
         float healthBefore = companion.getHealth();
         // 官方进食流程。注意它会把传入的栈吃掉（shrink 1），
         // 所以只能传「刚从行囊取出的那一份」，绝不能传行囊里的原栈。
-        companion.eat(companion.level(), food);
+        companion.eat(companion.getLevel(), food);
         int nutrition = 0;
         if (properties != null) {
             nutrition = properties.getNutrition();
@@ -668,7 +667,7 @@ public final class SkillPassiveDispatcher {
         if (companion == null || data == null) {
             return;
         }
-        long now = companion.level().getGameTime();
+        long now = companion.getLevel().getGameTime();
         for (Map.Entry<ResourceLocation, Integer> entry : data.getSkillLevels().entrySet()) {
             int level = entry.getValue();
             if (level <= 0) {
@@ -753,7 +752,7 @@ public final class SkillPassiveDispatcher {
      */
     private static int countPackMates(LivingEntity companion, double radius) {
         int count = 0;
-        for (LivingEntity ignored : companion.level().getEntitiesOfClass(
+        for (LivingEntity ignored : companion.getLevel().getEntitiesOfClass(
                 LivingEntity.class,
                 companion.getBoundingBox().inflate(radius),
                 e -> e != companion && isDogCompanion(e))) {
@@ -775,7 +774,7 @@ public final class SkillPassiveDispatcher {
 
     /** 解析绒亲主人（可能 null —— 主人离线 / 不同维度）。 */
     private static ServerPlayer resolveOwner(LivingEntity companion, FurkinData data) {
-        if (!(companion.level() instanceof ServerLevel serverLevel)) {
+        if (!(companion.getLevel() instanceof ServerLevel serverLevel)) {
             return null;
         }
         UUID ownerUuid = data.getOwnerUuid();
