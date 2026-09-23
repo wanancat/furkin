@@ -78,8 +78,6 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 
 ### Known Issues
 
-- `furkin:textures/mob_effect/bleeding.png` 缺失警告仍存在；不影响模组加载和已完成的测试，但应在最终发布前修复。
-  *The missing `furkin:textures/mob_effect/bleeding.png` warning remains; it does not block mod loading or the completed tests, but should be fixed before the final release.*
 - 不保证 1.20.1 世界存档可直接在 1.19.2 中加载；跨版本使用前应备份并单独验证。
   *Minecraft 1.20.1 worlds are not guaranteed to load directly in 1.19.2; back up and verify separately before crossing versions.*
 
