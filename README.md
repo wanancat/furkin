@@ -1,8 +1,10 @@
 # Furkin
 
-![Minecraft](https://img.shields.io/badge/Minecraft-1.20.1-blue)
+> **Minecraft 1.19.2 branch.** This branch targets Minecraft 1.19.2 / Forge 43.x. The main branch continues to target Minecraft 1.20.1.
 
-![Forge](https://img.shields.io/badge/Forge-47.0%2B-orange)
+![Minecraft](https://img.shields.io/badge/Minecraft-1.19.2-blue)
+
+![Forge](https://img.shields.io/badge/Forge-43.2%2B-orange)
 
 ![License](https://img.shields.io/badge/License-MIT-green)
 
@@ -27,15 +29,15 @@ included (because they're rather fluff~y~).
 
 | Requirement     | Version |
 | --------------- | ------- |
-| Minecraft       | 1.20.1  |
-| Minecraft Forge | 47.0+   |
+| Minecraft       | 1.19.2  |
+| Minecraft Forge | 43.2.0+ |
 | Java            | 17      |
 
 **Zero hard dependencies.** No required library mods.
 
 ## Installation
 
-1. Install [Minecraft Forge 1.20.1](https://files.minecraftforge.net) (47.0 or later).
+1. Install [Minecraft Forge 1.19.2](https://files.minecraftforge.net) (43.2.0 or later).
 2. Download the latest `.jar` from the releases.
 3. Drop it into your `.minecraft/mods` folder.
 

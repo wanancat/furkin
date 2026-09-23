@@ -29,13 +29,59 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 1. **读版本号就能判断 API 兼容性** —— 第三方只需比较 `MAJORAPI` 段。
    程序内可用 `FurkinApi.getApiVersion()` 查询该段的值。
    *Third parties only need to compare the `MAJORAPI` segment; it is queryable at runtime via `FurkinApi.getApiVersion()`.*
-2. **本文件以 `#### API Changes` 专节标记所有 API 变更** —— 破坏性的会在条目里明写。
-   *All API changes are collected under a dedicated `#### API Changes` section; breaking ones are called out explicitly.*
+2. **本文件以 `### API Changes` 专节标记所有 API 变更** —— 破坏性的会在条目里明写。
+   *All API changes are collected under a dedicated `### API Changes` section; breaking ones are called out explicitly.*
 
 > 参考来源 / Reference：Forge 文档《Versioning》——
 > `MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH` 能「区分世界不兼容与 API 不兼容的改动」。
 
 ---
+
+## [1.19.2-0.0.1.0] - 2026-09-24
+
+**Minecraft 1.19.2 移植版 / Minecraft 1.19.2 port** —— 在保留 `1.20.1-0.0.1.0` 功能范围的前提下，将构建目标迁移到 Minecraft 1.19.2 / Forge 43.x。
+*Migrates the build target to Minecraft 1.19.2 / Forge 43.x while preserving the feature set of `1.20.1-0.0.1.0`.*
+
+### Changed
+
+- 目标运行环境改为 Minecraft `1.19.2`、Forge `43.2.0`；映射改为 `official 1.19.2`，资源包格式改为 `9`。
+  *Target runtime changed to Minecraft `1.19.2` and Forge `43.2.0`; mappings now use `official 1.19.2`, and the resource pack format is `9`.*
+- 客户端 GUI 从 1.20.1 的 `GuiGraphics` 移植到 1.19.2 的 `PoseStack`。
+  *Client GUIs were ported from 1.20.1 `GuiGraphics` to 1.19.2 `PoseStack`.*
+- 适配 1.19.2 的实体/世界访问方法、命令消息、按钮与 `EditBox`、滚动控件、创造模式标签页和世界渲染阶段 API。
+  *Adapted entity/world accessors, command messages, buttons and `EditBox`, scroll widgets, the creative tab, and world rendering-stage APIs for 1.19.2.*
+
+### Fixed
+
+- 调整按钮贴图尺寸、技能列表行距、首次滚轮聚焦、列表滚动位置恢复与长名字截断，保持 1.20.1 的界面行为。
+  *Adjusted button texture sizing, skill-row spacing, initial mouse-wheel focus, scroll-position restoration, and long-name truncation to preserve the 1.20.1 UI behavior.*
+- 召唤或传送成功后复用现有绒亲录刷新逻辑，界面就地更新而不重新打开。
+  *After a successful summon or teleport, the existing record refresh path updates the screen in place instead of reopening it.*
+
+### API Changes
+
+- 公开 API 的 7 个类型及其签名保持不变；本次为 Minecraft/Forge 平台迁移，不是 public API 破坏性变更。
+  *The seven public API types and their signatures are unchanged; this is a Minecraft/Forge platform port, not a breaking public API change.*
+- `1.19.2-0.0.1.0` 与 `1.20.1-0.0.1.0` 是按 Minecraft 主线分开的构建产物；第三方应将 `MCVERSION` 视为加载兼容边界。
+  *`1.19.2-0.0.1.0` and `1.20.1-0.0.1.0` are separate artifacts per Minecraft line; third parties should treat `MCVERSION` as the load-compatibility boundary.*
+
+### Validation
+
+- 使用 JDK 17.0.2 执行 `compileJava` 通过，javac 错误为 0。
+  *`compileJava` passed with JDK 17.0.2 and zero javac errors.*
+- 客户端可启动并进入单人世界；集成服务端可保存世界并正常退出，未产生崩溃报告。
+  *The client starts and enters a single-player world; the integrated server saves and exits cleanly without a crash report.*
+- WP9d GUI 回归 D1–D9 全部通过，覆盖契约命名、绒亲录、改名、技能、装备、行囊和复活流程。
+  *WP9d GUI regression D1–D9 passed, covering contract naming, the record, renaming, skills, equipment, the pouch, and revival flows.*
+- 专用服务端冒烟测试可启动至 `Done`；专用服务端正常关闭与保存验证仍待补做。
+  *The dedicated-server smoke test reaches `Done`; graceful shutdown and save verification for the dedicated server remain outstanding.*
+
+### Known Issues
+
+- `furkin:textures/mob_effect/bleeding.png` 缺失警告仍存在；不影响模组加载和已完成的测试，但应在最终发布前修复。
+  *The missing `furkin:textures/mob_effect/bleeding.png` warning remains; it does not block mod loading or the completed tests, but should be fixed before the final release.*
+- 不保证 1.20.1 世界存档可直接在 1.19.2 中加载；跨版本使用前应备份并单独验证。
+  *Minecraft 1.20.1 worlds are not guaranteed to load directly in 1.19.2; back up and verify separately before crossing versions.*
 
 ## [1.20.1-0.0.1.0] - 2026-09-22
 

@@ -1,8 +1,10 @@
 # Furkin（绒亲）
 
-![Minecraft](https://img.shields.io/badge/Minecraft-1.20.1-blue)
+> **Minecraft 1.19.2 分支。** 此分支面向 Minecraft 1.19.2 / Forge 43.x；`main` 分支继续面向 Minecraft 1.20.1。
 
-![Forge](https://img.shields.io/badge/Forge-47.0%2B-orange)
+![Minecraft](https://img.shields.io/badge/Minecraft-1.19.2-blue)
+
+![Forge](https://img.shields.io/badge/Forge-43.2%2B-orange)
 
 ![License](https://img.shields.io/badge/License-MIT-green)
 
@@ -26,15 +28,15 @@
 
 | 需求             | 版本   |
 | ---------------- | ------ |
-| Minecraft        | 1.20.1 |
-| Minecraft Forge  | 47.0+  |
+| Minecraft        | 1.19.2 |
+| Minecraft Forge  | 43.2.0+ |
 | Java             | 17     |
 
 **零强制前置。** 不需要任何依赖库模组。
 
 ## 安装
 
-1. 安装 [Minecraft Forge 1.20.1](https://files.minecraftforge.net)（47.0 或更高）。
+1. 安装 [Minecraft Forge 1.19.2](https://files.minecraftforge.net)（43.2.0 或更高）。
 2. 从 releases 下载最新 `.jar`。
 3. 放入你的 `.minecraft/mods` 文件夹。
 
