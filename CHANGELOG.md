@@ -37,6 +37,15 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 
 ---
 
+## [1.20.1-0.0.1.1] - 2026-09-24
+
+**修复 / Fixed**
+
+- **流血效果图标 / Bleeding effect icon** —— `furkin:bleeding` 效果此前缺失 `textures/mob_effect/bleeding.png`，HUD 会报缺纹理告警（不崩溃）。现随包提供原版「瞬间伤害」(`instant_damage`) 的红色裂心图标 `assets/furkin/textures/mob_effect/bleeding.png`（18×18），经 `mob_effects` 图集自动缝入 `furkin:mob_effect/bleeding` 精灵，与 `0xB22222` 红色主题色一致。纯资源改动，无 Java 改动。
+  *The bleeding effect lacked its icon texture (`furkin:textures/mob_effect/bleeding.png`), emitting a missing-texture warning on the HUD (no crash). It now ships vanilla `instant_damage`'s red cracked-heart icon as `assets/furkin/textures/mob_effect/bleeding.png` (18×18), auto-stitched into the `furkin:mob_effect/bleeding` sprite via the `mob_effects` atlas, matching the `0xB22222` red theme. Resource-only change, no Java change.*
+
+---
+
 ## [1.20.1-0.0.1.0] - 2026-09-22
 
 **首个完整版本 / Initial complete version** —— M0 至 M5 全部功能完成。
