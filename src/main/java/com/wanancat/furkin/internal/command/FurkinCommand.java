@@ -423,6 +423,7 @@ public final class FurkinCommand {
             case NOT_FOUND -> src.sendFailure(Component.literal("No such companion: " + sid));
             case NOT_OWNER -> src.sendFailure(Component.literal("Not your companion."));
             case NOT_SUMMONED -> src.sendFailure(Component.literal("Companion is not summoned — summon it first."));
+            case APPLY_FAILED -> src.sendFailure(Component.translatable("furkin.msg.mode_failed"));
             default -> src.sendFailure(Component.literal("Set mode failed."));
         }
         return 1;

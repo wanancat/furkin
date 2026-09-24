@@ -129,7 +129,10 @@ public final class FurkinContractHandler {
             return;
         }
 
-        executeContract(player, target, hand, name.trim());
+        if (!executeContract(player, target, hand, name.trim())) {
+            FurkinMod.LOGGER.warn("Furkin contract aborted before commit: entity={} player={}",
+                    target.getUUID(), player.getName().getString());
+        }
     }
 
     /** 玩家登出时清理待确认会话，避免无效记录长期残留。 */
@@ -207,10 +210,10 @@ public final class FurkinContractHandler {
      * @param hand   已校验的契约物品堆叠
      * @param name   已校验并 trim 的名字（空串 = 留空，回退物种名）
      */
-    private static void executeContract(ServerPlayer player, LivingEntity target, ItemStack hand, String name) {
+    private static boolean executeContract(ServerPlayer player, LivingEntity target, ItemStack hand, String name) {
         FurkinData data = target.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
         if (data == null || data.isCompanion()) {
-            return;
+            return false;
         }
 
         // 防御性复检活跃上限。正常路径已在确认入口检查，这里防止同一 tick 内的状态变化。
@@ -220,14 +223,24 @@ public final class FurkinContractHandler {
                     Component.translatable("furkin.msg.active_limit",
                             FurkinServerConfig.ACTIVE_LIMIT.get()),
                     true);
-            return;
+            return false;
         }
 
         // 生成宠物身份 UUID（建档主键）。
         UUID companionId = UUID.randomUUID();
         UUID ownerUuid = player.getUUID();
 
-        // 写能力对象（运行时真相）。
+        // 新契约必须先声明当前 AI 所有权版本，并用空的运行时状态建立原 goal 快照。
+        data.clearCombatAiState();
+        data.setAiStateVersion(FurkinData.CURRENT_AI_STATE_VERSION);
+        if (target instanceof TamableAnimal tamable
+                && !FurkinCombatMode.FOLLOW.applyTo(tamable)) {
+            // 失败发生在 apply 修改 selector 之前；回退版本，且不触及物品、装备掉落或档案。
+            data.setAiStateVersion(0);
+            return false;
+        }
+
+        // AI 接管成功后才提交能力对象（运行时真相）。
         data.setCompanionId(companionId);
         data.setOwnerUuid(ownerUuid);
         data.setLevel(1);
@@ -245,8 +258,6 @@ public final class FurkinContractHandler {
             tamable.setOwnerUUID(ownerUuid);
             // 清一次坐定，保证契约后立即跟随（原版「右键坐下」交互保留，玩家后续仍可手动让猫坐下）。
             tamable.setOrderedToSit(false);
-            // 应用战斗模式（默认 FOLLOW = 清掉攻击目标，不参战）。
-            FurkinCombatMode.FOLLOW.applyTo(tamable);
         }
 
         // 名字：留空回退物种名（本地化 key 渲染前的默认名）。这里存的是「名字」而非 key。
@@ -260,6 +271,7 @@ public final class FurkinContractHandler {
             entry.setAlive(true);
             entry.setSummoned(true); // 契约当场实体在场，标记为已召唤。
             entry.setLevel(1);
+            entry.setCombatMode(FurkinCombatMode.FOLLOW);
             // 实体外观快照：品种 / 毛色等在契约当场就存下，保证召唤后外观一致。
             entry.setEntitySnapshot(target.saveWithoutId(new CompoundTag()));
             // 名字：非物种名的自定义名才写入档案（空串→物种名，不写冗余）。
@@ -275,7 +287,7 @@ public final class FurkinContractHandler {
             target.setCustomNameVisible(true);
         }
 
-        // 消耗一张契约。
+        // 所有权威状态已提交，最后才消耗契约物品。
         hand.shrink(1);
 
         // 同步能力数据到客户端（头顶图标等客户端表现依赖）。
@@ -285,6 +297,7 @@ public final class FurkinContractHandler {
 
         FurkinMod.LOGGER.info("Furkin contracted: {} (id={}) by {}",
                 target.getName().getString(), companionId, player.getName().getString());
+        return true;
     }
 
     /**

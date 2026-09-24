@@ -33,7 +33,8 @@ public final class FurkinCombatModeHandler {
         NOT_FOUND,
         NOT_OWNER,
         NOT_SUMMONED,
-        INVALID_MODE
+        INVALID_MODE,
+        APPLY_FAILED
     }
 
     /**
@@ -72,21 +73,22 @@ public final class FurkinCombatModeHandler {
             return Result.NOT_FOUND;
         }
 
-        // 写能力对象（运行时真相）。
         FurkinData data = target.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
         if (data == null) {
             return Result.NOT_FOUND;
         }
+
+        // 先应用 AI；失败时能力、档案和客户端都必须保持旧模式。
+        if (target instanceof TamableAnimal tamable && !mode.applyTo(tamable)) {
+            return Result.APPLY_FAILED;
+        }
+
+        // AI 应用成功后才写能力对象（运行时真相）。
         data.setCombatMode(mode);
 
         // 写档案（跨召唤记忆）。
         entry.setCombatMode(mode);
         archive.putEntry(entry);
-
-        // 应用目标（TamableAnimal 才有攻击目标体系）。
-        if (target instanceof TamableAnimal tamable) {
-            mode.applyTo(tamable);
-        }
 
         // 同步客户端（能力数据里含 combat_mode）。
         FurkinNetwork.channel().send(

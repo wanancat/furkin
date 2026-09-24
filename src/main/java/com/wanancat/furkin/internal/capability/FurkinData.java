@@ -2,6 +2,7 @@ package com.wanancat.furkin.internal.capability;
 
 import com.wanancat.furkin.internal.FurkinMod;
 import com.wanancat.furkin.internal.config.FurkinServerConfig;
+import com.wanancat.furkin.internal.contract.FurkinCombatAiState;
 import com.wanancat.furkin.internal.contract.FurkinCombatMode;
 import com.wanancat.furkin.internal.contract.FurkinState;
 import com.wanancat.furkin.internal.inventory.FurkinInventory;
@@ -30,6 +31,7 @@ import java.util.UUID;
  * skillLevels    Map&lt;ResourceLocation, Integer&gt;   技能 → 已投等级
  * state          FurkinState                        状态机当前值
  * combatMode     FurkinCombatMode                   战斗模式四档（跟随 / 被动 / 保护 / 主动）
+ * aiStateVersion  int                              战斗 AI 所有权模型版本（旧档缺失按 0）
  * feedCount / lastFeedMillis                        进食防刷的递减收益计数与最近喂食时刻
  * cooldowns      Map&lt;ResourceLocation, Long&gt;       技能冷却（技能 id → 冷却结束的 game time，入档持久化）
  * pouch          FurkinInventory                    随身行囊容器（只在场有效，格数随 travel_pouch 等级派生）
@@ -45,8 +47,22 @@ public final class FurkinData {
     private int skillPoints;
     private final Map<ResourceLocation, Integer> skillLevels;
     private FurkinState state;
+    /** 当前战斗 AI 所有权模型版本。 */
+    public static final int CURRENT_AI_STATE_VERSION = 1;
+
     /** 战斗模式（四档：跟随 / 被动 / 保护 / 主动）。 */
     private FurkinCombatMode combatMode;
+
+    /**
+     * 战斗 AI 所有权模型版本。
+     *
+     * <p>旧档缺失该字段时按 0 读取；只随实体持久化 NBT 保存，不进入网络同步。
+     * 真正的 goal 引用与快照保存在 {@link #combatAiState}，该运行时对象不持久化。</p>
+     */
+    private int aiStateVersion;
+
+    /** 战斗 AI 运行时所有权与快照；不持久化、不进入网络同步。 */
+    private transient FurkinCombatAiState combatAiState;
 
     /** 连续进食计数（递减收益防刷，运行时状态，不持久化到档案）。 */
     private int feedCount;
@@ -77,6 +93,7 @@ public final class FurkinData {
         this.skillLevels = new HashMap<>();
         this.state = FurkinState.WILD;
         this.combatMode = FurkinCombatMode.FOLLOW;
+        this.aiStateVersion = 0;
         this.feedCount = 0;
         this.lastFeedMillis = 0;
     }
@@ -140,6 +157,37 @@ public final class FurkinData {
 
     public void setCombatMode(FurkinCombatMode combatMode) {
         this.combatMode = combatMode == null ? FurkinCombatMode.FOLLOW : combatMode;
+    }
+
+    /** 获取运行时战斗 AI 状态；尚未初始化时返回 null。 */
+    public FurkinCombatAiState getCombatAiState() {
+        return combatAiState;
+    }
+
+    /** 获取或创建运行时战斗 AI 状态。 */
+    public FurkinCombatAiState getOrCreateCombatAiState() {
+        if (combatAiState == null) {
+            combatAiState = FurkinCombatAiState.create();
+        }
+        return combatAiState;
+    }
+
+    /** 清空并移除运行时战斗 AI 状态。 */
+    public void clearCombatAiState() {
+        if (combatAiState != null) {
+            combatAiState.clear();
+            combatAiState = null;
+        }
+    }
+
+    /** 战斗 AI 所有权模型版本。 */
+    public int getAiStateVersion() {
+        return aiStateVersion;
+    }
+
+    /** 战斗 AI 所有权模型版本。 */
+    public void setAiStateVersion(int aiStateVersion) {
+        this.aiStateVersion = aiStateVersion;
     }
 
     /** 连续进食计数（递减收益防刷）。 */
@@ -258,6 +306,7 @@ public final class FurkinData {
     public CompoundTag serializeNBT() {
         CompoundTag tag = new CompoundTag();
         writeCore(tag);
+        tag.putInt("ai_state_version", aiStateVersion);
         // 随身行囊：物品随实体 NBT 走（宠物退游戏 / 区块卸载重载都不丢）。
         // 注意与「收回 / 死亡」的区别 —— 那两条路径会先清空并掉落物品再存快照（D6），
         // 否则快照里的 ForgeCaps 会把行囊原样回灌。
@@ -282,6 +331,9 @@ public final class FurkinData {
      * 从 NBT 反序列化。
      */
     public void deserializeNBT(CompoundTag tag) {
+        // provider 复用时不能沿用旧实体对象上的 goal 引用或快照。
+        clearCombatAiState();
+        this.aiStateVersion = tag.getInt("ai_state_version");
         this.companionId = tag.hasUUID("companion_id") ? tag.getUUID("companion_id") : null;
         this.ownerUuid = tag.hasUUID("owner_uuid") ? tag.getUUID("owner_uuid") : null;
         this.level = tag.getInt("level");
@@ -328,6 +380,7 @@ public final class FurkinData {
         copy.skillLevels.putAll(this.skillLevels);
         copy.state = this.state;
         copy.combatMode = this.combatMode;
+        copy.aiStateVersion = this.aiStateVersion;
         copy.feedCount = this.feedCount;
         copy.lastFeedMillis = this.lastFeedMillis;
         copy.cooldowns.putAll(this.cooldowns);

@@ -149,6 +149,7 @@ public final class RecordActionPacket {
                     case NOT_FOUND, NOT_OWNER -> "furkin.msg.mode_not_owner";
                     case NOT_SUMMONED -> "furkin.msg.mode_not_summoned";
                     case INVALID_MODE -> "furkin.msg.mode_invalid";
+                    case APPLY_FAILED -> "furkin.msg.mode_failed";
                     default -> "furkin.msg.mode_failed";
                 };
                 // ⚠️ `furkin.msg.mode_set` = 「战斗模式：%s」是**带参**文案 —— 不传参就会把
