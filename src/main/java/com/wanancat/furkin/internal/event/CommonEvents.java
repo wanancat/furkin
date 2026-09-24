@@ -81,6 +81,12 @@ public final class CommonEvents {
                 new SyncFurkinDataPacket(target.getId(), data.syncNBT()));
     }
 
+    /** 玩家登出时清除待确认契约会话，避免无效记录残留。 */
+    @SubscribeEvent
+    public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
+        FurkinContractHandler.clearPendingContract(event.getEntity().getUUID());
+    }
+
     @SubscribeEvent
     public static void onEntityInteract(PlayerInteractEvent.EntityInteract event) {
         // 只在服务端处理（逻辑端）。单机也是逻辑端，走同一路径。

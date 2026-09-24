@@ -3,17 +3,15 @@ package com.wanancat.furkin.internal.network;
 import com.wanancat.furkin.internal.contract.FurkinContractHandler;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.Entity;
 import net.minecraftforge.network.NetworkEvent;
 
 import java.util.function.Supplier;
 
 /**
- * 客户端 → 服务端：玩家在命名框里确认后，携带「实体 ID + 名字」真正落契约。
+ * 客户端 → 服务端：玩家在命名框里确认后，携带「实体 ID + 名字」请求落契约。
  *
- * <p>契约流程第二步：客户端 {@code ContractNameScreen} 确认后发本包，服务端
- * 据此执行真正的契约动作（消耗契约 / 写能力 / 建档 / 存名字）。取消则不发本包，
- * 直接放弃契约。</p>
+ * <p>契约流程第二步：客户端 {@code ContractNameScreen} 确认后发本包。服务端不信任
+ * 包内实体 ID，而是先取出该玩家的待确认会话，再按当前服务端状态重新校验目标与主手。</p>
  *
  * <p>{@code name} 为空串表示玩家留空 → 服务端回退到物种名。</p>
  */
@@ -45,12 +43,7 @@ public final class ConfirmContractPacket {
         if (player == null) {
             return;
         }
-        ctx.enqueueWork(() -> {
-            Entity entity = player.serverLevel().getEntity(packet.entityId);
-            if (entity instanceof net.minecraft.world.entity.LivingEntity target) {
-                FurkinContractHandler.executeContract(player, target, player.getMainHandItem(), packet.name);
-            }
-        });
+        ctx.enqueueWork(() -> FurkinContractHandler.confirmContract(player, packet.entityId, packet.name));
         ctx.setPacketHandled(true);
     }
 }

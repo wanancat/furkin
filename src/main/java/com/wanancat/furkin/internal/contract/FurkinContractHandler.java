@@ -7,31 +7,44 @@ import com.wanancat.furkin.internal.capability.FurkinCapability;
 import com.wanancat.furkin.internal.capability.FurkinData;
 import com.wanancat.furkin.internal.config.FurkinServerConfig;
 import com.wanancat.furkin.internal.equipment.EquipmentSlots;
+import com.wanancat.furkin.internal.item.FurkinContractItem;
 import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.network.SyncFurkinDataPacket;
 import com.wanancat.furkin.internal.record.FurkinArchiveData;
 import com.wanancat.furkin.internal.record.FurkinArchiveEntry;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.TamableAnimal;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 import net.minecraftforge.network.PacketDistributor;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 /**
  * 契约动作处理器 —— 功能① 的核心逻辑（设计稿 §3.1）。
  *
- * <p>流程：右键已注册物种 → 边界校验 → 写入 {@link FurkinData} → 建档（绒亲录）。
- * <b>契约即建档</b>：瞬间写入档案，与是否合成绒亲录无关。</p>
+ * <p>流程：右键已注册物种 → 边界校验 → 服务端记录待确认会话 → 客户端命名 →
+ * 服务端重新校验并执行契约。契约即建档，与是否合成绒亲录无关。</p>
  *
- * <p>边界规则（不消耗契约）：已契约 / 已倒下 / 不在注册表内 / 非生物实体。</p>
+ * <p>边界规则（不消耗契约）：已契约 / 已倒下 / 不在注册表内 / 非生物实体 /
+ * 已被其他玩家拥有 / 主手状态或距离发生变化。</p>
  */
 public final class FurkinContractHandler {
+
+    private static final long CONTRACT_CONFIRM_TIMEOUT_TICKS = 600L;
+    private static final int MAX_CONTRACT_NAME_LENGTH = 32;
+
+    /** 服务端线程专用：玩家 UUID → 当前待确认契约。新请求覆盖旧请求。 */
+    private static final Map<UUID, PendingContract> PENDING_CONTRACTS = new HashMap<>();
 
     private FurkinContractHandler() {
     }
@@ -39,51 +52,36 @@ public final class FurkinContractHandler {
     /**
      * 尝试契约（第一步：边界校验 + 请求命名）。
      *
-     * <p>成功通过所有边界校验后，<b>不立刻落契约</b>，而是发
+     * <p>成功通过所有边界校验后，<b>不立刻落契约</b>，而是记录服务端会话并发送
      * {@link com.wanancat.furkin.internal.network.RequestContractNamePacket} 请求客户端
      * 弹命名框。玩家确认后经
      * {@link com.wanancat.furkin.internal.network.ConfirmContractPacket} 回调
-     * {@link #executeContract} 真正落契约。</p>
+     * {@link #confirmContract}，由服务端重新校验并真正落契约。</p>
      *
      * <p>返回 true 表示「已发出命名请求」（契约尚未落地），false 表示「边界不通过，无动作」。</p>
      *
-     * @param player  发起契约的玩家（主人）
-     * @param target  被契约的实体
-     * @param hand    契约物品所在堆叠
+     * @param player 发起契约的玩家（主人）
+     * @param target 被契约的实体
+     * @param hand   契约物品所在堆叠
      * @return 是否已发出命名请求
      */
     public static boolean tryContract(ServerPlayer player, LivingEntity target, ItemStack hand) {
-        // 边界①：不在注册表内 → 不响应、不消耗。
-        if (!FurkinSpeciesRegistry.isRegisteredEntity(target)) {
+        // 任意新的契约尝试都先使旧请求失效，避免旧命名窗口在新请求失败后仍可确认。
+        PENDING_CONTRACTS.remove(player.getUUID());
+
+        ServerLevel level = player.serverLevel();
+        if (!passesContractChecks(player, target, hand, level)) {
             return false;
         }
 
-        // 取目标能力。
-        FurkinData data = target.getCapability(
-                com.wanancat.furkin.internal.capability.FurkinCapability.FURKIN_DATA).orElse(null);
-        if (data == null) {
-            return false;
-        }
+        PENDING_CONTRACTS.put(player.getUUID(), new PendingContract(
+                target.getUUID(),
+                target.getId(),
+                level.dimension(),
+                level.getGameTime(),
+                player.getInventory().selected,
+                hand));
 
-        // 边界②：已契约 / 已倒下 → 不响应、不消耗。
-        if (data.isCompanion()) {
-            return false;
-        }
-
-        // 边界③：活跃上限（契约当场即在场，与召唤共用同一上限，见 FurkinCompanionManager）。
-        if (target.level() instanceof ServerLevel sl
-                && countActive(sl, player.getUUID()) >= FurkinServerConfig.ACTIVE_LIMIT.get()) {
-            FurkinMod.LOGGER.info("Furkin contract blocked: active limit reached for {}",
-                    player.getName().getString());
-            // 反馈：action bar 提示，避免玩家以为「没按到」。
-            player.displayClientMessage(
-                    Component.translatable("furkin.msg.active_limit",
-                            FurkinServerConfig.ACTIVE_LIMIT.get()),
-                    true);
-            return false;
-        }
-
-        // 边界全部通过 → 请求命名（不消耗契约，契约在命名确认后落）。
         FurkinNetwork.channel().send(
                 PacketDistributor.PLAYER.with(() -> player),
                 new com.wanancat.furkin.internal.network.RequestContractNamePacket(target.getId()));
@@ -91,26 +89,133 @@ public final class FurkinContractHandler {
     }
 
     /**
-     * 真正执行契约（第二步：命名确认后回调）。
+     * 服务端确认契约（第二步：命名确认后的唯一权威入口）。
      *
-     * <p>由 {@code ConfirmContractPacket} 在服务端调用。此时边界已在前置校验通过，
-     * 但为防御性，仍复检一遍关键边界（能力存在 / 未契约 / 活跃上限）。</p>
+     * <p>会话先被消费，因此任何确认包都最多执行一次。随后按当前服务端状态重新查找目标，
+     * 校验维度、实体身份、存活、注册表、能力、归属、活跃上限、主手、距离和名字。</p>
+     *
+     * @param player   发起确认的玩家
+     * @param entityId 客户端回传的实体 ID
+     * @param name     玩家输入的名字（空串 = 留空，回退物种名）
+     */
+    public static void confirmContract(ServerPlayer player, int entityId, String name) {
+        PendingContract pending = PENDING_CONTRACTS.remove(player.getUUID());
+        if (pending == null) {
+            return;
+        }
+
+        ServerLevel level = player.serverLevel();
+        long now = level.getGameTime();
+        if (pending.isExpired(now)
+                || !level.dimension().equals(pending.dimension)
+                || entityId != pending.entityId) {
+            return;
+        }
+
+        Entity entity = level.getEntity(pending.targetUuid);
+        if (!(entity instanceof LivingEntity target)
+                || !target.getUUID().equals(pending.targetUuid)) {
+            return;
+        }
+
+        ItemStack hand = player.getMainHandItem();
+        if (!passesContractChecks(player, target, hand, level)) {
+            return;
+        }
+
+        if (player.getInventory().selected != pending.selectedSlot
+                || !ItemStack.matches(hand, pending.expectedHand)
+                || !isValidContractName(name)) {
+            return;
+        }
+
+        executeContract(player, target, hand, name.trim());
+    }
+
+    /** 玩家登出时清理待确认会话，避免无效记录长期残留。 */
+    public static void clearPendingContract(UUID playerId) {
+        PENDING_CONTRACTS.remove(playerId);
+    }
+
+    /**
+     * 契约执行前的公共权威校验。
+     *
+     * <p>只返回状态，不改写能力、档案、名字或物品。活跃上限失败沿用现有 action bar 提示。</p>
+     */
+    private static boolean passesContractChecks(
+            ServerPlayer player, LivingEntity target, ItemStack hand, ServerLevel level) {
+        if (target == player || target instanceof Player) {
+            return false;
+        }
+        if (target.level() != level || !target.isAlive() || target.isRemoved()) {
+            return false;
+        }
+        if (!FurkinSpeciesRegistry.isRegisteredEntity(target)) {
+            return false;
+        }
+
+        FurkinData data = target.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
+        if (data == null || data.isCompanion()) {
+            return false;
+        }
+
+        if (target instanceof TamableAnimal tamable) {
+            UUID ownerUuid = tamable.getOwnerUUID();
+            if (ownerUuid != null && !ownerUuid.equals(player.getUUID())) {
+                return false;
+            }
+        }
+
+        if (!player.canReach(target, 3.0D)) {
+            return false;
+        }
+
+        if (countActive(level, player.getUUID()) >= FurkinServerConfig.ACTIVE_LIMIT.get()) {
+            FurkinMod.LOGGER.info("Furkin contract blocked: active limit reached for {}",
+                    player.getName().getString());
+            player.displayClientMessage(
+                    Component.translatable("furkin.msg.active_limit",
+                            FurkinServerConfig.ACTIVE_LIMIT.get()),
+                    true);
+            return false;
+        }
+
+        return hand != null
+                && !hand.isEmpty()
+                && hand.getItem() instanceof FurkinContractItem;
+    }
+
+    /** 客户端输入框限制为 32 字符；服务端独立拒绝超长、控制字符和旧版格式标记。 */
+    private static boolean isValidContractName(String name) {
+        if (name == null) {
+            return false;
+        }
+        for (int i = 0; i < name.length(); i++) {
+            char c = name.charAt(i);
+            if (Character.isISOControl(c) || c == '\u00a7') {
+                return false;
+            }
+        }
+        return name.trim().length() <= MAX_CONTRACT_NAME_LENGTH;
+    }
+
+    /**
+     * 真正执行契约。只能由已经通过 {@link #confirmContract} 权威校验的路径调用。
      *
      * @param player 主人
      * @param target 被契约实体
-     * @param hand   契约物品堆叠
-     * @param name   玩家输入的名字（空串 = 留空，回退物种名）
+     * @param hand   已校验的契约物品堆叠
+     * @param name   已校验并 trim 的名字（空串 = 留空，回退物种名）
      */
-    public static void executeContract(ServerPlayer player, LivingEntity target, ItemStack hand, String name) {
-        FurkinData data = target.getCapability(
-                com.wanancat.furkin.internal.capability.FurkinCapability.FURKIN_DATA).orElse(null);
+    private static void executeContract(ServerPlayer player, LivingEntity target, ItemStack hand, String name) {
+        FurkinData data = target.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
         if (data == null || data.isCompanion()) {
             return;
         }
 
-        // 防御性复检活跃上限（正常情况下前置已拦，这里兜底）。
-        if (target.level() instanceof ServerLevel sl
-                && countActive(sl, player.getUUID()) >= FurkinServerConfig.ACTIVE_LIMIT.get()) {
+        // 防御性复检活跃上限。正常路径已在确认入口检查，这里防止同一 tick 内的状态变化。
+        if (target.level() instanceof ServerLevel level
+                && countActive(level, player.getUUID()) >= FurkinServerConfig.ACTIVE_LIMIT.get()) {
             player.displayClientMessage(
                     Component.translatable("furkin.msg.active_limit",
                             FurkinServerConfig.ACTIVE_LIMIT.get()),
@@ -216,5 +321,31 @@ public final class FurkinContractHandler {
             }
         }
         return count;
+    }
+
+    /** 短生命周期的服务端待确认契约。只在服务端线程访问。 */
+    private static final class PendingContract {
+
+        private final UUID targetUuid;
+        private final int entityId;
+        private final ResourceKey<Level> dimension;
+        private final long issuedAtGameTime;
+        private final int selectedSlot;
+        private final ItemStack expectedHand;
+
+        private PendingContract(UUID targetUuid, int entityId, ResourceKey<Level> dimension,
+                                long issuedAtGameTime, int selectedSlot, ItemStack expectedHand) {
+            this.targetUuid = targetUuid;
+            this.entityId = entityId;
+            this.dimension = dimension;
+            this.issuedAtGameTime = issuedAtGameTime;
+            this.selectedSlot = selectedSlot;
+            this.expectedHand = expectedHand.copy();
+        }
+
+        private boolean isExpired(long now) {
+            return now < issuedAtGameTime
+                    || now - issuedAtGameTime > CONTRACT_CONFIRM_TIMEOUT_TICKS;
+        }
     }
 }

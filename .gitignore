@@ -37,3 +37,6 @@ Thumbs.db
 *.jar
 !gradle-wrapper.jar
 mcmodsrepo
+
+# ---- Agent instructions ----
+/AGENTS.md
