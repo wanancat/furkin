@@ -508,7 +508,7 @@ refund += entry.getSkillSnapshot().getInt(key);
 - 持久化：实体 NBT、绒亲档案、收回、死亡和召唤路径均同步实付表；`syncNBT()` 不包含实付表，网络协议保持 `2`。
 - 运行证据：临时服务端夹具输出 `WP05_M02_FIXTURE_OK checks=28 failed=0`，覆盖合法 `cost=2`、非法定义拒绝、热改成本后的累计退款、网络排除实付表、实体/档案 NBT 往返、旧档迁移退款。
 - 收尾：夹具及临时技能定义已删除，`build` 通过，最终 JAR 不含 `Wp05`/`wp05`；删除夹具后的 `runServer` 到达 `Done (2.764s)!`，日志无新增 `ERROR`/`FATAL`/异常栈/注册失败。
-- 残余：M-04 的热重载属性重建与流血语义仍待 WP-05-03。
+- 后续：M-04 已在同一工作包 WP-05-03 完成并单独验证，见本报告 M-04 修复验证段。
 
 ---
 
@@ -562,7 +562,7 @@ animal.goalSelector.removeAllGoals(goal -> goal instanceof MeleeAttackGoal);
 
 ### M-04：技能热重载/数据包更新后，已有属性效果可能残留，流血语义会漂移
 
-- 状态：已确认
+- 状态：已修复（WP-05-03，2026-09-25）
 - 严重度：中
 - 公开影响：技能从数据包中删除或修改后，已存在实体的附加效果可能与当前技能定义不一致。
 
@@ -625,6 +625,13 @@ float damage = BleedingSpec.of()
    - 修改流血 DPS 后让已有流血继续 tick。
    - 保存退出再加载，检查旧 modifier 是否仍存在。
 
+#### 修复验证（2026-09-25）
+
+- 属性效果：`furkin:attribute` 统一使用固定 modifier 名称 `furkin.skill.attribute`；重建时遍历已注册属性并清除本模组添加的全部技能属性 modifier，再按当前技能树重挂。
+- 重载校准：`SkillRegistry.reloadTree` 只置位服务器线程待处理标志；tick 末尾遍历所有已加载维度中的已加载绒亲执行清理和重建，不加载区块、不轮询、不扫描未加载档案。
+- 入世校准：实体进入服务端世界时重新清理并重建；召唤、收回、洗点和解绑路径也使用统一清理，避免已删除技能留下旧 modifier。
+- 流血语义：`BleedingEffect` 每次结算都读取当前 `BleedingSpec`；`/reload` 后立即采用新 DPS、不重写已施加时长，定义删除或参数失效后不掉血并自然到期。
+- 运行证据：临时服务端夹具输出 `WP05_M04_FIXTURE_OK checks=26 failed=0`，覆盖属性目标切换、删除清理、已加载实体扫描、实体入世校准、NBT 往返后入世清理、真实资源重载、流血 DPS 热更新、持续时间保持和定义失效停伤。
 ---
 
 ## 低严重度 / 待运行确认

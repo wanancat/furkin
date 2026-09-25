@@ -156,7 +156,7 @@ public final class SkillProgress {
         if (target != null) {
             FurkinData data = target.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
             if (data != null) {
-                SkillEffectApplier.removeAll(target, tree, data.getSkillLevels());
+                SkillEffectApplier.clearAll(target, tree, data.getSkillLevels());
                 if (!data.hasKnownSkillInvestments()) {
                     migrateInvestments(tree, data.getSkillLevels(), data.getSkillInvestments());
                     data.setSkillInvestmentsKnown(true);

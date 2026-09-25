@@ -1,6 +1,7 @@
 package com.wanancat.furkin.internal.skill;
 
 import com.wanancat.furkin.internal.FurkinMod;
+import com.wanancat.furkin.internal.skill.effect.AttributeEffect;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.LivingEntity;
 
@@ -17,6 +18,19 @@ public final class SkillEffectApplier {
     }
 
     /**
+     * 重建所有有持久状态的技能效果。
+     *
+     * <p>属性 modifier 会跨定义变更保留在实体上，不能只按新树逐技能覆盖；先按固定名称清理本模组
+     * 添加的全部属性 modifier，再按当前技能树重挂。能力 / 被动 / 交互当前为空操作，未来若加入
+     * 持久状态也应遵守同样的幂等重建口径。</p>
+     */
+    public static void rebuildAll(LivingEntity target, SkillTree tree,
+                                  java.util.Map<ResourceLocation, Integer> skillLevels) {
+        AttributeEffect.clearAll(target);
+        applyAll(target, tree, skillLevels);
+    }
+
+    /**
      * 把某只宠物的全部技能效果应用到实体（按当前 skillLevels）。
      * 用于召唤重建、档案回灌后重算属性。
      */
@@ -27,6 +41,18 @@ public final class SkillEffectApplier {
             int level = entry.getValue();
             applySkill(target, tree, skillId, level);
         }
+    }
+
+    /**
+     * 清除目标身上的全部技能效果。
+     *
+     * <p>先按固定名称清除属性 modifier，避免当前树已删除某个技能时漏掉旧定义残留；再调用各效果的
+     * {@code remove} 处理其他运行时副作用。</p>
+     */
+    public static void clearAll(LivingEntity target, SkillTree tree,
+                                java.util.Map<ResourceLocation, Integer> skillLevels) {
+        AttributeEffect.clearAll(target);
+        removeAll(target, tree, skillLevels);
     }
 
     /** 应用单个技能的全部效果（技能升至某级）。 */

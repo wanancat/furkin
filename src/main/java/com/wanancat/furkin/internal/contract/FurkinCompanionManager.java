@@ -389,9 +389,9 @@ public final class FurkinCompanionManager {
         data.getSkillInvestments().putAll(entry.getSkillInvestments());
         data.setSkillInvestmentsKnown(entry.hasKnownSkillInvestments());
 
-        // 重挂技能效果（M2.4）：实体重建后 attribute modifier 是运行时表现，须按 skillLevels
-        // 重新 apply，否则收回再召唤后属性加成丢失。
-        SkillEffectApplier.applyAll(living, SkillRegistry.tree(), data.getSkillLevels());
+        // 重建技能效果（M2.4 + M-04）：实体重建后 attribute modifier 是运行时表现，须先清除旧定义残留，
+        // 再按当前 skillLevels 和新技能树重挂，否则收回再召唤会保留已删除技能的加成。
+        SkillEffectApplier.rebuildAll(living, SkillRegistry.tree(), data.getSkillLevels());
 
         // 血量读数：取自**快照 NBT**，不能取 `living.getHealth()`。原因（javap 取证，2026-09-22 第六轮）：
         // `load(snapshot)` 内部会走到 `TamableAnimal#readAdditionalSaveData` —— 它先经 super 链读到

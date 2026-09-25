@@ -24,6 +24,7 @@ import com.wanancat.furkin.internal.record.FurkinRevocationData;
 import com.wanancat.furkin.internal.registry.ModItems;
 import com.wanancat.furkin.internal.skill.SkillPassiveDispatcher;
 import com.wanancat.furkin.internal.skill.SkillRegistry;
+import com.wanancat.furkin.internal.skill.SkillRuntimeCalibrator;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -92,6 +93,12 @@ public final class CommonEvents {
 
         if (tryHandleRevocation(living, serverLevel, data)) {
             return;
+        }
+
+        // M-04：实体重新入世时，旧属性 modifier 可能来自已删除或已改写的技能定义；
+        // 先按运行时技能树统一清理并重建，再应用战斗 AI。
+        if (data.isCompanion()) {
+            SkillRuntimeCalibrator.rebuild(living, data);
         }
 
         if (!(entity instanceof TamableAnimal tamable) || !data.isCompanion()) {
@@ -448,6 +455,7 @@ public final class CommonEvents {
 
         // 周期被动（守夜者夜视 / 群猎战术叠层等）——分发器内部按 20 tick 节流。
         SkillPassiveDispatcher.onServerTick(event.getServer());
+        SkillRuntimeCalibrator.onServerTick(event.getServer());
     }
 
     /**

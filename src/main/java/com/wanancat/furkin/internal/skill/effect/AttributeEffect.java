@@ -15,6 +15,7 @@ import net.minecraftforge.registries.ForgeRegistries;
 
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -35,8 +36,15 @@ import java.util.UUID;
  * <p><b>固定 UUID 策略</b>：按「技能 id + 属性名」派生 name-based UUID，保证同一技能
  * 同一属性永远同一个 UUID —— 升级时先 {@code removeModifier} 再 {@code addPermanentModifier}
  * 幂等重挂，洗点/降级时按 UUID 精确移除；不同技能加同一属性是独立 modifier，正确叠加。</p>
+ *
+ * <p><b>固定名称策略</b>：所有技能属性 modifier 都使用 {@link #MODIFIER_NAME}。技能定义删除、
+ * 属性目标切换或运算方式修改后，无法只凭新树定位旧 modifier；重载与实体入世重建因此先按这个名称
+ * 统一清理，再按当前技能树重挂。UUID 仍按「技能 id + 属性名」派生，保留不同技能的独立叠加语义。</p>
  */
 public final class AttributeEffect implements SkillEffect {
+
+    /** 所有技能属性 modifier 的固定名称；重载清理时按此名称识别本模组拥有的 modifier。 */
+    public static final String MODIFIER_NAME = "furkin.skill.attribute";
 
     @Override
     public void apply(LivingEntity target, ResourceLocation skillId, int level, JsonObject params) {
@@ -56,7 +64,7 @@ public final class AttributeEffect implements SkillEffect {
         instance.removeModifier(modifierId);
         instance.addPermanentModifier(new AttributeModifier(
                 modifierId,
-                "furkin.skill.attribute",
+                MODIFIER_NAME,
                 amount * level,
                 op
         ));
@@ -73,6 +81,31 @@ public final class AttributeEffect implements SkillEffect {
             return;
         }
         instance.removeModifier(modifierUuid(skillId, attribute));
+    }
+
+    /**
+     * 清理目标身上所有由技能属性效果添加的 modifier。
+     *
+     * <p>按固定名称而不是按当前技能树清理，因此数据包删除技能、切换属性目标或修改运算方式后，
+     * 旧 modifier 也能在下一次重建时被移除；同一属性上由不同技能添加的 modifier 仍各自独立。</p>
+     */
+    public static void clearAll(LivingEntity target) {
+        // 不能只用 getSyncableAttributes()：攻击伤害等属性本身不参与客户端同步，但同样可能挂着技能 modifier。
+        // 遍历注册表并用 hasAttribute 过滤，覆盖实体支持的全部已注册属性；不支持者不会被取实例。
+        for (Attribute attribute : ForgeRegistries.ATTRIBUTES.getValues()) {
+            if (!target.getAttributes().hasAttribute(attribute)) {
+                continue;
+            }
+            AttributeInstance instance = target.getAttribute(attribute);
+            if (instance == null) {
+                continue;
+            }
+            for (AttributeModifier modifier : List.copyOf(instance.getModifiers())) {
+                if (MODIFIER_NAME.equals(modifier.getName())) {
+                    instance.removeModifier(modifier.getId());
+                }
+            }
+        }
     }
 
     /**
