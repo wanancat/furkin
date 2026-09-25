@@ -719,3 +719,7 @@ $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 - 2026-09-25：完成 `1.20.1-0.0.2.0` 发版准备。`gradle.properties` 已切版；中英文 changelog 已将原 `Unreleased` 固化为本版本条目。`build --rerun-tasks` 通过，产物为 `build/libs/furkin-1.20.1-0.0.2.0.jar`，SHA-256 `AA405617AF15103C65D77D3892B2B2071C8F605305A3A8C7832C9FD561BB4797`；`runServer` 到达 `Done`，最新日志无项目 `ERROR`、`FATAL`、异常栈、注册失败或资源缺失。日志中保留旧档 legacy AI `WARN` 和开发环境 OSHI/Forge 版本提示。切版后的客户端实机回归已完成：进入现有测试世界，协议连接、绒亲录召唤后即时刷新和普通解绑均通过；客户端与集成服务端日志无项目 `ERROR`、`FATAL`、异常栈或注册失败。
 
 - 2026-09-25：GitHub Release `v1.20.1-0.0.2.0` 已发布，地址为 <https://github.com/wanancat/furkin/releases/tag/v1.20.1-0.0.2.0>；发布资产 `furkin-1.20.1-0.0.2.0.jar` 已回下载校验，远端 SHA-256 与本地构建一致。工作分支已由 `mc1.20.1/dev` 改名为 `mc1.20.1`，旧远端分支已删除；历史记录里原有的旧分支推送记录保留原文。
+
+- 2026-09-25：补发 `v1.20.1-0.0.1.1`。标签指向提交 `66dd99b78357f224c66aafe6faf9aa76a6a8a78e`；GitHub Release <https://github.com/wanancat/furkin/releases/tag/v1.20.1-0.0.1.1> 已上传 `furkin-1.20.1-0.0.1.1.jar`，大小 `334459` 字节，SHA-256 `29756166A59960CDC8796970EFF16EA94052220836EEF3D5F99CB340F0092D27`，状态为非 Draft、非 Prerelease，并使用 `make_latest=false` 避免顶替最新版。
+
+- 2026-09-25：刷新重发 `v1.20.1-0.0.2.0` Release 并明确设为 Latest，地址为 <https://github.com/wanancat/furkin/releases/tag/v1.20.1-0.0.2.0>。随后回下载校验两个 Release 资产：旧版大小 `334459` 字节、SHA-256 `29756166A59960CDC8796970EFF16EA94052220836EEF3D5F99CB340F0092D27`；新版大小 `334458` 字节、SHA-256 `AA405617AF15103C65D77D3892B2B2071C8F605305A3A8C7832C9FD561BB4797`；两项大小与哈希均匹配预期。GitHub `releases/latest` 返回 `v1.20.1-0.0.2.0`，Latest 状态确认正确。
