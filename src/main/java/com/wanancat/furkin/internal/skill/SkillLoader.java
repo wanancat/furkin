@@ -41,6 +41,7 @@ public final class SkillLoader {
                 SKILLS_DIR, loc -> loc.getPath().endsWith(".json"));
 
         Map<ResourceLocation, Skill> candidates = new LinkedHashMap<>();
+        Map<ResourceLocation, ResourceLocation> candidateSources = new LinkedHashMap<>();
         for (Map.Entry<ResourceLocation, Resource> entry : resources.entrySet()) {
             ResourceLocation location = entry.getKey();
             try (InputStream in = entry.getValue().open();
@@ -48,6 +49,14 @@ public final class SkillLoader {
                 JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
                 Skill skill = parseSkill(location, root);
                 if (skill != null) {
+                    ResourceLocation previousSource = candidateSources.putIfAbsent(
+                            skill.getId(), location);
+                    if (previousSource != null) {
+                        FurkinMod.LOGGER.warn(
+                                "Duplicate skill id {} from {} ignored; already loaded from {}",
+                                skill.getId(), location, previousSource);
+                        continue;
+                    }
                     candidates.put(skill.getId(), skill);
                 }
             } catch (Exception e) {

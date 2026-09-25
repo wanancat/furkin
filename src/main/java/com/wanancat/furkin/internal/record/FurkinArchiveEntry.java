@@ -342,9 +342,19 @@ public final class FurkinArchiveEntry {
             entry.name = Component.Serializer.fromJson(tag.getString("name"));
         }
         // 兼容旧档：combat_mode 是 M2 战斗模式新增字段，旧档无则默认 FOLLOW。
-        entry.combatMode = tag.contains("combat_mode")
-                ? FurkinCombatMode.valueOf(tag.getString("combat_mode"))
-                : FurkinCombatMode.FOLLOW;
+        if (tag.contains("combat_mode")) {
+            String rawMode = tag.getString("combat_mode");
+            FurkinCombatMode parsedMode = FurkinCombatMode.parse(rawMode);
+            if (parsedMode == null) {
+                FurkinMod.LOGGER.warn(
+                        "Invalid archive combat mode '{}' for companion {}; falling back to FOLLOW",
+                        rawMode, id);
+                parsedMode = FurkinCombatMode.FOLLOW;
+            }
+            entry.combatMode = parsedMode;
+        } else {
+            entry.combatMode = FurkinCombatMode.FOLLOW;
+        }
         // 兼容旧档：soulstone_reacquire_at 是 M4.3 新增字段，旧档无则默认 0（无冷却）。
         entry.soulstoneReacquireAt = tag.contains("soulstone_reacquire_at")
                 ? tag.getLong("soulstone_reacquire_at")

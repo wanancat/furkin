@@ -393,10 +393,31 @@ public final class FurkinData {
         this.level = tag.getInt("level");
         this.xp = tag.getInt("xp");
         this.skillPoints = tag.getInt("skill_points");
-        this.state = FurkinState.valueOf(tag.getString("state"));
-        this.combatMode = tag.contains("combat_mode")
-                ? FurkinCombatMode.valueOf(tag.getString("combat_mode"))
-                : FurkinCombatMode.FOLLOW; // 旧档缺省 FOLLOW。
+        String rawState = tag.getString("state");
+        FurkinState parsedState = FurkinState.parse(rawState);
+        if (parsedState == null) {
+            // 身份状态损坏时优先保留已契约语义；缺乏完整绑定信息才回退 WILD。
+            parsedState = companionId != null && ownerUuid != null
+                    ? FurkinState.COMPANION : FurkinState.WILD;
+            FurkinMod.LOGGER.warn(
+                    "Invalid furkin state '{}' for companion {}; falling back to {}",
+                    rawState, companionId, parsedState);
+        }
+        this.state = parsedState;
+
+        if (tag.contains("combat_mode")) {
+            String rawMode = tag.getString("combat_mode");
+            FurkinCombatMode parsedMode = FurkinCombatMode.parse(rawMode);
+            if (parsedMode == null) {
+                FurkinMod.LOGGER.warn(
+                        "Invalid furkin combat mode '{}' for companion {}; falling back to FOLLOW",
+                        rawMode, companionId);
+                parsedMode = FurkinCombatMode.FOLLOW;
+            }
+            this.combatMode = parsedMode;
+        } else {
+            this.combatMode = FurkinCombatMode.FOLLOW; // 旧档缺省 FOLLOW。
+        }
 
         this.skillLevels.clear();
         CompoundTag skills = tag.getCompound("skill_levels");

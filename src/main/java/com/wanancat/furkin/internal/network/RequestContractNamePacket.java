@@ -1,6 +1,6 @@
 package com.wanancat.furkin.internal.network;
 
-import com.wanancat.furkin.internal.client.ContractNameScreen;
+import com.wanancat.furkin.internal.client.FurkinClientPacketHandler;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.DistExecutor;
@@ -41,7 +41,7 @@ public final class RequestContractNamePacket {
     public static void handle(RequestContractNamePacket packet, Supplier<NetworkEvent.Context> ctxSupplier) {
         NetworkEvent.Context ctx = ctxSupplier.get();
         ctx.enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT,
-                () -> () -> ContractNameScreen.open(packet.entityId)));
+                () -> () -> FurkinClientPacketHandler.openContractName(packet)));
         ctx.setPacketHandled(true);
     }
 }

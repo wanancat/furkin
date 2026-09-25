@@ -37,9 +37,7 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 
 ---
 
-## [Unreleased]
-
-> 目标版本 / Target version: `1.19.2-0.0.2.0`
+## [1.19.2-0.0.2.0] - 2026-09-25
 
 ### Fixed / 修复
 
@@ -47,6 +45,12 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
   *Respec now refunds the amount actually paid per level, and hot-changing a skill's `cost` no longer rewrites past payments. Legacy saves without a payment ledger migrate from the current definition once; deleted definitions fall back to `cost=1` with a warning. Loading rejects non-positive `cost`, invalid `maxLevel` / `tier` / `requiresLevel`, and missing or unreachable `requires` / `requiresLevel` / `levelGate` references, preventing malformed skill data from creating or consuming skill points incorrectly.*
 - **技能热重载一致性 / Skill hot-reload consistency** —— `/reload` 后会按当前技能树清理并重建已加载绒亲的 `furkin:attribute` modifier，删除技能、切换属性目标或修改数值不会留下重复/失效加成；重载时未加载实体在入世时校准。`bleeding_bite` 保持实时语义：立即采用新 DPS，不重写已施加持续时间，定义失效后停止伤害并自然到期。
   *After `/reload`, loaded companions now clear and rebuild their `furkin:attribute` modifiers from the current tree, preventing duplicate or stale bonuses when a skill is deleted, retargeted, or rebalanced; entities unloaded during the reload are calibrated on join. `bleeding_bite` keeps live semantics: new DPS applies immediately, existing duration is preserved, and damage stops if the definition becomes invalid.*
+- **客户端网络包隔离 / Client packet isolation** —— 共享网络包不再直接承载 `Minecraft`、客户端界面和本地 capability 写入；五条客户端回调统一下沉到 `FurkinClientPacketHandler`，由 `DistExecutor` 仅在客户端分发。协议字段和包结构不变。
+  *Shared network packets no longer directly contain `Minecraft`, client screen classes, or local capability writes. Five client callbacks now go through `FurkinClientPacketHandler` behind `DistExecutor` client-only dispatch. Packet fields and structure are unchanged.*
+- **命令回执本地化 / Localized command feedback** —— `furkin` 命令的召唤、列表、解绑、改名、加经验、模式、技能、查看和行囊回执改为翻译键；中英文键集合同步，动态名称、数量、UUID 和技能 ID 作为参数传递。
+  *`furkin` command feedback for summoning, listing, unbinding, renaming, XP, combat mode, skills, inspection, and pouches now uses translation keys. English and Chinese key sets stay in sync, while dynamic names, counts, UUIDs, and skill IDs are passed as arguments.*
+- **存档与技能数据加固 / Save and skill data hardening** —— 非法 `FurkinState` / `FurkinCombatMode` 不再让实体或档案反序列化抛异常；损坏档案条目会被单条跳过并告警，不影响同档其它宠物；技能同 ID 重复定义会记录双方来源并保留首个定义，不再静默覆盖。
+  *Invalid `FurkinState` / `FurkinCombatMode` values no longer make entity or archive deserialization throw. Bad archive entries are skipped individually with a warning, without taking down the rest of the save. Duplicate skill IDs now log both sources and keep the first definition instead of silently overriding it.*
 
 ---
 

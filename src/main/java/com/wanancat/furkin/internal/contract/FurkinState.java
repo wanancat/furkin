@@ -16,5 +16,20 @@ public enum FurkinState {
     /** 已契约，即「绒亲」。 */
     COMPANION,
     /** 已倒下（死亡待复活），留下魂石。 */
-    FALLEN
+    FALLEN;
+
+    /**
+     * 容错解析：枚举名不区分大小写；未知或空值返回 {@code null}，由调用方决定回退值并告警。
+     */
+    public static FurkinState parse(String raw) {
+        if (raw == null || raw.isEmpty()) {
+            return null;
+        }
+        for (FurkinState state : values()) {
+            if (state.name().equalsIgnoreCase(raw)) {
+                return state;
+            }
+        }
+        return null;
+    }
 }

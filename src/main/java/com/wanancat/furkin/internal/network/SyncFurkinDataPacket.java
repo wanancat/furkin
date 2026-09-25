@@ -1,12 +1,8 @@
 package com.wanancat.furkin.internal.network;
 
-import com.wanancat.furkin.internal.capability.FurkinCapability;
-import com.wanancat.furkin.internal.capability.FurkinData;
-import net.minecraft.client.Minecraft;
+import com.wanancat.furkin.internal.client.FurkinClientPacketHandler;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.LivingEntity;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.DistExecutor;
 import net.minecraftforge.network.NetworkEvent;
@@ -32,6 +28,16 @@ public final class SyncFurkinDataPacket {
         this.data = data;
     }
 
+    /** 目标实体 ID。 */
+    public int getEntityId() {
+        return entityId;
+    }
+
+    /** FurkinData 的 NBT 序列化；null 表示收回并清除本地绒亲身份。 */
+    public CompoundTag getData() {
+        return data;
+    }
+
     public static void encode(SyncFurkinDataPacket packet, FriendlyByteBuf buf) {
         buf.writeVarInt(packet.entityId);
         buf.writeNbt(packet.data);
@@ -45,29 +51,8 @@ public final class SyncFurkinDataPacket {
 
     public static void handle(SyncFurkinDataPacket packet, Supplier<NetworkEvent.Context> ctxSupplier) {
         NetworkEvent.Context ctx = ctxSupplier.get();
-        ctx.enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> applyClient(packet)));
+        ctx.enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT,
+                () -> () -> FurkinClientPacketHandler.handleSyncFurkinData(packet)));
         ctx.setPacketHandled(true);
-    }
-
-    /** 客户端应用：按实体 ID 定位实体，写回本地能力。 */
-    private static void applyClient(SyncFurkinDataPacket packet) {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.level == null) {
-            return;
-        }
-        Entity entity = mc.level.getEntity(packet.entityId);
-        if (!(entity instanceof LivingEntity living)) {
-            return;
-        }
-        FurkinData data = living.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
-        if (data == null) {
-            return;
-        }
-        if (packet.data != null && !packet.data.isEmpty()) {
-            data.deserializeNBT(packet.data);
-        } else {
-            // 空包 = 收回，清回 WILD。
-            data.setState(com.wanancat.furkin.internal.contract.FurkinState.WILD);
-        }
     }
 }

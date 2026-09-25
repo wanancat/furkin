@@ -164,6 +164,7 @@ Skills are **data-driven**; each skill maps to one JSON config file (`data/furki
 - `requiresLevel` 必须是对象；其中每个值必须 ≥ 1。
 - `requires`、`requiresLevel`、`levelGate` 引用的技能必须存在；`requiresLevel` 不得超过目标技能的 `maxLevel`；目标 `maxLevel=-1` 时不设该上限。
 - 违反任一条的定义会在加载期被拒绝并记录 `WARN`；引用被拒技能的依赖技能也会级联拒绝。
+- 同一技能 `id` 在多份文件中重复定义时，保留加载顺序中的首个定义；后续定义被忽略，并记录含双方来源的 `WARN`，不做静默覆盖。
 - 加点会累计每级当时实际支付的 `cost`。洗点按累计实付退款；热改 `cost` 只影响之后加点，不重写已支付部分。
 - 旧档缺少实付记录时，首次加点/洗点按当前定义一次性迁移；定义已删除时按 `cost=1` 兜底并 `WARN`。
 
@@ -173,6 +174,7 @@ Skills are **data-driven**; each skill maps to one JSON config file (`data/furki
 - `requiresLevel` must be an object, and every value must be >= 1.
 - Skills referenced by `requires`, `requiresLevel`, and `levelGate` must exist. `requiresLevel` may not exceed the target's `maxLevel`; a target with `maxLevel=-1` imposes no such cap.
 - A definition violating any rule is rejected at load time with a WARN; dependents of rejected skills are rejected transitively.
+- If the same skill `id` is defined in multiple files, the first definition in load order is kept; later definitions are ignored with a WARN that names both sources, rather than silently overriding the earlier one.
 - Successful unlocks accumulate the actual `cost` paid per level. Respec refunds cumulative actual payments; hot-changing `cost` affects future unlocks only and does not rewrite past payments.
 - When an old save lacks payment records, the first unlock or respec migrates the current definition once. If the definition has been deleted, the fallback is `cost=1` with a WARN.
 

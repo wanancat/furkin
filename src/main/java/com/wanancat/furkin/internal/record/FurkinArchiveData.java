@@ -45,8 +45,14 @@ public final class FurkinArchiveData extends SavedData {
         data.dataVersion = tag.getInt(KEY_DATA_VERSION);
         ListTag list = tag.getList(KEY_ENTRIES, Tag.TAG_COMPOUND);
         for (int i = 0; i < list.size(); i++) {
-            FurkinArchiveEntry entry = FurkinArchiveEntry.deserializeNBT(list.getCompound(i));
-            data.entries.put(entry.getCompanionId(), entry);
+            try {
+                FurkinArchiveEntry entry = FurkinArchiveEntry.deserializeNBT(list.getCompound(i));
+                data.entries.put(entry.getCompanionId(), entry);
+            } catch (Exception e) {
+                FurkinMod.LOGGER.warn(
+                        "Skipping invalid furkin archive entry at index {}: {}",
+                        i, e.toString());
+            }
         }
         return data;
     }
