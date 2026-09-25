@@ -29,7 +29,7 @@
 | 目标分类 | 默认门槛 |
 |---|---|
 | `Enemy` | 不高于 `30%`，或不高于 `4` 点生命值 |
-| `NeutralMob` | 不高于 `30%`，或不高于 `4` 点生命值 |
+| `NeutralMob` | 不高于 `50%`，或不高于 `8` 点生命值 |
 | 其他已注册物种 | 满血也可契约（`100%`，绝对分支禁用） |
 
 六项数值位于服务端配置：`contractEnemyHealthPercent` / `contractEnemyHealthAbsolute`、

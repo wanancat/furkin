@@ -1,8 +1,8 @@
 # Furkin 契约血量前置条件完整工作计划
 
-> 状态：已完成并验证。
+> 状态：实现完成；`50% / 8` 默认值已通过 `compileJava`、`build`、`runServer`，客户端满血狼 `8/8` 实际契约复测通过。
 > 完成日期：2026-09-25。
-> 源码基线：分支 `mc1.20.1`，提交 `d87a6e8` 之上的未提交工作区。
+> 源码基线：分支 `mc1.20.1`，提交 `35d931c`；当前工作区含 NeutralMob 默认值 `50% / 8` 调整（未提交）。
 > 发布版本：`1.20.1-0.0.3.0`。
 > 适用版本：Minecraft 1.20.1 / Forge 47.2.0；Gradle 8.1.1，JDK 17。
 > 设计现状：`docs/contract_precondition_workflow_v2/README.md`。
@@ -32,7 +32,7 @@
 
 1. 分类优先级固定为 `Enemy > NeutralMob > 其他`。
 2. 每个分类使用“百分比 OR 绝对值”双阈值。
-3. 默认 Enemy/Neutral 为 `30%` 或 `4` 点；其他为 `100%`、绝对值禁用。
+3. 默认 Enemy 为 `30%` 或 `4` 点，NeutralMob 为 `50%` 或 `8` 点；其他为 `100%`、绝对值禁用。
 4. 判定使用 `<=`，恰好等于门槛时通过。
 5. `currentHealth` 与 `maxHealth` 必须为有限正数，否则 `INVALID_HEALTH`。
 6. 共享校验返回 `ContractCheckResult`，不再只返回 `boolean`。
@@ -54,8 +54,8 @@
 |---|---:|---:|
 | `contractEnemyHealthPercent` | 30.0 | 0–100 |
 | `contractEnemyHealthAbsolute` | 4.0 | 0–1024 |
-| `contractNeutralHealthPercent` | 30.0 | 0–100 |
-| `contractNeutralHealthAbsolute` | 4.0 | 0–1024 |
+| `contractNeutralHealthPercent` | 50.0 | 0–100 |
+| `contractNeutralHealthAbsolute` | 8.0 | 0–1024 |
 | `contractOtherHealthPercent` | 100.0 | 0–100 |
 | `contractOtherHealthAbsolute` | 0.0 | 0–1024 |
 
@@ -148,7 +148,7 @@ if (interactionTarget instanceof PartEntity<?> part
 - [x] 只有 `HEALTH_TOO_HIGH` 显示提示。
 - [x] `HEALTH_TOO_HIGH` 取消实体交互。
 - [x] 其他失败不扩大取消范围。
-- [x] 狼满血右键不切换坐姿。
+- [x] 健康失败时取消原版右键副作用（早期 30% / 4 配置下以满血 Wolf 验证）。
 
 ### WP-4：第三方和多部件边界
 
@@ -160,12 +160,14 @@ if (interactionTarget instanceof PartEntity<?> part
 
 ### WP-5：验证矩阵
 
-- [x] `compileJava`。
-- [x] `build`。
-- [x] `runServer`。
-- [x] 主仓库 `runClient`。
+- [x] `compileJava`（`50% / 8` 新默认值）。
+- [x] `build`（`50% / 8` 新默认值）。
+- [x] `runServer`（加载 `50% / 8` 新默认值，无配置不匹配警告）。
+- [x] 主仓库 `runClient`（`30% / 4` 基线）。
 - [x] Twilight Forest 桥接 `runClient`。
-- [x] 检查客户端 `latest.log`，无项目相关 `ERROR` / `FATAL` / 异常栈。
+- [x] 检查 `latest.log`，无项目相关 `ERROR` / `FATAL` / 异常栈（`30% / 4` 基线及新默认值 `runServer`）。
+- [x] 主仓库 `runClient` 复测满血 Wolf 8/8（`50% / 8` 新默认值）——通过，进入命名窗口并实际契约成功。
+- [x] 二次校验路径由既有 `30% / 4` 基线覆盖；本次默认阈值变更未改确认逻辑。
 
 ### WP-6：版本与发布准备
 
@@ -184,12 +186,12 @@ if (interactionTarget instanceof PartEntity<?> part
 
 | 用例 | 结果 |
 |---|---|
-| 满血 Wolf | 拒绝，提示 30% / 4，坐姿不变 |
-| Wolf 4/8 | 通过绝对门槛 |
-| Neutral 绝对值改为 0 | 4/8 Wolf 被百分比拒绝 |
+| 满血 Wolf 8/8（新默认值） | 通过绝对值门槛，进入命名窗口并成功契约，恢复 0.0.2.0 的满血捕捉体验 |
+| Wolf 4/8（新默认值） | 未单独复测；`4 <= 4` 且 `4 <= 8`，同一判定分支通过 |
+| Neutral 绝对值改为 0（旧边界测试） | 既有 `30% / 4` 基线验证过绝对值禁用路径；新默认值下 8/8 Wolf 预期被 50% 百分比拒绝 |
 | 满血 Cat | 其他分类默认通过 |
 | 未注册 Cow | 无生命值提示，不接管原版交互 |
-| 命名期间回血 | 确认阶段拒绝，档案和物品不变 |
+| 命名期间回血（新默认值） | 既有 `30% / 4` 基线已验证确认阶段拒绝；本次仅改阈值，未改确认路径 |
 
 ### 6.2 Twilight Forest 压力测试
 
@@ -225,7 +227,7 @@ Hydra 初测右键无反应。原因是其主实体不可拾取，事件目标�
 - [x] 健康失败取消原版右键副作用。
 - [x] pending、TTL、单次消费、身份复检保持。
 - [x] 全局活跃上限保持。
-- [x] 主仓库与第三方压力客户端完成验证。
+- [x] 主仓库完成 `50% / 8` 满血 Wolf 实际契约复测；第三方压力客户端完成 `30% / 4` 基线验证。
 - [x] 中英文语言、README、changelog、版本号同步。
 - [x] 公开 API 与网络协议未变化。
 - [x] 非 `TamableAnimal` 弱支持边界已记录。
@@ -233,6 +235,8 @@ Hydra 初测右键无反应。原因是其主实体不可拾取，事件目标�
 ## 8. 残余验证债务
 
 以下项目不阻塞本次发布，但不得被写成已解决：
+
+- 满血 Wolf `8/8` 复测已通过；`4/8` 和绝对分支禁用未单独重跑，但复用同一判定分支与既有边界证据。
 
 - 非 `TamableAnimal` Enemy 契约后是否会立刻停战。
 - 此类 Enemy 的跟随、护主、解绑 AI 恢复与 `AGGRESSIVE` 索敌。

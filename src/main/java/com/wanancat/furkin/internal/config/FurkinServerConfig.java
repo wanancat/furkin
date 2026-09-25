@@ -48,15 +48,15 @@ public class FurkinServerConfig {
     public static final ForgeConfigSpec.DoubleValue CONTRACT_NEUTRAL_HEALTH_PERCENT = BUILDER
             .comment("Contract health gate for NeutralMob targets: maximum health percentage.",
                     "Passes when current health <= percent, or current health <= absolute (when absolute > 0).",
-                    "Design intent: 30.")
-            .defineInRange("contractNeutralHealthPercent", 30.0D, 0.0D, 100.0D);
+                    "Design intent: 50.")
+            .defineInRange("contractNeutralHealthPercent", 50.0D, 0.0D, 100.0D);
 
     /** 中立生物的契约绝对生命值门槛（0 = 禁用该分支）。 */
     public static final ForgeConfigSpec.DoubleValue CONTRACT_NEUTRAL_HEALTH_ABSOLUTE = BUILDER
             .comment("Contract health gate for NeutralMob targets: absolute health threshold.",
                     "Set to 0 to disable this branch.",
-                    "Design intent: 4.0 (two hearts).")
-            .defineInRange("contractNeutralHealthAbsolute", 4.0D, 0.0D, 1024.0D);
+                    "Design intent: 8.0 (four hearts; lets a full-health vanilla wolf pass).")
+            .defineInRange("contractNeutralHealthAbsolute", 8.0D, 0.0D, 1024.0D);
 
     /** 其他生物的契约生命值百分比门槛（0–100；100 表示不限制）。 */
     public static final ForgeConfigSpec.DoubleValue CONTRACT_OTHER_HEALTH_PERCENT = BUILDER

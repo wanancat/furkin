@@ -1,12 +1,12 @@
 # 契约绒亲前置条件工作流 v2
 
-> 状态：已实现，并完成构建、服务端、普通客户端及 Twilight Forest 压力验证。
+> 状态：已实现；`compileJava`、`build`、`runServer` 与客户端满血狼 `8/8` 实际契约复测通过；Twilight Forest 压力矩阵沿用 `30% / 4` 基线结果。
 > 复核日期：2026-09-25。
-> 源码基线：分支 `mc1.20.1`，提交 `d87a6e8` 之上的未提交工作区。
+> 源码基线：分支 `mc1.20.1`，提交 `35d931c`；当前工作区含 NeutralMob 默认值 `50% / 8` 调整（未提交）。
 > 发布版本：`1.20.1-0.0.3.0`。
 > 适用版本：Minecraft 1.20.1 / Forge 47.2.0。
 > 取代关系：本文取代 `docs/code_review_1.20.1-0.0.2.0/contract_precondition_workflow.md`；旧文仅保留历史设计过程。
-> 验证依据：`compileJava`、`build`、`runServer`、主仓库 `runClient` 与一次性 Twilight Forest 桥接夹具 `runClient`。
+> 验证依据：`compileJava`、`build`、`runServer`；`50% / 8` 客户端复测满血狼并成功契约；`30% / 4` 基线的 `runClient` 与 Twilight Forest 压力验证用于共享路径。
 
 ## 0. 结论摘要
 
@@ -18,7 +18,7 @@
 - 每个分类各有“最大生命百分比”和“绝对生命值”两个门槛，使用 OR：任一分支通过即可契约。
 - 默认值：
   - Enemy：`30%` 或 `4` 点生命值。
-  - NeutralMob：`30%` 或 `4` 点生命值。
+  - NeutralMob：`50%` 或 `8` 点生命值；满血 8 点原版狼可直接契约。
   - 其他：`100%`，绝对分支禁用；正常满血生物不被额外限制。
 - 发起命名请求和确认命名两个阶段共用同一套权威校验；命名期间回血会被二次拒绝。
 - 只有 `HEALTH_TOO_HIGH` 会显示生命值提示并取消实体交互；`INVALID_HEALTH` 静默拒绝。
@@ -88,12 +88,12 @@ Twilight Forest 的 `Hydra extends Mob implements Enemy` 就是真实非 `Monste
 |---|---:|---:|---|
 | `contractEnemyHealthPercent` | 0–100 | 30.0 | Enemy 百分比门槛 |
 | `contractEnemyHealthAbsolute` | 0–1024 | 4.0 | Enemy 绝对门槛；0 禁用 |
-| `contractNeutralHealthPercent` | 0–100 | 30.0 | NeutralMob 百分比门槛 |
-| `contractNeutralHealthAbsolute` | 0–1024 | 4.0 | NeutralMob 绝对门槛；0 禁用 |
+| `contractNeutralHealthPercent` | 0–100 | 50.0 | NeutralMob 百分比门槛 |
+| `contractNeutralHealthAbsolute` | 0–1024 | 8.0 | NeutralMob 绝对门槛；0 禁用 |
 | `contractOtherHealthPercent` | 0–100 | 100.0 | 其他分类百分比门槛；100 不限制 |
 | `contractOtherHealthAbsolute` | 0–1024 | 0.0 | 其他分类绝对门槛；0 禁用 |
 
-单人世界的配置路径为存档下的 `serverconfig/furkin-server.toml`。
+单人世界的配置路径为存档下的 `serverconfig/furkin-server.toml`。Forge 不会用新默认值覆盖已有配置文件；需要删除该文件让其重新生成，或手动把 NeutralMob 两项改为 `50.0` / `8.0`。
 
 ### 3.2 共享结果模型
 
@@ -185,19 +185,19 @@ if (interactionTarget instanceof PartEntity<?> part
 - `compileJava`：通过。
 - `build`：通过。
 - `runServer`：启动成功，无项目相关 `ERROR` / `FATAL` / 异常栈。
-- 主仓库 `runClient`：通过。
+- 主仓库 `runClient`：`50% / 8` 满血狼复测通过并成功契约。
 - 协议保持 `2`；未修改任何网络包结构。
 
 ### 5.2 主仓库客户端矩阵
 
 | 场景 | 结果 |
 |---|---|
-| 满血狼右键契约 | 拒绝，显示“需不高于 30% 或 4 点生命值”，坐姿不变 |
-| 狼 4/8，恰好绝对门槛 | 进入命名窗口 |
-| 中性绝对分支临时改为 0 | 4/8 狼被拒绝，提示只显示百分比 |
+| 满血狼 8/8 右键契约 | 通过绝对门槛，进入命名窗口并成功契约；恢复 0.0.2.0 的满血捕捉体验 |
+| 狼 4/8，恰好 50% | 未单独复测；`4 <= 4` 且 `4 <= 8`，同一判定分支通过 |
+| 中性绝对分支临时改为 0 | 旧 `30% / 4` 基线验证过禁用分支；`50% / 8` 下 8/8 狼按百分比判定预期拒绝 |
 | 满血猫 | 其他分类默认 100%，进入命名窗口 |
 | 未注册牛 | 无生命值提示，不接管原版交互 |
-| 命名期间回血后确认 | 二次校验拒绝，档案与物品不变 |
+| 命名期间回血后确认 | 既有 `30% / 4` 基线已验证二次校验拒绝；本次仅改阈值，未改确认路径 |
 
 ### 5.3 Twilight Forest 压力矩阵
 

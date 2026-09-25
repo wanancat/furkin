@@ -41,8 +41,8 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 
 **新增 / Added**
 
-- **可配置的契约生命值门槛 / Configurable contract health gates** —— 已注册物种现在按 `Enemy > NeutralMob > 其他` 分类，每类均可配置“最高生命百分比”和“绝对生命值”，两者任一满足即可契约。默认 Enemy / NeutralMob 为 `30%` 或 `4` 点，其他分类为 `100%` 且绝对分支禁用；六项配置位于服务端 `furkin-server.toml`。发起命名和确认命名都会重新校验，命名期间回血也会被拒绝。
-  *Registered species now use `Enemy > NeutralMob > other` classification, with configurable percentage and absolute health gates. Either branch may pass: Enemy and NeutralMob default to `30%` or `4` health, while other targets default to `100%` with the absolute branch disabled. Both the naming request and confirmation revalidate the gate, so regenerating above it before confirmation is rejected.*
+- **可配置的契约生命值门槛 / Configurable contract health gates** —— 已注册物种现在按 `Enemy > NeutralMob > 其他` 分类，每类均可配置“最高生命百分比”和“绝对生命值”，两者任一满足即可契约。默认 Enemy 为 `30%` 或 `4` 点，NeutralMob 为 `50%` 或 `8` 点（满血 8 点原版狼可直接契约），其他分类为 `100%` 且绝对分支禁用；六项配置位于服务端 `furkin-server.toml`。发起命名和确认命名都会重新校验，命名期间回血也会被拒绝。
+  *Registered species now use `Enemy > NeutralMob > other` classification, with configurable percentage and absolute health gates. Either branch may pass: Enemy defaults to `30%` or `4` health and NeutralMob to `50%` or `8` health, letting a full-health vanilla wolf pass; other targets default to `100%` with the absolute branch disabled. Both the naming request and confirmation revalidate the gate, so regenerating above it before confirmation is rejected.*
 - **多部件实体契约兼容 / Multipart entity interaction compatibility** —— 实体交互目标为 Forge `PartEntity` 时，会通过公开 `getParent()` 解析到父实体。Twilight Forest Hydra 这类主实体不可拾取、只能点击部件的生物现在可以正常判断门槛、契约、收回和重新召唤。
   *When an entity interaction targets a Forge `PartEntity`, Furkin resolves the public `getParent()` entity. Multipart creatures such as the Twilight Forest Hydra, whose main entity is not directly pickable, can now pass the health gate and complete contract, dismiss and resummon flows.*
 

@@ -30,7 +30,7 @@ Contracting is checked when the naming request starts and again when it is confi
 | Target class | Default gate |
 |---|---|
 | `Enemy` | At or below `30%`, or at or below `4` health |
-| `NeutralMob` | At or below `30%`, or at or below `4` health |
+| `NeutralMob` | At or below `50%`, or at or below `8` health |
 | Other registered species | Full health allowed (`100%`; absolute branch disabled) |
 
 The six values live in the server config (`contractEnemyHealthPercent` / `contractEnemyHealthAbsolute`,

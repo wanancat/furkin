@@ -33,7 +33,7 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 
 **Added**
 
-- **Configurable contract health gates** —— Registered species now use `Enemy > NeutralMob > other` classification, with configurable percentage and absolute health gates. Either branch may pass: Enemy and NeutralMob default to `30%` or `4` health, while other targets default to `100%` with the absolute branch disabled. The six values live in the server `furkin-server.toml`. Both the naming request and confirmation revalidate the gate, so regenerating above it before confirmation is rejected.
+- **Configurable contract health gates** —— Registered species now use `Enemy > NeutralMob > other` classification, with configurable percentage and absolute health gates. Either branch may pass: Enemy defaults to `30%` or `4` health and NeutralMob to `50%` or `8` health, letting a full-health vanilla wolf pass; other targets default to `100%` with the absolute branch disabled. The six values live in the server `furkin-server.toml`. Both the naming request and confirmation revalidate the gate, so regenerating above it before confirmation is rejected.
 - **Multipart entity interaction compatibility** —— When an entity interaction targets a Forge `PartEntity`, Furkin resolves the public `getParent()` entity. Multipart creatures such as the Twilight Forest Hydra, whose main entity is not directly pickable, can now pass the health gate and complete contract, dismiss and resummon flows.
 
 **Notes**
