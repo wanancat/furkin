@@ -336,8 +336,7 @@ public final class FurkinRecordScreen extends Screen {
     /**
      * 战斗模式按钮文字 —— 显示<b>当前档位</b>（点击切到下一档）。
      *
-     * <p>与命令 {@code /furkin list} 的口径一致：档位名走 lang（命令侧因不走 lang 而写字面量，
-     * 界面侧一律走 key，中英环境均正确）。</p>
+     * <p>与命令 {@code /furkin list} 的口径一致：档位名统一走 lang，中英环境均正确。</p>
      */
     private Component combatModeLabel(RecordListPacket.Entry entry) {
         return Component.translatable("furkin.screen.record.combat_mode",

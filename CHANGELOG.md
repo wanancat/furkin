@@ -41,6 +41,9 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 
 **修复 / Fixed**
 
+- **命令回执本地化 / Command feedback localization** —— `/furkin` 命令的固定成功、失败、状态和数量回执现使用翻译键，随客户端中英文语言切换；动态 UUID、名称和数量继续作为翻译参数注入。
+  *Fixed `/furkin` command success, failure, status and quantity feedback now uses translation keys and follows the client language; dynamic UUIDs, names and counts remain translation arguments.*
+
 - **技能退款与数据校验 / Skill refunds and schema validation** —— 洗点现按每级实际支付成本退款，热改技能 `cost` 不会重写已支付金额；加载期拒绝非正 `cost`、非法 `maxLevel` / `tier` / `requiresLevel`，避免非法技能数据制造或吞掉技能点。
   *Respec now refunds the amount actually paid per level, and hot-changing a skill's `cost` no longer rewrites past payments. Loading rejects non-positive `cost`, invalid `maxLevel` / `tier` / `requiresLevel`, preventing malformed skill data from creating or consuming skill points incorrectly.*
 - **技能热重载一致性 / Skill hot-reload consistency** —— `/reload` 后会按当前技能树清理并重建已加载绒亲的 `furkin:attribute` modifier，删除技能、切换属性目标或修改数值不会留下重复/失效加成；重载时未加载实体在入世时校准。`bleeding_bite` 保持实时语义：立即采用新 DPS，不重写已施加时长，定义失效后停止伤害并自然到期。

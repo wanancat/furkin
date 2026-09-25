@@ -167,7 +167,7 @@ public final class FurkinCommand {
         try {
             petId = UUID.fromString(petIdRaw);
         } catch (IllegalArgumentException e) {
-            src.sendFailure(Component.literal("Invalid pet id: " + petIdRaw));
+            src.sendFailure(Component.translatable("furkin.msg.invalid_pet_id", petIdRaw));
             return 0;
         }
 
@@ -178,14 +178,18 @@ public final class FurkinCommand {
                 FurkinCompanionManager.summonOrTeleport(player, petId);
         final String sid = shortId(petId.toString());
         switch (r) {
-            case SUMMONED -> src.sendSuccess(() -> Component.literal("Summoned " + sid), false);
-            case TELEPORTED -> src.sendSuccess(() -> Component.literal("Teleported " + sid + " to you"), false);
-            case NOT_FOUND -> src.sendFailure(Component.literal("No such companion: " + sid));
-            case NOT_OWNER -> src.sendFailure(Component.literal("Not your companion."));
-            case NOT_ALIVE -> src.sendFailure(Component.literal(
-                    sid + " has fallen — revive it with a soulstone."));
-            case ACTIVE_LIMIT -> src.sendFailure(Component.literal("Active companion limit reached."));
-            default -> src.sendFailure(Component.literal("Summon failed (internal error)."));
+            case SUMMONED -> src.sendSuccess(
+                    () -> Component.translatable("furkin.command.summon.success", sid), false);
+            case TELEPORTED -> src.sendSuccess(
+                    () -> Component.translatable("furkin.command.summon.teleported", sid), false);
+            case NOT_FOUND -> src.sendFailure(
+                    Component.translatable("furkin.command.companion.not_found", sid));
+            case NOT_OWNER -> src.sendFailure(Component.translatable("furkin.msg.not_owner"));
+            case NOT_ALIVE -> src.sendFailure(
+                    Component.translatable("furkin.command.summon.not_alive", sid));
+            case ACTIVE_LIMIT -> src.sendFailure(
+                    Component.translatable("furkin.command.summon.active_limit"));
+            default -> src.sendFailure(Component.translatable("furkin.command.summon.failed"));
         }
         return 1;
     }
@@ -217,7 +221,7 @@ public final class FurkinCommand {
         }
         mine.sort(FurkinDisplayOrder.ARCHIVE);
 
-        src.sendSuccess(() -> Component.literal("Your companions:"), false);
+        src.sendSuccess(() -> Component.translatable("furkin.command.list.header"), false);
         int shown = 0;
         for (FurkinArchiveEntry entry : mine) {
             shown++;
@@ -229,13 +233,11 @@ public final class FurkinCommand {
             String nameStr = e.getName() == null ? "" : e.getName().getString();
 
             // 状态后缀：[Fallen] 红 / [Summoned] 绿 / 存活未在场无后缀。
-            // 用词与本命令其余回执同源：死亡那条写的是 "has fallen"、召唤成功写的是 "Summoned"。
-            // （界面侧另有 lang key `furkin.screen.record.state_dead/state_summoned`，
-            //  按「命令侧不走 lang」的既定口径，这里不引用它们。）
             Component state = !e.isAlive()
-                    ? Component.literal(" [Fallen]").withStyle(ChatFormatting.RED)
+                    ? Component.translatable("furkin.command.list.state_dead").withStyle(ChatFormatting.RED)
                     : (e.isSummoned()
-                            ? Component.literal(" [Summoned]").withStyle(ChatFormatting.GREEN)
+                            ? Component.translatable("furkin.command.list.state_summoned")
+                                    .withStyle(ChatFormatting.GREEN)
                             : Component.empty());
 
             // 经验：当前 / 升级所需（与原版面板同口径）。
@@ -248,7 +250,8 @@ public final class FurkinCommand {
                     .withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, fullId))
                     .withHoverEvent(new net.minecraft.network.chat.HoverEvent(
                             net.minecraft.network.chat.HoverEvent.Action.SHOW_TEXT,
-                            Component.literal(fullId).append(Component.literal("\nClick to copy ID")))));
+                            Component.literal(fullId).append(
+                                    Component.translatable("furkin.command.list.click_to_copy")))));
 
             src.sendSuccess(() -> Component.literal("  ")
                     .append(idPart)
@@ -256,13 +259,16 @@ public final class FurkinCommand {
                     .append(speciesDisplay(e))
                     .append(nameStr.isEmpty() ? Component.empty()
                             : Component.literal("  " + nameStr).withStyle(ChatFormatting.WHITE))
-                    .append(Component.literal("  Lv." + e.getLevel()).withStyle(ChatFormatting.YELLOW))
-                    .append(Component.literal("  xp " + e.getXp() + "/" + xpNeed).withStyle(ChatFormatting.GRAY))
-                    .append(Component.literal("  sp " + e.getSkillPoints()).withStyle(ChatFormatting.AQUA))
+                    .append(Component.translatable("furkin.command.list.level", e.getLevel())
+                            .withStyle(ChatFormatting.YELLOW))
+                    .append(Component.translatable("furkin.command.list.xp", e.getXp(), xpNeed)
+                            .withStyle(ChatFormatting.GRAY))
+                    .append(Component.translatable("furkin.command.list.sp", e.getSkillPoints())
+                            .withStyle(ChatFormatting.AQUA))
                     .append(state), false);
         }
         if (shown == 0) {
-            src.sendSuccess(() -> Component.literal("  (none)"), false);
+            src.sendSuccess(() -> Component.translatable("furkin.command.list.none"), false);
         }
         return 1;
     }
@@ -336,7 +342,7 @@ public final class FurkinCommand {
         try {
             petId = UUID.fromString(petIdRaw);
         } catch (IllegalArgumentException e) {
-            src.sendFailure(Component.literal("Invalid pet id: " + petIdRaw));
+            src.sendFailure(Component.translatable("furkin.msg.invalid_pet_id", petIdRaw));
             return 0;
         }
 
@@ -344,11 +350,13 @@ public final class FurkinCommand {
         final String sid = shortId(petId.toString());
         switch (r) {
             // 报出「改成了什么」—— 原名不报（改前值意义不大），新名是关键信息。
-            case OK -> src.sendSuccess(() -> Component.literal("Renamed " + sid + " \u2192 ")
-                    .append(Component.literal(name).withStyle(ChatFormatting.WHITE)), false);
-            case NOT_FOUND -> src.sendFailure(Component.literal("No such companion: " + sid));
-            case NOT_OWNER -> src.sendFailure(Component.literal("Not your companion."));
-            default -> src.sendFailure(Component.literal("Rename failed."));
+            case OK -> src.sendSuccess(() -> Component.translatable(
+                    "furkin.command.rename.success", sid,
+                    Component.literal(name).withStyle(ChatFormatting.WHITE)), false);
+            case NOT_FOUND -> src.sendFailure(
+                    Component.translatable("furkin.command.companion.not_found", sid));
+            case NOT_OWNER -> src.sendFailure(Component.translatable("furkin.msg.not_owner"));
+            default -> src.sendFailure(Component.translatable("furkin.msg.rename_failed"));
         }
         return 1;
     }
@@ -363,7 +371,7 @@ public final class FurkinCommand {
         try {
             petId = UUID.fromString(petIdRaw);
         } catch (IllegalArgumentException e) {
-            src.sendFailure(Component.literal("Invalid pet id: " + petIdRaw));
+            src.sendFailure(Component.translatable("furkin.msg.invalid_pet_id", petIdRaw));
             return 0;
         }
 
@@ -371,22 +379,23 @@ public final class FurkinCommand {
         FurkinArchiveData archive = FurkinArchiveData.get(player.serverLevel());
         FurkinArchiveEntry entry = archive.getEntry(petId);
         if (entry == null) {
-            src.sendFailure(Component.literal("No such companion: " + petId));
+            src.sendFailure(Component.translatable(
+                    "furkin.command.companion.not_found", petId));
             return 0;
         }
         if (!player.getUUID().equals(entry.getOwnerUuid())) {
-            src.sendFailure(Component.literal("Not your companion."));
+            src.sendFailure(Component.translatable("furkin.msg.not_owner"));
             return 0;
         }
         if (!entry.isSummoned()) {
-            src.sendFailure(Component.literal("Companion is not summoned — summon it first."));
+            src.sendFailure(Component.translatable("furkin.command.companion.not_summoned"));
             return 0;
         }
 
         // 找在场实体。
         LivingEntity target = findLivingByCompanionId(player.serverLevel(), petId);
         if (target == null) {
-            src.sendFailure(Component.literal("Companion entity not found in world."));
+            src.sendFailure(Component.translatable("furkin.command.companion.entity_not_found"));
             return 0;
         }
 
@@ -400,10 +409,15 @@ public final class FurkinCommand {
         int newXp = after == null ? 0 : after.getXp();
         int sp = after == null ? 0 : after.getSkillPoints();
 
-        src.sendSuccess(() -> Component.literal(
-                "Added " + amount + " xp to " + shortId(petId.toString())
-                        + " \u2192 Lv." + newLevel + " (xp=" + newXp + ", sp=" + sp + ")"
-                        + (leveled ? " [LEVEL UP]" : "")), false);
+        src.sendSuccess(() -> {
+            Component message = Component.translatable(
+                    "furkin.command.addxp.success", shortId(petId.toString()), amount,
+                    newLevel, newXp, sp);
+            return leveled
+                    ? message.copy().append(Component.translatable(
+                            "furkin.command.addxp.level_up_suffix"))
+                    : message;
+        }, false);
         return 1;
     }
 
@@ -417,27 +431,30 @@ public final class FurkinCommand {
         try {
             petId = UUID.fromString(petIdRaw);
         } catch (IllegalArgumentException e) {
-            src.sendFailure(Component.literal("Invalid pet id: " + petIdRaw));
+            src.sendFailure(Component.translatable("furkin.msg.invalid_pet_id", petIdRaw));
             return 0;
         }
 
         FurkinCombatMode mode = FurkinCombatMode.parse(modeRaw);
         if (mode == null) {
-            src.sendFailure(Component.literal(
-                    "Invalid mode: " + modeRaw + " (use follow / passive / protect / aggressive)"));
+            src.sendFailure(Component.translatable("furkin.command.mode.invalid", modeRaw));
             return 0;
         }
 
         FurkinCombatModeHandler.Result r = FurkinCombatModeHandler.setMode(player, petId, mode);
         final String sid = shortId(petId.toString());
+        Component modeName = Component.translatable(
+                "furkin.combat_mode." + mode.name().toLowerCase(Locale.ROOT));
         switch (r) {
-            case OK -> src.sendSuccess(() -> Component.literal(
-                    "Combat mode set to " + mode.name() + " for " + sid), false);
-            case NOT_FOUND -> src.sendFailure(Component.literal("No such companion: " + sid));
-            case NOT_OWNER -> src.sendFailure(Component.literal("Not your companion."));
-            case NOT_SUMMONED -> src.sendFailure(Component.literal("Companion is not summoned — summon it first."));
+            case OK -> src.sendSuccess(
+                    () -> Component.translatable("furkin.msg.mode_set", modeName), false);
+            case NOT_FOUND -> src.sendFailure(
+                    Component.translatable("furkin.command.companion.not_found", sid));
+            case NOT_OWNER -> src.sendFailure(Component.translatable("furkin.msg.not_owner"));
+            case NOT_SUMMONED -> src.sendFailure(
+                    Component.translatable("furkin.msg.mode_not_summoned"));
             case APPLY_FAILED -> src.sendFailure(Component.translatable("furkin.msg.mode_failed"));
-            default -> src.sendFailure(Component.literal("Set mode failed."));
+            default -> src.sendFailure(Component.translatable("furkin.msg.mode_failed"));
         }
         return 1;
     }
@@ -456,7 +473,7 @@ public final class FurkinCommand {
         try {
             petId = UUID.fromString(petIdRaw);
         } catch (IllegalArgumentException e) {
-            src.sendFailure(Component.literal("Invalid pet id: " + petIdRaw));
+            src.sendFailure(Component.translatable("furkin.msg.invalid_pet_id", petIdRaw));
             return 0;
         }
 
@@ -474,16 +491,22 @@ public final class FurkinCommand {
 
         switch (r) {
             // 宠物 id 用短 id；技能 id 是 ResourceLocation（非 UUID）保持完整，截断无意义。
-            case OK -> src.sendSuccess(() -> Component.literal(
-                    "Unlocked " + finalSkillId + " for " + shortId(petId.toString())), false);
-            case NOT_FOUND -> src.sendFailure(Component.literal("No such companion: " + shortId(petId.toString())));
-            case NOT_OWNER -> src.sendFailure(Component.literal("Not your companion."));
-            case NOT_SUMMONED -> src.sendFailure(Component.literal("Companion is not summoned."));
-            case SKILL_UNKNOWN -> src.sendFailure(Component.literal("Unknown skill: " + finalSkillId));
-            case SPECIES_MISMATCH -> src.sendFailure(Component.literal("Skill not available to this species."));
-            case PREREQUISITES -> src.sendFailure(Component.literal("Prerequisites not met."));
-            case NOT_ENOUGH_POINTS -> src.sendFailure(Component.literal("Not enough skill points."));
-            case MAXED -> src.sendFailure(Component.literal("Skill already maxed."));
+            case OK -> src.sendSuccess(() -> Component.translatable(
+                    "furkin.command.skill.success", finalSkillId, shortId(petId.toString())), false);
+            case NOT_FOUND -> src.sendFailure(Component.translatable(
+                    "furkin.command.companion.not_found", shortId(petId.toString())));
+            case NOT_OWNER -> src.sendFailure(Component.translatable("furkin.msg.not_owner"));
+            case NOT_SUMMONED -> src.sendFailure(
+                    Component.translatable("furkin.msg.skill_not_summoned"));
+            case SKILL_UNKNOWN -> src.sendFailure(
+                    Component.translatable("furkin.command.skill.unknown", finalSkillId));
+            case SPECIES_MISMATCH -> src.sendFailure(
+                    Component.translatable("furkin.msg.skill_species_mismatch"));
+            case PREREQUISITES -> src.sendFailure(
+                    Component.translatable("furkin.msg.skill_prerequisites"));
+            case NOT_ENOUGH_POINTS -> src.sendFailure(
+                    Component.translatable("furkin.msg.skill_no_points"));
+            case MAXED -> src.sendFailure(Component.translatable("furkin.msg.skill_maxed"));
         }
         return 1;
     }
@@ -498,13 +521,14 @@ public final class FurkinCommand {
         try {
             petId = UUID.fromString(petIdRaw);
         } catch (IllegalArgumentException e) {
-            src.sendFailure(Component.literal("Invalid pet id: " + petIdRaw));
+            src.sendFailure(Component.translatable("furkin.msg.invalid_pet_id", petIdRaw));
             return 0;
         }
 
         LivingEntity target = findLivingByCompanionId(player.serverLevel(), petId);
         if (target == null) {
-            src.sendFailure(Component.literal("Companion entity not found in world (summon it first)."));
+            src.sendFailure(Component.translatable(
+                    "furkin.command.companion.entity_not_found_summon_first"));
             return 0;
         }
 
@@ -528,15 +552,17 @@ public final class FurkinCommand {
         // 属性名用官方注册 id 去掉 "generic." 前缀的部分（2026-09-22 取证：
         // Attributes 的 ldc 常量为 "generic.max_health" 等），不自定义驼峰缩写 ——
         // 免得与官方文档 / 其它模组对照时对不上号。
-        src.sendSuccess(() -> Component.literal(
-                "Inspect " + shortId(petId.toString())
-                        + "  Lv." + level
-                        + "  sp=" + skillPoints), false);
-        src.sendSuccess(() -> Component.literal(String.format(
-                "  attack_damage=%.2f  max_health=%.2f (cur=%.2f)  armor=%.2f  movement_speed=%.3f",
-                attack, maxHealth, currentHealth, armor, speed)), false);
-        src.sendSuccess(() -> Component.literal(
-                "  pouch  " + usedSlots + "/" + pouchSlots + " slots, " + pouchTotal + " items"), false);
+        src.sendSuccess(() -> Component.translatable(
+                "furkin.command.inspect.header", shortId(petId.toString()), level, skillPoints), false);
+        src.sendSuccess(() -> Component.translatable(
+                "furkin.command.inspect.attributes",
+                String.format(Locale.ROOT, "%.2f", attack),
+                String.format(Locale.ROOT, "%.2f", maxHealth),
+                String.format(Locale.ROOT, "%.2f", currentHealth),
+                String.format(Locale.ROOT, "%.2f", armor),
+                String.format(Locale.ROOT, "%.3f", speed)), false);
+        src.sendSuccess(() -> Component.translatable(
+                "furkin.command.inspect.pouch", usedSlots, pouchSlots, pouchTotal), false);
         return 1;
     }
 
@@ -555,23 +581,24 @@ public final class FurkinCommand {
         try {
             petId = UUID.fromString(petIdRaw);
         } catch (IllegalArgumentException e) {
-            src.sendFailure(Component.literal("Invalid pet id: " + petIdRaw));
+            src.sendFailure(Component.translatable("furkin.msg.invalid_pet_id", petIdRaw));
             return 0;
         }
 
         if (toAdd.isEmpty()) {
-            src.sendFailure(Component.literal("Empty item."));
+            src.sendFailure(Component.translatable("furkin.command.pouch.empty_item"));
             return 0;
         }
 
         LivingEntity target = findLivingByCompanionId(player.serverLevel(), petId);
         if (target == null) {
-            src.sendFailure(Component.literal("Companion entity not found in world (summon it first)."));
+            src.sendFailure(Component.translatable(
+                    "furkin.command.companion.entity_not_found_summon_first"));
             return 0;
         }
         FurkinData data = target.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
         if (data == null) {
-            src.sendFailure(Component.literal("Companion data missing."));
+            src.sendFailure(Component.translatable("furkin.command.companion.data_missing"));
             return 0;
         }
 
@@ -583,26 +610,31 @@ public final class FurkinCommand {
         final int placed = toAdd.getCount() - leftover.getCount();
         final int leftoverCount = leftover.getCount();
         final String petName = companionLabel(target, petId);
-        final String itemName = toAdd.getHoverName().getString();
+        final Component itemName = toAdd.getHoverName().copy();
 
         if (leftoverCount <= 0) {
-            src.sendSuccess(() -> Component.literal("Added ")
-                    .append(Component.literal(placed + "x ").withStyle(ChatFormatting.AQUA))
-                    .append(Component.literal(itemName).withStyle(ChatFormatting.WHITE))
-                    .append(Component.literal(" to " + petName)), false);
+            src.sendSuccess(() -> Component.translatable(
+                    "furkin.command.pouch.added",
+                    Component.translatable("furkin.command.pouch.amount", placed)
+                            .withStyle(ChatFormatting.AQUA),
+                    itemName.copy().withStyle(ChatFormatting.WHITE),
+                    petName), false);
         } else if (placed <= 0) {
             // 一点没塞进去：只报满了。
-            src.sendSuccess(() -> Component.literal(petName + "'s pouch is full — ")
-                    .append(Component.literal(itemName).withStyle(ChatFormatting.WHITE))
-                    .append(Component.literal(" was not added")), false);
+            src.sendSuccess(() -> Component.translatable(
+                    "furkin.command.pouch.full",
+                    petName,
+                    itemName.copy().withStyle(ChatFormatting.WHITE)), false);
         } else {
             // 塞进去一部分：报实际放入量，并说明还有多少没装下。
-            src.sendSuccess(() -> Component.literal("Added ")
-                    .append(Component.literal(placed + "x ").withStyle(ChatFormatting.AQUA))
-                    .append(Component.literal(itemName).withStyle(ChatFormatting.WHITE))
-                    .append(Component.literal(" to " + petName + " — pouch full, "))
-                    .append(Component.literal(leftoverCount + "x").withStyle(ChatFormatting.RED))
-                    .append(Component.literal(" was not added")), false);
+            src.sendSuccess(() -> Component.translatable(
+                    "furkin.command.pouch.partial",
+                    Component.translatable("furkin.command.pouch.amount", placed)
+                            .withStyle(ChatFormatting.AQUA),
+                    itemName.copy().withStyle(ChatFormatting.WHITE),
+                    petName,
+                    Component.translatable("furkin.command.pouch.amount", leftoverCount)
+                            .withStyle(ChatFormatting.RED)), false);
         }
         return 1;
     }
@@ -634,18 +666,19 @@ public final class FurkinCommand {
         try {
             petId = UUID.fromString(petIdRaw);
         } catch (IllegalArgumentException e) {
-            src.sendFailure(Component.literal("Invalid pet id: " + petIdRaw));
+            src.sendFailure(Component.translatable("furkin.msg.invalid_pet_id", petIdRaw));
             return 0;
         }
 
         LivingEntity target = findLivingByCompanionId(player.serverLevel(), petId);
         if (target == null) {
-            src.sendFailure(Component.literal("Companion entity not found in world (summon it first)."));
+            src.sendFailure(Component.translatable(
+                    "furkin.command.companion.entity_not_found_summon_first"));
             return 0;
         }
         FurkinData data = target.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
         if (data == null) {
-            src.sendFailure(Component.literal("Companion data missing."));
+            src.sendFailure(Component.translatable("furkin.command.companion.data_missing"));
             return 0;
         }
 
@@ -654,8 +687,11 @@ public final class FurkinCommand {
         final String petName = companionLabel(target, petId);
         pouch.clearContent();
 
-        src.sendSuccess(() -> Component.literal("Cleared " + petName + "'s pouch — removed ")
-                .append(Component.literal(wasTotal + " items").withStyle(ChatFormatting.AQUA)), false);
+        src.sendSuccess(() -> Component.translatable(
+                "furkin.command.pouch.cleared",
+                petName,
+                Component.translatable("furkin.command.pouch.items", wasTotal)
+                        .withStyle(ChatFormatting.AQUA)), false);
         return 1;
     }
 
