@@ -81,6 +81,17 @@ public final class CommonEvents {
                 new SyncFurkinDataPacket(target.getId(), data.syncNBT()));
     }
 
+    /**
+     * 玩家登出：清理服务端待确认契约会话（WP-01）。
+     *
+     * <p>会话只在「右键发起」到「命名确认」之间存活，登出后不可能再确认，
+     * 故在登出时移除，避免无效记录长期残留。</p>
+     */
+    @SubscribeEvent
+    public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
+        FurkinContractHandler.clearPendingContract(event.getEntity().getUUID());
+    }
+
     @SubscribeEvent
     public static void onEntityInteract(PlayerInteractEvent.EntityInteract event) {
         // 只在服务端处理（逻辑端）。单机也是逻辑端，走同一路径。
