@@ -538,13 +538,9 @@ public final class FurkinCompanionManager {
      */
     private static int countSummoned(ServerLevel level, UUID ownerUuid) {
         int count = 0;
-        for (Entity entity : level.getEntities().getAll()) {
-            if (entity instanceof LivingEntity living) {
-                FurkinData data = living.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
-                if (data != null && data.isCompanion()
-                        && ownerUuid.equals(data.getOwnerUuid())) {
-                    count++;
-                }
+        for (FurkinArchiveEntry entry : FurkinArchiveData.get(level).allEntries()) {
+            if (entry.isSummoned() && ownerUuid.equals(entry.getOwnerUuid())) {
+                count++;
             }
         }
         return count;

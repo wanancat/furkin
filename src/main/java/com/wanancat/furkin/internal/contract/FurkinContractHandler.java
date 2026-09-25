@@ -335,12 +335,9 @@ public final class FurkinContractHandler {
      */
     private static int countActive(ServerLevel level, UUID ownerUuid) {
         int count = 0;
-        for (Entity entity : level.getEntities().getAll()) {
-            if (entity instanceof LivingEntity living) {
-                FurkinData d = living.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
-                if (d != null && d.isCompanion() && ownerUuid.equals(d.getOwnerUuid())) {
-                    count++;
-                }
+        for (FurkinArchiveEntry entry : FurkinArchiveData.get(level).allEntries()) {
+            if (entry.isSummoned() && ownerUuid.equals(entry.getOwnerUuid())) {
+                count++;
             }
         }
         return count;
