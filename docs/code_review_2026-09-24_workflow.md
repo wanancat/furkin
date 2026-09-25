@@ -477,10 +477,10 @@ $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 
 #### 必须覆盖的测试
 
-- [ ] `cost = 2` 的加点与退款一致。
-- [ ] `cost = 0`、`cost < 0` 被加载期拒绝。
-- [ ] `maxLevel = 0`、`maxLevel < -1` 被拒绝。
-- [ ] `tier`、`requiresLevel` 非法值被拒绝。
+- [x] `cost = 2` 的加点与退款一致。
+- [x] `cost = 0`、`cost < 0` 被加载期拒绝。
+- [x] `maxLevel = 0`、`maxLevel < -1` 被拒绝。
+- [x] `tier`、`requiresLevel` 非法值被拒绝。
 - [ ] 修改属性数值后 `/reload`，不出现双 modifier。
 - [ ] 删除属性技能后 `/reload`，旧 modifier 被清理。
 - [ ] 修改流血 DPS 后，已有流血行为符合选定语义。
@@ -490,6 +490,11 @@ $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 
 - 非法技能数据不会改变技能点经济。
 - 重载后的实体效果与当前定义或明确快照语义一致。
+
+#### 当前进度与审计记录
+
+- [x] WP-05-02 M-02：2026-09-25 完成。实际支付表、旧档迁移、退款计算和 schema 加载期校验已实施；两轮临时服务端夹具合计 `checks=35 failed=0`。夹具删除后 `build` 通过，最终 JAR 不含 `Wp05` / `wp05`，无夹具 `runServer` 到达 `Done` 且无错误级日志。详见 [WP-05 设计、实施与验证记录](wp-05_skill_consistency_design.md)。
+- [ ] WP-05-03 M-04：`/reload` 后属性 modifier 重建、已加载绒亲校准与流血实时语义待实施和运行验证。
 
 ### 6.6 WP-06：客户端类隔离（L-01）
 
@@ -599,7 +604,7 @@ $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 本次整改整体完成必须同时满足：
 
 - [ ] H-01、H-02、H-03 已修复并有运行期证据（H-02/H-03 已关闭；H-01 仍待）。
-- [ ] M-01、M-02、M-03、M-04 已修复并有对应测试证据（M-01/M-03 已完成；M-02/M-04 待办）。
+- [ ] M-01、M-02、M-03、M-04 已修复并有对应测试证据（M-01/M-02/M-03 已完成；M-04 待办）。
 - [ ] L-01 已完成客户端隔离和专用服务端验证。
 - [ ] L-02 已完成翻译键和语言文件同步。
 - [ ] `compileJava`、适用 `build`、适用 `runServer` / `runClient` 全部通过。
@@ -632,7 +637,7 @@ $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 - [x] WP-04 M-01 协议版本映射、变更规则、同源码双端启动验证（2026-09-25）
 - [ ] WP-04 真实旧版/新版混连拒绝与登录验证（残余）
 - [x] WP-04 审计文档、AGENTS 长期规则与关闭记录（2026-09-25；提交/推送待授权）
-- [ ] WP-05 M-02 技能退款与 schema 校验
+- [x] WP-05 M-02 技能退款与 schema 校验（2026-09-25；checks=35 failed=0）
 - [ ] WP-05 M-04 热重载效果重建
 - [ ] WP-06 L-01 客户端类隔离
 - [ ] WP-07 L-02 命令本地化

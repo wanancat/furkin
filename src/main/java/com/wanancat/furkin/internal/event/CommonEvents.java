@@ -403,6 +403,8 @@ public final class CommonEvents {
         entry.setXp(data.getXp());
         entry.setSkillPoints(data.getSkillPoints());
         entry.setSkillSnapshot(data.syncNBT().getCompound("skill_levels"));
+        entry.setSkillInvestments(data.getSkillInvestments());
+        entry.setSkillInvestmentsKnown(data.hasKnownSkillInvestments());
         // 一次 saveWithoutId 供两个用途：整包外观快照 + 从中摘出的装备快照（M3.2）。
         CompoundTag snapshot = target.saveWithoutId(new CompoundTag());
         entry.setEntitySnapshot(snapshot);

@@ -429,7 +429,7 @@ Forge `SimpleChannel` 的握手只比较 `PROTOCOL_VERSION`。版本字符串相
 
 ### M-02：洗点退款未乘技能 `cost`，技能 schema 也缺少校验
 
-- 状态：已确认
+- 状态：已修复（WP-05-02，2026-09-25）
 - 严重度：中
 - 公开影响：第三方数据包或自定义技能设置非 1 成本时会退错点；非法字段可能制造技能点。
 
@@ -500,6 +500,15 @@ refund += entry.getSkillSnapshot().getInt(key);
    - `cost = -1`
    - `maxLevel = 0`
    - `maxLevel = -2`
+
+#### 修复验证（2026-09-25）
+
+- 实际支付：新增服务端持久化的 `skillInvestments`，每次成功加点累计当前 `cost`，洗点按累计实付退款；旧档缺少该字段时按当前定义迁移，已删除技能按每级 1 点保守兜底并记录 `WARN`。
+- Schema：`SkillLoader` 现在拒绝 `cost <= 0`、`maxLevel == 0`、非 `-1` 的负 `maxLevel`、`tier < 1`、`requiresLevel` 非对象或值 `<= 0`。
+- 持久化：实体 NBT、绒亲档案、收回、死亡和召唤路径均同步实付表；`syncNBT()` 不包含实付表，网络协议保持 `2`。
+- 运行证据：临时服务端夹具输出 `WP05_M02_FIXTURE_OK checks=28 failed=0`，覆盖合法 `cost=2`、非法定义拒绝、热改成本后的累计退款、网络排除实付表、实体/档案 NBT 往返、旧档迁移退款。
+- 收尾：夹具及临时技能定义已删除，`build` 通过，最终 JAR 不含 `Wp05`/`wp05`；删除夹具后的 `runServer` 到达 `Done (2.764s)!`，日志无新增 `ERROR`/`FATAL`/异常栈/注册失败。
+- 残余：M-04 的热重载属性重建与流血语义仍待 WP-05-03。
 
 ---
 

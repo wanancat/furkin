@@ -13,6 +13,8 @@ import net.minecraft.world.level.Level;
 import net.minecraftforge.registries.ForgeRegistries;
 
 import javax.annotation.Nullable;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -26,7 +28,7 @@ import java.util.UUID;
  * 物种（EntityType，召唤 / 复活重建实体用）
  * 生命状态（存活 / 已死亡待复活）  —— 两个正交维度之一
  * 是否召唤（已召唤 / 已收回）      —— 两个正交维度之二
- * 等级 / 技能快照
+ * 等级 / 技能快照 / 实际技能支付快照
  * 装备快照（原版 ArmorItems 格式，M3 起填充）
  * </pre>
  *
@@ -68,6 +70,12 @@ public final class FurkinArchiveEntry {
     /** 技能快照（NBT 形态，M2 起填充具体技能）。 */
     private CompoundTag skillSnapshot;
 
+    /** 技能实际累计支付点数（技能 id → 累计消耗）；只服务端持久化。 */
+    private Map<ResourceLocation, Integer> skillInvestments;
+
+    /** 旧档是否缺少 skillInvestments；false 时由加点 / 洗点路径迁移。 */
+    private boolean skillInvestmentsKnown;
+
     /** 装备快照（原版 ArmorItems 格式，M3 起填充）。 */
     private CompoundTag equipmentSnapshot;
 
@@ -94,6 +102,8 @@ public final class FurkinArchiveEntry {
         this.xp = 0;
         this.skillPoints = 0;
         this.skillSnapshot = new CompoundTag();
+        this.skillInvestments = new LinkedHashMap<>();
+        this.skillInvestmentsKnown = true;
         this.equipmentSnapshot = new CompoundTag();
         this.entitySnapshot = new CompoundTag();
         this.name = null;
@@ -191,6 +201,25 @@ public final class FurkinArchiveEntry {
         this.skillSnapshot = skillSnapshot;
     }
 
+    /** 实际技能支付表；内部可写，调用方须与技能快照同步维护。 */
+    public Map<ResourceLocation, Integer> getSkillInvestments() {
+        return skillInvestments;
+    }
+
+    public void setSkillInvestments(Map<ResourceLocation, Integer> skillInvestments) {
+        this.skillInvestments = skillInvestments == null
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(skillInvestments);
+    }
+
+    public boolean hasKnownSkillInvestments() {
+        return skillInvestmentsKnown;
+    }
+
+    public void setSkillInvestmentsKnown(boolean known) {
+        this.skillInvestmentsKnown = known;
+    }
+
     public CompoundTag getEquipmentSnapshot() {
         return equipmentSnapshot;
     }
@@ -253,6 +282,13 @@ public final class FurkinArchiveEntry {
         tag.putInt("xp", xp);
         tag.putInt("skill_points", skillPoints);
         tag.put("skill_snapshot", skillSnapshot);
+        if (skillInvestmentsKnown) {
+            CompoundTag investments = new CompoundTag();
+            for (Map.Entry<ResourceLocation, Integer> e : skillInvestments.entrySet()) {
+                investments.putInt(e.getKey().toString(), e.getValue());
+            }
+            tag.put("skill_investments", investments);
+        }
         tag.put("equipment_snapshot", equipmentSnapshot);
         tag.put("entity_snapshot", entitySnapshot);
         if (name != null) {
@@ -290,6 +326,16 @@ public final class FurkinArchiveEntry {
         entry.xp = tag.contains("xp") ? tag.getInt("xp") : 0;
         entry.skillPoints = tag.contains("skill_points") ? tag.getInt("skill_points") : 0;
         entry.skillSnapshot = tag.getCompound("skill_snapshot");
+        entry.skillInvestments = new LinkedHashMap<>();
+        if (tag.contains("skill_investments", CompoundTag.TAG_COMPOUND)) {
+            CompoundTag investments = tag.getCompound("skill_investments");
+            for (String key : investments.getAllKeys()) {
+                entry.skillInvestments.put(new ResourceLocation(key), investments.getInt(key));
+            }
+            entry.skillInvestmentsKnown = true;
+        } else {
+            entry.skillInvestmentsKnown = false;
+        }
         entry.equipmentSnapshot = tag.getCompound("equipment_snapshot");
         entry.entitySnapshot = tag.getCompound("entity_snapshot");
         if (tag.contains("name")) {

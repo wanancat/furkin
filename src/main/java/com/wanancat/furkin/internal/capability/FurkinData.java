@@ -29,6 +29,7 @@ import java.util.UUID;
  * level / xp     等级 / 经验（等级无上限）
  * skillPoints    可用技能点
  * skillLevels    Map&lt;ResourceLocation, Integer&gt;   技能 → 已投等级
+ * skillInvestments Map&lt;ResourceLocation, Integer&gt; 技能 → 实际累计支付技能点（服务端持久化）
  * state          FurkinState                        状态机当前值
  * combatMode     FurkinCombatMode                   战斗模式四档（跟随 / 被动 / 保护 / 主动）
  * aiStateVersion  int                              战斗 AI 所有权模型版本（旧档缺失按 0）
@@ -46,6 +47,17 @@ public final class FurkinData {
     private int xp;
     private int skillPoints;
     private final Map<ResourceLocation, Integer> skillLevels;
+
+    /**
+     * 技能实际累计支付点数（技能 id → 累计消耗）。
+     *
+     * <p>只用于退款与存档迁移，不进入 {@link #syncNBT()}：客户端只需要等级、当前
+     * {@code cost} 和可用点数，不需要知道历史支付明细。旧档缺少该字段时，
+     * {@code skillInvestmentsKnown=false}，首次加点或洗点按当前定义做一次迁移。</p>
+     */
+    private final Map<ResourceLocation, Integer> skillInvestments;
+    private boolean skillInvestmentsKnown;
+
     private FurkinState state;
     /** 当前战斗 AI 所有权模型版本。 */
     public static final int CURRENT_AI_STATE_VERSION = 1;
@@ -91,6 +103,8 @@ public final class FurkinData {
         this.xp = 0;
         this.skillPoints = 0;
         this.skillLevels = new HashMap<>();
+        this.skillInvestments = new HashMap<>();
+        this.skillInvestmentsKnown = true;
         this.state = FurkinState.WILD;
         this.combatMode = FurkinCombatMode.FOLLOW;
         this.aiStateVersion = 0;
@@ -140,6 +154,21 @@ public final class FurkinData {
 
     public Map<ResourceLocation, Integer> getSkillLevels() {
         return skillLevels;
+    }
+
+    /** 技能实际累计支付点数；内部可写，调用方须与 {@link #skillLevels} 同步维护。 */
+    public Map<ResourceLocation, Integer> getSkillInvestments() {
+        return skillInvestments;
+    }
+
+    /** 旧档是否已经有实际支付记录；false 表示需要按当前技能定义迁移。 */
+    public boolean hasKnownSkillInvestments() {
+        return skillInvestmentsKnown;
+    }
+
+    /** 完成迁移后标记支付记录已知；新对象默认 true。 */
+    public void setSkillInvestmentsKnown(boolean known) {
+        this.skillInvestmentsKnown = known;
     }
 
     public FurkinState getState() {
@@ -271,6 +300,8 @@ public final class FurkinData {
         this.xp = 0;
         this.skillPoints = 0;
         this.skillLevels.clear();
+        this.skillInvestments.clear();
+        this.skillInvestmentsKnown = true;
         this.state = FurkinState.WILD;
         this.combatMode = FurkinCombatMode.FOLLOW;
         this.aiStateVersion = 0;
@@ -328,6 +359,7 @@ public final class FurkinData {
     public CompoundTag serializeNBT() {
         CompoundTag tag = new CompoundTag();
         writeCore(tag);
+        writeSkillInvestments(tag);
         tag.putInt("ai_state_version", aiStateVersion);
         // 随身行囊：物品随实体 NBT 走（宠物退游戏 / 区块卸载重载都不丢）。
         // 注意与「收回 / 死亡」的区别 —— 那两条路径会先清空并掉落物品再存快照（D6），
@@ -347,6 +379,18 @@ public final class FurkinData {
         CompoundTag tag = new CompoundTag();
         writeCore(tag);
         return tag;
+    }
+
+    /** 仅写入持久化 NBT；网络同步刻意不调用这里。 */
+    private void writeSkillInvestments(CompoundTag tag) {
+        if (!skillInvestmentsKnown) {
+            return;
+        }
+        CompoundTag investments = new CompoundTag();
+        for (Map.Entry<ResourceLocation, Integer> e : skillInvestments.entrySet()) {
+            investments.putInt(e.getKey().toString(), e.getValue());
+        }
+        tag.put("skill_investments", investments);
     }
 
     /**
@@ -370,6 +414,18 @@ public final class FurkinData {
         CompoundTag skills = tag.getCompound("skill_levels");
         for (String key : skills.getAllKeys()) {
             this.skillLevels.put(new ResourceLocation(key), skills.getInt(key));
+        }
+
+        // 实际支付表是 M-02 新增字段；旧档缺失时标记为未知，由加点 / 洗点路径做一次性迁移。
+        this.skillInvestments.clear();
+        if (tag.contains("skill_investments", CompoundTag.TAG_COMPOUND)) {
+            CompoundTag investments = tag.getCompound("skill_investments");
+            for (String key : investments.getAllKeys()) {
+                this.skillInvestments.put(new ResourceLocation(key), investments.getInt(key));
+            }
+            this.skillInvestmentsKnown = true;
+        } else {
+            this.skillInvestmentsKnown = false;
         }
 
         // 技能冷却：旧档无此键时保持空表（等价于「无冷却」）。
@@ -400,6 +456,8 @@ public final class FurkinData {
         copy.xp = this.xp;
         copy.skillPoints = this.skillPoints;
         copy.skillLevels.putAll(this.skillLevels);
+        copy.skillInvestments.putAll(this.skillInvestments);
+        copy.skillInvestmentsKnown = this.skillInvestmentsKnown;
         copy.state = this.state;
         copy.combatMode = this.combatMode;
         copy.aiStateVersion = this.aiStateVersion;
@@ -419,11 +477,14 @@ public final class FurkinData {
                 && Objects.equals(companionId, other.companionId)
                 && Objects.equals(ownerUuid, other.ownerUuid)
                 && Objects.equals(skillLevels, other.skillLevels)
+                && Objects.equals(skillInvestments, other.skillInvestments)
+                && skillInvestmentsKnown == other.skillInvestmentsKnown
                 && state == other.state;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(companionId, ownerUuid, level, xp, skillPoints, skillLevels, state);
+        return Objects.hash(companionId, ownerUuid, level, xp, skillPoints, skillLevels,
+                skillInvestments, skillInvestmentsKnown, state);
     }
 }

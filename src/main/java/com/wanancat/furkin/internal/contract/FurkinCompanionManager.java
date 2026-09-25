@@ -171,6 +171,8 @@ public final class FurkinCompanionManager {
         entry.setXp(data.getXp());
         entry.setSkillPoints(data.getSkillPoints());
         entry.setSkillSnapshot(data.syncNBT().getCompound("skill_levels"));
+        entry.setSkillInvestments(data.getSkillInvestments());
+        entry.setSkillInvestmentsKnown(data.hasKnownSkillInvestments());
         // 物种补写：旧档（加 species 字段前契约的）在此自愈——实体在场时物种必然可得。
         if (entry.getSpecies() == null) {
             entry.setSpecies(target.getType());
@@ -374,15 +376,18 @@ public final class FurkinCompanionManager {
         data.setAiStateVersion(FurkinData.CURRENT_AI_STATE_VERSION);
         data.setState(FurkinState.COMPANION);
         // 技能快照读回（M2 起填充具体技能）。
+        data.getSkillLevels().clear();
         if (entry.getSkillSnapshot() != null && !entry.getSkillSnapshot().isEmpty()) {
             // 技能等级反序列化：skill_levels 的 NBT 形态。
-            data.getSkillLevels().clear();
             for (String key : entry.getSkillSnapshot().getAllKeys()) {
                 data.getSkillLevels().put(
                         new ResourceLocation(key),
                         entry.getSkillSnapshot().getInt(key));
             }
         }
+        data.getSkillInvestments().clear();
+        data.getSkillInvestments().putAll(entry.getSkillInvestments());
+        data.setSkillInvestmentsKnown(entry.hasKnownSkillInvestments());
 
         // 重挂技能效果（M2.4）：实体重建后 attribute modifier 是运行时表现，须按 skillLevels
         // 重新 apply，否则收回再召唤后属性加成丢失。

@@ -78,6 +78,20 @@ public final class SkillLoader {
         int maxLevel = root.has("maxLevel") ? root.get("maxLevel").getAsInt() : 1;
         int cost = root.has("cost") ? root.get("cost").getAsInt() : 1;
 
+        if (tier < 1) {
+            FurkinMod.LOGGER.warn("Rejecting skill {}: tier must be >= 1 (got {})", fileLocation, tier);
+            return null;
+        }
+        if (maxLevel != -1 && maxLevel < 1) {
+            FurkinMod.LOGGER.warn(
+                    "Rejecting skill {}: maxLevel must be -1 or >= 1 (got {})", fileLocation, maxLevel);
+            return null;
+        }
+        if (cost <= 0) {
+            FurkinMod.LOGGER.warn("Rejecting skill {}: cost must be > 0 (got {})", fileLocation, cost);
+            return null;
+        }
+
         List<ResourceLocation> requires = new ArrayList<>();
         if (root.has("requires") && root.get("requires").isJsonArray()) {
             for (JsonElement e : root.getAsJsonArray("requires")) {
@@ -86,9 +100,20 @@ public final class SkillLoader {
         }
 
         Map<ResourceLocation, Integer> requiresLevel = new LinkedHashMap<>();
-        if (root.has("requiresLevel") && root.get("requiresLevel").isJsonObject()) {
+        if (root.has("requiresLevel")) {
+            if (!root.get("requiresLevel").isJsonObject()) {
+                FurkinMod.LOGGER.warn("Rejecting skill {}: requiresLevel must be an object", fileLocation);
+                return null;
+            }
             for (Map.Entry<String, JsonElement> e : root.getAsJsonObject("requiresLevel").entrySet()) {
-                requiresLevel.put(new ResourceLocation(e.getKey()), e.getValue().getAsInt());
+                int requiredLevel = e.getValue().getAsInt();
+                if (requiredLevel <= 0) {
+                    FurkinMod.LOGGER.warn(
+                            "Rejecting skill {}: requiresLevel[{}] must be > 0 (got {})",
+                            fileLocation, e.getKey(), requiredLevel);
+                    return null;
+                }
+                requiresLevel.put(new ResourceLocation(e.getKey()), requiredLevel);
             }
         }
 

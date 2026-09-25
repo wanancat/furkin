@@ -156,6 +156,15 @@ Skills are **data-driven**; each skill maps to one JSON config file (`data/furki
 | `species`     | string[] | empty                    | Species (empty = all; `furkin:cat` / `furkin:dog`)            |
 | `effects`     | array    | empty                    | Effect list (each entry = `type` + `params`)                  |
 
+**数据约束 / Data constraints**
+
+- `tier` 必须 ≥ 1；`maxLevel` 必须是 `-1` 或正整数；`cost` 必须 > 0。
+  *`tier` must be >= 1; `maxLevel` must be -1 or a positive integer; `cost` must be > 0.*
+- `requiresLevel` 的每个值必须 > 0；非法技能定义会在加载期被拒绝并记录 WARN。
+  *Every `requiresLevel` value must be > 0; invalid skill definitions are rejected at load time with a WARN.*
+- 技能点退款按每级实际支付成本累计；热改 `cost` 只影响后续加点，不重写已支付部分。
+  *Skill-point refunds use the cumulative amount actually paid per level. Hot-changing `cost` affects future unlocks only; it does not rewrite previously paid amounts.*
+
 ### 效果项结构 / Effect Entry
 
 每条效果项为 `{ "type": "...", "params": {...} }`，其中 `type` 指向已注册的效果类型：

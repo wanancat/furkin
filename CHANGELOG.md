@@ -41,6 +41,8 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 
 **修复 / Fixed**
 
+- **技能退款与数据校验 / Skill refunds and schema validation** —— 洗点现按每级实际支付成本退款，热改技能 `cost` 不会重写已支付金额；加载期拒绝非正 `cost`、非法 `maxLevel` / `tier` / `requiresLevel`，避免非法技能数据制造或吞掉技能点。
+  *Respec now refunds the amount actually paid per level, and hot-changing a skill's `cost` no longer rewrites past payments. Loading rejects non-positive `cost`, invalid `maxLevel` / `tier` / `requiresLevel`, preventing malformed skill data from creating or consuming skill points incorrectly.*
 - **解绑清理 / Unbind cleanup** —— 解绑现在会掉落并清空行囊与四件装备，恢复被接管的 AI、原版默认掉率、技能效果、冷却、进食和坐姿等状态；只有全部清理成功后才删除档案。
   *Unbinding now drops and clears the pouch and four equipment slots, restores displaced AI, vanilla default drop chances, skill effects, cooldowns, feeding and sitting state; the archive is removed only after cleanup succeeds.*
 - **不可解析实体自救 / Unresolved companion recovery** —— 已召唤实体暂时无法定位时，常规解绑不再删档；玩家可二次确认强制解绑，原实体以后入世时再完成清理，失败会保留墓碑并重试。
