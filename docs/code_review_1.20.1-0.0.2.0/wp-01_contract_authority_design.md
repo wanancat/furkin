@@ -5,9 +5,9 @@
 - 工作分支：`mc1.20.1`
 - 审查基线：`66dd99b78357f224c66aafe6faf9aa76a6a8a78e`
 - 依据：
-  - `docs/code_review_2026-09-24/code_review_2026-09-24.md` H-01
-  - `docs/code_review_2026-09-24/code_review_2026-09-24_workflow.md` WP-01
-  - `docs/code_review_2026-09-24/contract_precondition_workflow.md` §4.3
+  - `docs/code_review_1.20.1-0.0.2.0/code_review_2026-09-24.md` H-01
+  - `docs/code_review_1.20.1-0.0.2.0/code_review_2026-09-24_workflow.md` WP-01
+  - `docs/code_review_1.20.1-0.0.2.0/contract_precondition_workflow.md` §4.3
 - 运行期已由服务端夹具与真实客户端覆盖；无法通过普通界面稳定保留会话的卸载、重启、实体 ID 复用和真实登出链保留为残余，不替代已完成的安全夹具结论。
 
 ---
@@ -187,7 +187,7 @@ player.canReach(target, 3.0D)
 | `internal/event/CommonEvents.java` | 增加 `PlayerLoggedOutEvent` 清理该玩家待确认会话 |
 | `assets/furkin/lang/en_us.json` | WP-01 默认不新增键；若最终决定增加失败反馈再同步 |
 | `assets/furkin/lang/zh_cn.json` | 同上 |
-| `docs/code_review_2026-09-24/contract_precondition_workflow.md` | 实施后把“确认包可伪造”的现状说明更新为已实现边界；血量门槛状态仍保持设计态 |
+| `docs/code_review_1.20.1-0.0.2.0/contract_precondition_workflow.md` | 实施后把“确认包可伪造”的现状说明更新为已实现边界；血量门槛状态仍保持设计态 |
 
 无新增注册项、无存档格式变化、无公开 API 变化。
 

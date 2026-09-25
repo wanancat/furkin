@@ -5,7 +5,7 @@
 - 工作分支：`mc1.20.1`
 - 代码基线：`184e82e0565f40961fd7b232c7e66f72d31f68c9`
 - 前置完成：WP-02A goal 所有权与生命周期恢复
-- 设计依据：`docs/code_review_2026-09-24/wp-02_ai_ownership_unbind_design.md`
+- 设计依据：`docs/code_review_1.20.1-0.0.2.0/wp-02_ai_ownership_unbind_design.md`
 - 适用版本：Minecraft 1.20.1 / Forge 47.2.0
 
 > 本文只定义 WP-02B 的实施步骤、确认门和验证门槛，不代表代码已经修改。
@@ -534,8 +534,8 @@ B6 已完成；等待乌狸确认后进入 B7。
 
 #### 写入范围
 
-- `docs/code_review_2026-09-24/wp-02_ai_ownership_unbind_design.md` 的执行状态
-- `docs/code_review_2026-09-24/code_review_2026-09-24_workflow.md`
+- `docs/code_review_1.20.1-0.0.2.0/wp-02_ai_ownership_unbind_design.md` 的执行状态
+- `docs/code_review_1.20.1-0.0.2.0/code_review_2026-09-24_workflow.md`
 - WP-02B 实施计划状态
 - 面向玩家的 `CHANGELOG.md`、`changelog.en.md`
 - 必要时更新 README 中解绑行为说明

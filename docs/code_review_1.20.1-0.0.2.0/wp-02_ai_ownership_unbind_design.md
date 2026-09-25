@@ -7,9 +7,9 @@
 - 当前代码基线：`184e82e0565f40961fd7b232c7e66f72d31f68c9`（WP-02A 已推送；WP-02B 工作区待提交）
 - 适用版本：Minecraft 1.20.1 / Forge 47.2.0
 - 依据：
-  - `docs/code_review_2026-09-24/code_review_2026-09-24.md` H-02、M-03
-  - `docs/code_review_2026-09-24/code_review_2026-09-24_workflow.md` WP-02
-  - `docs/code_review_2026-09-24/contract_precondition_workflow.md` §4.4、§7.3
+  - `docs/code_review_1.20.1-0.0.2.0/code_review_2026-09-24.md` H-02、M-03
+  - `docs/code_review_1.20.1-0.0.2.0/code_review_2026-09-24_workflow.md` WP-02
+  - `docs/code_review_1.20.1-0.0.2.0/contract_precondition_workflow.md` §4.4、§7.3
 
 ---
 

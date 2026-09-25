@@ -2,7 +2,7 @@
 
 - 文档状态：已完成；WP-01/H-01、WP-02/H-02、WP-03/H-03、WP-04/M-01、WP-05/M-02/M-04、WP-06/L-01、WP-07/L-02 均已关闭；WP-06 最终验收在 `f7cfcbc` 完成 `compileJava --rerun-tasks`、`build --rerun-tasks`、`runServer` 到达 `Done`、`runClient` 进入集成世界并完成普通解绑与召唤后正常退出；日志无项目错误级记录；强制解绑特有 UI 分支保留为未复现残余；全部提交/推送逐项授权
 - 制定日期：2026-09-24
-- 依据报告：`docs/code_review_2026-09-24/code_review_2026-09-24.md`
+- 依据报告：`docs/code_review_1.20.1-0.0.2.0/code_review_2026-09-24.md`
 - 审查基线：`main@66dd99b78357f224c66aafe6faf9aa76a6a8a78e`
 - 当前工作分支：`mc1.20.1`
 - 适用版本：Minecraft 1.20.1 / Forge 47.2.0
@@ -77,8 +77,8 @@
 
 ### 3.1 输入
 
-- 审查报告：`docs/code_review_2026-09-24/code_review_2026-09-24.md`
-- 契约前置设计参考：`docs/code_review_2026-09-24/contract_precondition_workflow.md`
+- 审查报告：`docs/code_review_1.20.1-0.0.2.0/code_review_2026-09-24.md`
+- 契约前置设计参考：`docs/code_review_1.20.1-0.0.2.0/contract_precondition_workflow.md`
 - 项目规则：`AGENTS.md` 和根目录构建配置
 - 当前工作分支：`mc1.20.1`
 
@@ -349,8 +349,8 @@ $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 
 ### 6.2 WP-02：AI 所有权、解绑清理与生命周期（M-03 + H-02）
 
-- 设计文档：`docs/code_review_2026-09-24/wp-02_ai_ownership_unbind_design.md`
-- 实施计划：`docs/code_review_2026-09-24/wp-02a_goal_ownership_implementation_plan.md`；`docs/code_review_2026-09-24/wp-02b_unbind_cleanup_implementation_plan.md`
+- 设计文档：`docs/code_review_1.20.1-0.0.2.0/wp-02_ai_ownership_unbind_design.md`
+- 实施计划：`docs/code_review_1.20.1-0.0.2.0/wp-02a_goal_ownership_implementation_plan.md`；`docs/code_review_1.20.1-0.0.2.0/wp-02b_unbind_cleanup_implementation_plan.md`
 
 - WP-02A 当前进度（2026-09-24）：A0-A8 完成；两轮专用服务端夹具分别为 159/0 和 11/0；`compileJava`、`build`、`runServer`、`runClient` 通过；最终 JAR 不含临时夹具；已提交并推送至 `origin/mc1.20.1/dev`（提交 `184e82e`）。
 
@@ -403,7 +403,7 @@ $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 
 让所有玩法路径读取同一个服务器级档案实例，避免每个维度各存一份。
 
-- 实施记录：`docs/code_review_2026-09-24/wp-03_global_archive_implementation.md`
+- 实施记录：`docs/code_review_1.20.1-0.0.2.0/wp-03_global_archive_implementation.md`
 - 当前进度（2026-09-25）：服务器级 overworld 档案、`data_version=1` 旧档迁移、全局活跃上限、UUID + 维度定向定位和跨维度召唤已完成；三轮夹具合计 34 项检查、`failed=0`、`restartPass=true`；夹具已删除，`clean build`、无夹具 `runServer`/`runClient` 通过，最终 JAR 不含夹具，日志无新增 ERROR/FATAL；H-03 已关闭，提交/推送待授权。
 - 残余边界：同 ID 冲突保留主世界条目并记录 `WARN`；旧维度档案文件保留作回滚副本；迁移覆盖首次读取时服务器已创建的维度。
 
@@ -436,7 +436,7 @@ $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 
 包结构、字段或语义发生变化时，客户端和服务端必须拒绝不兼容组合。
 
-- 审计记录：`docs/code_review_2026-09-24/wp-04_protocol_version_governance.md`（2026-09-25：已核对当前 11 个包、协议 v1 历史不一致和 v2 边界）
+- 审计记录：`docs/code_review_1.20.1-0.0.2.0/wp-04_protocol_version_governance.md`（2026-09-25：已核对当前 11 个包、协议 v1 历史不一致和 v2 边界）
 - 当前进度（2026-09-25）：已补充 `FurkinNetwork` 协议变更规则和 `AGENTS.md` 长期约束；保留 `PROTOCOL_VERSION = "2"`，未改变线格式；`compileJava`、`build` 通过，`runServer` 到达 `Done`、`runClient` 进入主界面且日志无 `ERROR`/`FATAL`；协议 `1` 客户端连接协议 `2` 服务端实测被拒绝，协议 `2` 客户端连接协议 `2` 服务端实测成功进入世界。
 
 #### 实施步骤

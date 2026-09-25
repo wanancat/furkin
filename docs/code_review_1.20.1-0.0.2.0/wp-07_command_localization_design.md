@@ -5,7 +5,7 @@
 - 基线提交：`46164fc`（`fix: 隔离网络包客户端类引用`）
 - 对应问题：`L-02` 命令回执硬编码英文
 - 适用版本：Minecraft 1.20.1 / Forge 47.2.0
-- 关联工作流：`docs/code_review_2026-09-24/code_review_2026-09-24_workflow.md`
+- 关联工作流：`docs/code_review_1.20.1-0.0.2.0/code_review_2026-09-24_workflow.md`
 
 ---
 
