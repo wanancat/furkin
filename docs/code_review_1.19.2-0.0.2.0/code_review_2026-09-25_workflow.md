@@ -2,11 +2,11 @@
 
 - 日期：2026-09-25
 - 工作目录：`D:\frukin_dev\frukin_1_19_2`
-- 分支：`mc1.19.2`（HEAD `ba3132e`）
+- 基线：`mc1.19.2` @ `ba3132e`
 - 输入：`docs/code_review_1.19.2-0.0.2.0/code_review_2026-09-25.md`
 - 参考：1.20.1 `docs/code_review_2026-09-24/code_review_2026-09-24_workflow.md` 与 `wp-01`～`wp-07`
 - 目标版本：**`1.19.2-0.0.2.0`**（MINOR 递增；`mod_version` 只改 `gradle.properties`）
-- 状态：计划已建立，**处置口径已于 2026-09-25 冻结**（见第 12 节）；WP-01～WP-09 均已完成代码、文档与阶段性验证；客户端进服后的实机交互矩阵保留为最终验收残余
+- 状态：计划已建立，**处置口径已于 2026-09-25 冻结**（见第 12 节）；WP-01～WP-09 均已完成代码、文档与阶段性验证；最终真实双端验收已于 2026-09-25 完成，证据见第 14 节
 
 > 重要：本文件描述的方案是以 1.19.2 / Forge 43.2.0 的真实 API 为前提重新设计的，**不是** 1.20.1 工作包的照抄。1.20.1 的代码差异点见第 3.4 节。只有逐项核对通过后，才允许把某条标记为「已完成」。
 
@@ -257,7 +257,7 @@
 
 ### 6.5 WP-05：技能退款、schema 与热重载一致性（M-02 + M-04）
 
-- 状态：**已完成**（2026-09-25）；实施、验证和残余边界见 `wp-05_skill_consistency.md`。真实客户端联调在 WP-06 后统一收口。
+- 状态：**已完成**（2026-09-25）；实施、验证和残余边界见 `wp-05_skill_consistency.md`，最终客户端联调见第 14 节。
 
 **已实施口径**：
 
@@ -271,13 +271,13 @@
 
 - 服务端临时夹具覆盖 schema、实付/退款、旧档迁移、属性重建、真实资源重载、已加载实体扫描和流血持续时间保持；归档日志 `run/logs/2026-09-25-1.log.gz` 记录 `SUMMARY pass=30 fail=0`。
 - 夹具删除后 `clean build` 通过，最终 JAR 不含 `Wp05` / `wp05`；无夹具 `runServer` 到达 `Done`，项目包自身无 `ERROR` / `FATAL`。
-- 真实客户端 `/reload`、技能界面加点/洗点和流血伤害数值观察保留为最终客户端联调残余。
+- 真实客户端 `/reload`、技能界面加点/洗点和流血伤害数值观察已在第 14 节完成。
 
 ---
 
 ### 6.6 WP-06：客户端类隔离（L-01）
 
-- 状态：**已完成**（2026-09-25）；实施、静态检查、双端启动和残余边界见 `wp-06_client_isolation.md`。真实进服后的五条网络交互仍待人工矩阵。
+- 状态：**已完成**（2026-09-25）；实施、静态检查、双端启动和残余边界见 `wp-06_client_isolation.md`，真实进服后的五条网络交互见第 14 节。
 
 **目标**：共享网络包不再在类级引用客户端类型。
 
@@ -293,7 +293,7 @@
 
 ### 6.7 WP-07：命令回执本地化（L-02）
 
-- 状态：**已完成**（2026-09-25）；实施、API 差异、键集合校验和残余边界见 `wp-07_command_localization.md`。游戏内中英文切换仍待人工验收。
+- 状态：**已完成**（2026-09-25）；实施、API 差异、键集合校验和残余边界见 `wp-07_command_localization.md`，游戏内中英文切换见第 14 节。
 
 **目标**：玩家可见文本全部走翻译键。
 
@@ -365,9 +365,9 @@
 - **1.19.2 与 1.20.1 的方案不能互换**：`getDataStorage()` 语义、`GoalSelector` 删除 API、`GuiGraphics` 渲染 API 均不同，移植时必须逐项重设计。
 - ~~**H-02 的装备口径未决**~~：**已冻结**（2026-09-25，见第 12 节）。D9 纳入范围，工作量与依赖见 §12.5。
 - **H-03 的旧档迁移**：已完成（WP-03）；`overworld` 权威合并、冲突保留 overworld、旧副本不删均已运行取证，见 `wp-03_global_archive.md`。
-- **D9 的协议升号**：WP-09 已实现强制解绑与墓碑，WP-04 已把协议从 `"1"` 提升到 `"2"` 并记录 `0-10` 包映射；真实双端握手仍作为客户端联调验收项。
-- **M-04 的旧树引用**：已按当前实现收口——重建在服务器 tick 末尾通过 `SkillRuntimeCalibrator` 遍历已加载维度/实体，入世和召唤走定向校准；未加载实体不强制加载。真实客户端 / 数据包重载联调仍保留为 WP-06 后的验收项。
-- **L-01 的实现风险**：5 处共享客户端引用已迁入 `FurkinClientPacketHandler`，静态/字节码/双端启动已通过；真实进服后的五条网络交互仍需人工验收，不外推为运行期全路径已证实。
+- **D9 的协议升号**：WP-09 已实现强制解绑与墓碑，WP-04 已把协议从 `"1"` 提升到 `"2"` 并记录 `0-10` 包映射；真实双端协议 `"2"` 握手及客户端确认页点击链已在第 14 节验收。
+- **M-04 的旧树引用**：已按当前实现收口——重建在服务器 tick 末尾通过 `SkillRuntimeCalibrator` 遍历已加载维度/实体，入世和召唤走定向校准；未加载实体不强制加载。真实客户端 `/reload`、面板加点/洗点和流血数值变化已在第 14 节验收。
+- **L-01 的实现风险**：5 处共享客户端引用已迁入 `FurkinClientPacketHandler`，静态/字节码/双端启动已通过；真实进服后的五条网络回调已在第 14 节验证。第三方自定义界面/包组合仍不在本轮覆盖范围。
 
 ---
 
@@ -391,14 +391,14 @@
 | H-02 | WP-02 | WP-02A/B 已完成；跨维度定位/墓碑由 WP-09 收口 |
 | M-03 | WP-02A | 已完成（2026-09-25，`wp-02a_ai_ownership.md`） |
 | H-03 | WP-03 | 已完成（2026-09-25，`wp-03_global_archive.md`） |
-| M-01 | WP-04 | 代码/静态/服务端验证完成（2026-09-25，`wp-04_protocol_version_governance.md`）；真实双端握手待客户端联调 |
+| M-01 | WP-04 | 已完成（2026-09-25，`wp-04_protocol_version_governance.md`）；真实双端协议 `"2"` 握手见第 14 节 |
 | M-02 | WP-05 | 已完成（2026-09-25，`wp-05_skill_consistency.md`） |
 | M-04 | WP-05 | 已完成（2026-09-25，`wp-05_skill_consistency.md`） |
-| L-01 | WP-06 | 已完成（2026-09-25，`wp-06_client_isolation.md`）；进服交互为人工验收残余 |
-| L-02 | WP-07 | 已完成（2026-09-25，`wp-07_command_localization.md`）；游戏内双语切换为人工验收残余 |
+| L-01 | WP-06 | 已完成（2026-09-25，`wp-06_client_isolation.md`）；进服五回调见第 14 节 |
+| L-02 | WP-07 | 已完成（2026-09-25，`wp-07_command_localization.md`）；游戏内双语切换见第 14 节 |
 | L-03 | WP-08 | 已完成（2026-09-25，`wp-08_archive_skill_integrity.md`）；真实损坏磁盘读档为残余 |
 | L-04 | WP-08 | 已完成（2026-09-25，`wp-08_archive_skill_integrity.md`） |
-| D9 | WP-09 | 代码/夹具完成；协议 `"2"` 已由 WP-04 收口（2026-09-25，`wp-09_force_unbind_tombstone.md`） |
+| D9 | WP-09 | 已完成（2026-09-25，`wp-09_force_unbind_tombstone.md`）；协议 `"2"` 与客户端确认页点击链见第 14 节 |
 
 ---
 
@@ -559,3 +559,27 @@
 3. 前置依赖：本口径**必须与 M-04 的未知技能兜底清理同批落地**（WP-05），否则被拒技能会残留属性与点数。
 
 4. 实施结果（2026-09-25）：WP-05 已按上述口径落地；静态构建、服务端夹具和残余边界见 `wp-05_skill_consistency.md`。
+
+---
+
+## 14. 最终真实双端验收（2026-09-25 追加）
+
+- 证据日志：`run/logs/2026-09-25-1.log.gz`，SHA-256 `5AB93E16C5133E28C45BCFDCAB8B68665B5379C48300419C7E93C694D80C15F1`（2026-09-25 18:10–18:11）；握手通道证据另见 `run/logs/debug-1.log.gz`，SHA-256 `7CCB70EA0240BBDAA5B312E560FA5539583A75F5937030B7166E5799BEBDDE8D`，其中 `furkin:main` 的版本 `2` 为 `ACCEPTED`。
+- 夹具：临时 `AcceptanceServerFixture` + `AcceptanceClientFixture`，仅由 `run/acceptance-fixture.flag` 启用；验收后两个 Java 文件与 flag 均已删除，未进入产物。
+- 已覆盖：
+  1. 协议 `"2"` 同版本握手：客户端 `client joined server with protocol 2`，服务端通道版本测试 `ACCEPTED`；协议 `"1"` 比较仍为精确拒绝语义。
+  2. WP-01 / WP-06：真实 `ContractNameScreen` 可见后发送 `ConfirmContractPacket`，服务端记录 `Furkin contracted`；同步、技能面板、绒亲录、动作结果、契约命名五类客户端回调均出现。
+  3. WP-05 / M-04：真实技能面板打开，真实 `UnlockSkillPacket` 解锁 `sharp_fang` 与 `bleeding_bite`，`/reload` 后流血 DPS 由 `1.0` 变为 `5.0`，持续时间不被改写；洗点后 `points=20 skills={}`，属性 modifier 未重复。
+  4. WP-07：真实客户端切换 `zh_cn` 与 `en_us`，同一无效召唤命令分别输出中文与英文回执。
+  5. WP-09：夹具让已召唤实体失联，常规解绑链路返回 `ENTITY_UNRESOLVED`，真实 `ForceUnbindConfirmScreen` 打开并由 `Button#onPress()` 点击；服务端记录 `Furkin force-unbound: id=... by Dev`。墓碑清理路径仍由 WP-09 既有服务端夹具覆盖。
+- 日志中的 `TagLoader` 大量 tag 缺失 `ERROR` 属于 Forge `43.2.0` / 开发环境既有噪声；项目包自身未出现 `ERROR` / `FATAL` / 异常栈。`Realms` 无授权与 OSHI/WMI 为环境噪声。
+- 仍未覆盖：WP-08 的真实损坏区域文件磁盘重启读档；第三方自定义 goal 与跨维度玩家传送的独立复现仍按各 WP 边界记录，不外推为已执行。
+
+---
+
+## 15. 无夹具收尾验证（2026-09-25 追加）
+
+- 临时验收夹具删除后执行 `clean build`：`BUILD SUCCESSFUL in 14s`；产物 `build/libs/furkin-1.19.2-0.0.2.0.jar`，大小 `336096` 字节，SHA-256 `59C47110FF10C08D1134A7AD1A07B08C791BFFDCD8CA7CDD62BDC755F78EF3EC`。
+- JAR 条目扫描未发现 `Acceptance`、`Wp0x` 或 `wp0x` 夹具内容。
+- 无夹具 `runServer` 到达 `Done (2.200s)!`，加载 `Furkin loaded 13 skills.`；`run/logs/latest.log` SHA-256 `7FE072FEECF3AFB655BEFBDA8A58B2587957886C84B5D3046C03CF88A618C30F`，项目包自身无 `ERROR` / `FATAL` / 异常栈。
+- `AcceptanceServerFixture.java`、`AcceptanceClientFixture.java` 与 `run/acceptance-fixture.flag` 均已删除；本轮不修改 `AGENTS.md`。
