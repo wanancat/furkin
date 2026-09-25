@@ -617,7 +617,7 @@ public void register(Skill skill) {
 
 - 1.19.2 的 `Screen.onClose()` 会走 `Minecraft.popGuiLayer()`；`ContractNameScreen` 由 `Minecraft.setScreen(...)` 打开、未压入 GUI 层。
 - `javap` 确认 `ForgeHooksClient.popGuiLayer`：栈空时回落 `Minecraft.setScreen(null)` → 返回世界；这正是 `ContractNameScreen` 的预期出口。
-- 实机证据：`docs/wp9d-gui-test-plan.md:443,681` 记录「契约命名取消/ESC 返回世界的实测结果正确」，并有 D2/D9 全部通过的回归记录。
+- 实机证据：`docs/mc1.19.2-migration/wp9d-gui-test-plan.md:443,681` 记录「契约命名取消/ESC 返回世界的实测结果正确」，并有 D2/D9 全部通过的回归记录。
 - `RenameScreen` 语义不同（需返回绒亲录父屏），已局部实现显式父屏返回（`wp9d-gui-test-plan.md:662-681`）。两者不可混为一谈。
 - **结论**：不列为 1.19.2 特有缺陷。
 

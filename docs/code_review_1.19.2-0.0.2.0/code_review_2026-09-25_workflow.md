@@ -136,7 +136,7 @@
 
 ### 5.6 阶段 5：运行验证
 
-- 客户端界面/渲染/输入 → `runClient`（并核对 `docs/wp9d-gui-test-plan.md` 回归项）。
+- 客户端界面/渲染/输入 → `runClient`（并核对 `docs/mc1.19.2-migration/wp9d-gui-test-plan.md` 回归项）。
 - 注册/命令/能力/网络/存档/服务端逻辑 → `runServer`。
 - 检查 `run/logs/latest.log`：无新 `ERROR`/`FATAL`/异常栈/资源缺失。
 - **临时夹具已获授权**（2026-09-25）：为实现期异常注入，允许临时增加服务端夹具/调试入口；验证后移除，日志证据保留在 `docs/code_review_1.19.2-0.0.2.0/` 对应 WP 文档中。
@@ -179,7 +179,7 @@
 
 - 静态：`rg` 确认 `executeContract` 是唯一落契约入口，且包含全部边界。
 - 运行：`runServer`；构造「未经过 tryContract 直接发确认包」的路径（可用测试客户端或临时调试注入）应被拒绝；正常契约流程不受影响。
-- 回归：`docs/wp9d-gui-test-plan.md` 的 D2（契约命名）全部通过。
+- 回归：`docs/mc1.19.2-migration/wp9d-gui-test-plan.md` 的 D2（契约命名）全部通过。
 
 **1.19.2 注意**：距离判断用 `player.distanceToSqr(target)`；取实体用 `player.getLevel().getEntity(id)`（`ServerPlayer#getLevel()` 已返回 `ServerLevel`，无需再 `instanceof`）。
 
