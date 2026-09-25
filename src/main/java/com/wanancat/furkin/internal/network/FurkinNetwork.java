@@ -31,7 +31,7 @@ public final class FurkinNetwork {
      *
      * <p>协议 `1` 是内部不一致的历史遗留，视作已废弃；协议 `2` 从 `77c1012` 起对应当前
      * `0-10` 包结构。完整包清单和变更记录见
-     * {@code docs/wp-04_protocol_version_governance.md}。</p>
+     * {@code docs/code_review_2026-09-24/wp-04_protocol_version_governance.md}。</p>
      */
     private static final String PROTOCOL_VERSION = "2";
 

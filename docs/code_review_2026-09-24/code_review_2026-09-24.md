@@ -107,9 +107,9 @@ $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 审查期间未修改或提交代码。当前未跟踪文件包括：
 
 - `AGENTS.md`
-- `docs/contract_precondition_workflow.md`
+- `docs/code_review_2026-09-24/contract_precondition_workflow.md`
 
-其中 `docs/contract_precondition_workflow.md` 是未跟踪文档，不能被视为已经落地的安全修复，也不能据此认为契约前置问题已经解决。
+其中 `docs/code_review_2026-09-24/contract_precondition_workflow.md` 是未跟踪文档，不能被视为已经落地的安全修复，也不能据此认为契约前置问题已经解决。
 
 ---
 
@@ -420,7 +420,7 @@ Forge `SimpleChannel` 的握手只比较 `PROTOCOL_VERSION`。版本字符串相
 
 - 当前版本为 `"2"`；协议 `"1"` 是内部不一致的历史版本，统一视为不兼容。
 - `FurkinNetwork` 已固化规则：消息 ID 只追加；方向、字段、字段顺序、枚举顺序或处理器语义变化必须递增协议版本。
-- `AGENTS.md` 已加入同样的长期约束，完整包清单见 `docs/wp-04_protocol_version_governance.md`。
+- `AGENTS.md` 已加入同样的长期约束，完整包清单见 `docs/code_review_2026-09-24/wp-04_protocol_version_governance.md`。
 - Forge `NetworkInstance` 的版本协商分别调用客户端/服务端接受谓词；当前两处均为精确相等，因此 `"1"` 与 `"2"` 会被拒绝。
 - 验证：`compileJava`、`build` 通过；`runServer` 到达 `Done`，`runClient` 进入主界面，日志无 `ERROR`/`FATAL`。
 - 残余验证：尚未构造两个真实不同版本模组执行客户端/服务端握手，也未完成真实同版本登录；记录为验证债务，不阻塞版本治理关闭。

@@ -4,7 +4,7 @@
 - 制定日期：2026-09-24
 - 工作分支：`mc1.20.1/dev`
 - 代码基线：`c783547a2ccb9484223c6a6d094eeeabbce0fef2`
-- 设计依据：`docs/wp-02_ai_ownership_unbind_design.md`
+- 设计依据：`docs/code_review_2026-09-24/wp-02_ai_ownership_unbind_design.md`
 - 适用版本：Minecraft 1.20.1 / Forge 47.2.0
 - 遗留清理：A0 临时 patches/ 取证目录已删除。
 
@@ -384,8 +384,8 @@ $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 
 文档更新：
 
-- `docs/wp-02_ai_ownership_unbind_design.md` 记录实际签名和事件顺序结论。
-- `docs/code_review_2026-09-24_workflow.md` 更新 WP-02A 执行状态。
+- `docs/code_review_2026-09-24/wp-02_ai_ownership_unbind_design.md` 记录实际签名和事件顺序结论。
+- `docs/code_review_2026-09-24/code_review_2026-09-24_workflow.md` 更新 WP-02A 执行状态。
 - 若出现用户可见行为变化，再评估 changelog；WP-02A 预计以内部修复为主。
 
 ---

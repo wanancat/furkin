@@ -75,8 +75,8 @@ FurkinRecordItem.refreshRecordList(player);
 - `src/main/java/com/wanancat/furkin/internal/network/RequestSummonPacket.java`
 - `CHANGELOG.md`
 - `changelog.en.md`
-- `docs/code_review_2026-09-24_workflow.md`
-- `docs/fix_summon_record_refresh.md`
+- `docs/code_review_2026-09-24/code_review_2026-09-24_workflow.md`
+- `docs/code_review_2026-09-24/fix_summon_record_refresh.md`
 
 ---
 
