@@ -22,6 +22,17 @@ import java.util.Optional;
  */
 public final class FurkinNetwork {
 
+    /**
+     * 当前线格式版本。
+     *
+     * <p>消息 ID 只允许追加，不得插入、重排或复用。新增/删除包、修改方向、字段或字段顺序、
+     * 枚举顺序或处理器对载荷的解释语义时，必须递增本版本。只修改注释、日志或服务端内部校验
+     * 且不改变线格式时，不递增。</p>
+     *
+     * <p>协议 `1` 是内部不一致的历史遗留，视作已废弃；协议 `2` 从 `77c1012` 起对应当前
+     * `0-10` 包结构。完整包清单和变更记录见
+     * {@code docs/wp-04_protocol_version_governance.md}。</p>
+     */
     private static final String PROTOCOL_VERSION = "2";
 
     private static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
