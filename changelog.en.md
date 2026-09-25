@@ -37,6 +37,7 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 - **Unresolved companion recovery** —— If a summoned companion cannot currently be resolved, regular unbinding no longer removes its archive. A confirmed force-unbind can be used instead; cleanup completes when the entity next enters the world and is retried if it fails.
 - **Targeted lookup** —— Archives now store the entity UUID and dimension, so unbinding uses targeted index lookup without loading chunks, scanning all entities, or adding tick polling.
 - **Network protocol** —— Force-unbind adds request/result packets and raises the protocol version to 2; clients and servers must use the same protocol version.
+- **Cross-dimension archive** —— Companion archives now use one server-level overworld instance. Legacy per-dimension archives are merged on first read, so viewing, summoning, retracting and reviving across dimensions no longer resolve against the wrong world state, and the active limit is enforced server-wide.
 
 ---
 

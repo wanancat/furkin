@@ -292,7 +292,7 @@ EquipmentSlots.sealDrops(target);
 
 ### H-03：绒亲档案按当前维度读取，跨维度会拆成多份
 
-- 状态：已确认
+- 状态：已修复（WP-03，2026-09-25）
 - 严重度：高
 - 公开影响：跨维度后宠物可能从绒亲录消失、无法召唤/收回，活跃上限也可能被绕过。
 
@@ -353,6 +353,15 @@ public static FurkinArchiveData get(MinecraftServer server) {
    - 下界点击召唤。
    - 主世界宠物在实体仍存在时跨维度查看。
    - 多维度同时检查活跃上限。
+
+#### 修复验证（2026-09-25）
+
+- 全局实例：所有 `FurkinArchiveData.get(ServerLevel)` 最终转发到主世界服务器级 `get(MinecraftServer)`，不再在每个维度创建同名存档。
+- 旧档迁移：新增 `data_version=1`；首次读取合并非主世界旧档案，同 ID 冲突保留主世界条目并记录 `WARN`，旧维度文件保留作回滚副本。
+- 全局上限：契约、召唤和复活统一统计服务器级档案中的 `summoned` 条目，跨维度不再分别放行。
+- 跨维度定位与收回：按档案实体 UUID + 维度定向解析；主世界实体可被下界玩家召唤传送或收回，收回后清除失效定位。
+- 运行证据：三轮服务端夹具合计 `checks=34 failed=0`，其中跨重启轮 `restartPass=true`；临时夹具已删除，`clean build`、无夹具 `runServer`/`runClient` 启动通过，最终 JAR 不含夹具，日志无新增 `ERROR`/`FATAL`。
+- 残余边界：旧档同 ID 冲突无法安全判定新旧，采用主世界优先 + `WARN`；不自动删除旧维度文件；迁移覆盖首次读取时服务器已创建的维度。
 
 ---
 

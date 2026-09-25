@@ -689,16 +689,8 @@ public final class FurkinCommand {
         return instance == null ? 0.0 : instance.getValue();
     }
 
-    /** 在世界里按 companionId 查找在场绒亲实体。 */
+    /** 按服务器级档案的 UUID / 维度定向查找在场绒亲实体。 */
     private static LivingEntity findLivingByCompanionId(ServerLevel level, UUID companionId) {
-        for (Entity entity : level.getEntities().getAll()) {
-            if (entity instanceof LivingEntity living) {
-                FurkinData data = living.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
-                if (data != null && companionId.equals(data.getCompanionId())) {
-                    return living;
-                }
-            }
-        }
-        return null;
+        return FurkinCompanionManager.findLivingByCompanionId(level, companionId);
     }
 }

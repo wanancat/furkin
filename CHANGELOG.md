@@ -49,6 +49,8 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
   *Archives now store the entity UUID and dimension, so unbinding uses targeted index lookup without loading chunks, scanning all entities, or adding tick polling.*
 - **网络协议 / Network protocol** —— 强制解绑新增请求/结果包，协议版本提升到 2；客户端与服务端需使用同一协议版本。
   *Force-unbind adds request/result packets and raises the protocol version to 2; clients and servers must use the same protocol version.*
+- **跨维度档案 / Cross-dimension archive** —— 绒亲档案统一为服务器级主世界实例，旧版本按维度分裂的档案会在首次读取时合并；跨维度查看、召唤、收回和复活不再命中原维度之外的错误状态，活跃上限按整服统一计算。
+  *Companion archives now use one server-level overworld instance. Legacy per-dimension archives are merged on first read, so viewing, summoning, retracting and reviving across dimensions no longer resolve against the wrong world state, and the active limit is enforced server-wide.*
 
 ---
 
