@@ -1,6 +1,6 @@
 # Furkin 1.20.1 代码审查整改工作流
 
-- 文档状态：执行中；WP-01/H-01 已关闭（客户端实机通过，生命周期残余已记录）；WP-02 已推送至 `184e82e`，H-02 已关闭；WP-03 已推送至 `7de91ba`，H-03 已关闭；WP-04/M-01 已关闭（真实双版本混连拒绝和同版本登录通过）；WP-05 已推送至 `6f11f68`，M-02/M-04 已关闭；WP-06 已实施并完成静态、服务端和客户端烟测；强制解绑特有分支未复现；WP-07 已完成盘点、翻译键替换、完整构建、三轮双语言客户端烟测、悬浮复制确认、旧注释清理和残余归档并关闭；已提交并推送至 `origin/mc1.20.1/dev`（`f4db61f`）；全部提交/推送逐项授权
+- 文档状态：已完成；WP-01/H-01、WP-02/H-02、WP-03/H-03、WP-04/M-01、WP-05/M-02/M-04、WP-06/L-01、WP-07/L-02 均已关闭；WP-06 最终验收在 `f7cfcbc` 完成 `compileJava --rerun-tasks`、`build --rerun-tasks`、`runServer` 到达 `Done`、`runClient` 进入集成世界并完成普通解绑与召唤后正常退出；日志无项目错误级记录；强制解绑特有 UI 分支保留为未复现残余；全部提交/推送逐项授权
 - 制定日期：2026-09-24
 - 依据报告：`docs/code_review_2026-09-24.md`
 - 审查基线：`main@66dd99b78357f224c66aafe6faf9aa76a6a8a78e`
@@ -509,6 +509,7 @@ $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 - 实施完成：新增 `internal.client.FurkinClientPacketHandler`，5 条客户端回调已迁移；共享网络包不再直接引用 `Minecraft` 或具体界面类。
 - 静态验证：`compileJava`、`build --rerun-tasks` 通过；网络包字节码未出现 `net/minecraft/client` 引用。
 - 运行验证：`runServer` 到达 `Done (2.689s)!`；`runClient` 进服后实机通过数据同步、技能面板、绒亲录打开/刷新、契约命名和普通解绑；最终日志无错误级记录。
+- 最终验收（2026-09-25，基线 `f7cfcbc`）：`compileJava --rerun-tasks` 与 `build --rerun-tasks` 均 `BUILD SUCCESSFUL`；`runServer` 到达 `Done (2.835s)!`；`runClient` 进入集成世界，普通解绑、召唤和退出世界正常；项目日志无 `ERROR`、`FATAL`、注册失败、资源缺失、缺键或 `NoClassDefFoundError`。登录后的 Realms JWT、原版音效和 OSHI Windows 计数器告警均为开发环境噪声，不是模组错误。
 - 残余：强制解绑特有状态未能复现；仅记录普通解绑已覆盖同一回执处理器入口。
 - 设计/审计记录：[WP-06 客户端类隔离设计](wp-06_client_isolation_design.md)。
 
@@ -626,13 +627,13 @@ $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 
 - [x] H-01、H-02、H-03 已修复并有运行期证据（均已关闭；H-01 的卸载重载、重启、实体 ID 复用和真实登出事件链保留为明确残余）。
 - [x] M-01、M-02、M-03、M-04 已修复并有对应测试证据。
-- [ ] L-01 已完成客户端隔离和专用服务端验证。
+- [x] L-01 已完成客户端隔离和专用服务端验证（最终验收基线 `f7cfcbc`；普通解绑与召唤实机通过）。
 - [x] L-02 已完成翻译键和语言文件同步。
-- [ ] `compileJava`、适用 `build`、适用 `runServer` / `runClient` 全部通过。
-- [ ] `run/logs/latest.log` 无新增错误、异常栈、注册失败或资源缺失。
-- [ ] README、changelog、SKILL_TREE、协议版本和 `gradle.properties` 按影响同步。
-- [ ] 所有未执行的验证和残余风险已明确记录，未用静态结论替代运行结论。
-- [ ] 未代替用户接受 EULA，未在未授权情况下提交或推送。
+- [x] `compileJava --rerun-tasks`、`build --rerun-tasks`、`runServer`、`runClient` 全部通过。
+- [x] `run/logs/latest.log` 无项目 `ERROR`、`FATAL`、异常栈、注册失败、资源缺失、缺键或 `NoClassDefFoundError`；Realms JWT、原版音效与 OSHI Windows 计数器告警已判为环境噪声。
+- [x] README、changelog、SKILL_TREE、协议版本已按影响核对；`gradle.properties` 在 dev 分支保持 `1.20.1-0.0.1.1`，本次变更仍位于 `Unreleased`；若正式发布，按新增机制将版本提升为 `1.20.1-0.0.2.0` 并重跑构建。
+- [x] 所有未执行的验证和残余风险已明确记录，未用静态结论替代运行结论。
+- [x] 未代替用户接受 EULA，未在未授权情况下提交或推送。
 
 ---
 
@@ -669,13 +670,33 @@ $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 - [x] WP-07 L-02 旧注释清理（2026-09-25；`compileJava` 通过）
 - [x] WP-07 L-02 残余记录归档与关闭（2026-09-25；异常注入分支已记录，不阻塞关闭）
 - [x] WP-07 L-02 已提交并推送至 `origin/mc1.20.1/dev`（`f4db61f`）
-- [ ] 最终 build、runServer、runClient 和日志复核
-- [ ] 版本、README、changelog、SKILL_TREE 同步
-- [ ] 整改总结和残余风险记录
+- [x] 最终 build、runServer、runClient 和日志复核（2026-09-25；基线 `f7cfcbc`；普通解绑与召唤、退出世界均正常）
+- [x] 版本、README、changelog、SKILL_TREE 同步核对（dev 保持 `1.20.1-0.0.1.1` + `Unreleased`；正式发布建议 `1.20.1-0.0.2.0`）
+- [x] 整改总结和残余风险记录（见第 12 节）
 
 ---
 
-## 12. 文档维护规则
+## 12. 最终整改总结与残余风险
+
+### 12.1 整改总结
+
+本次代码审查整改覆盖 9 项问题：3 项高严重度、4 项中严重度和 2 项低严重度。最终基线为 `f7cfcbc`，`compileJava --rerun-tasks` 与 `build --rerun-tasks` 均通过，专用服务端到达 `Done`，真实客户端进入集成世界并完成普通解绑、召唤和正常退出。修复范围包括契约确认的服务端权威校验、解绑清理与原实体恢复、跨维度档案统一、协议版本治理、技能退款与 schema 校验、技能热重载效果重建、AI 所有权、客户端类隔离以及命令回执本地化。
+
+### 12.2 残余风险
+
+- H-01：未做实体卸载重载、服务端重启后旧会话、实体 ID 复用和真实 `PlayerLoggedOutEvent` 事件链的异常注入复现；现有静态校验、会话 TTL/替换/登出路径和服务端夹具证据保留。
+- WP-06：强制解绑特有 UI 状态未在当前存档稳定复现；普通解绑已覆盖同一 `RecordActionResultPacket` 客户端处理器入口，但该项不外推为“强制解绑 UI 已实机通过”。
+- 旧存档：跨维度档案首次读取会合并旧维度档案；同 ID 冲突保留主世界条目并记录 WARN；旧维度文件保留为回滚副本。
+- 第三方兼容：解绑时只能恢复原版默认掉率；第三方私有或动态 goal 不做猜测恢复。
+- 发布：当前 dev 分支未提前切换版本号，变更仍在 `Unreleased`；正式发布时需按新增机制提升版本并重跑最终构建与双端启动验证。
+
+### 12.3 关闭结论
+
+所有工作包的代码、静态验证、运行验证、文档和残余记录均已完成；代码审查整改整体关闭。后续仅在正式发布、合并到发布线或残余场景需要复测时重新开启验收流程。
+
+---
+
+## 13. 文档维护规则
 
 - 工作项开始时更新状态、基线和设计决策。
 - 每次验证后记录实际命令和结果，不写预期结果。
