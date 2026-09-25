@@ -249,6 +249,14 @@ public final class FurkinContractHandler {
         UUID companionId = UUID.randomUUID();
         UUID ownerUuid = player.getUUID();
 
+        // 先建立当前 AI 所有权版本并应用默认 FOLLOW；失败时不提交任何契约状态。
+        data.clearCombatAiState();
+        data.setAiStateVersion(FurkinData.CURRENT_AI_STATE_VERSION);
+        if (target instanceof TamableAnimal tamable && !FurkinCombatMode.FOLLOW.applyTo(tamable)) {
+            data.setAiStateVersion(0);
+            return false;
+        }
+
         // 写能力对象（运行时真相）。
         data.setCompanionId(companionId);
         data.setOwnerUuid(ownerUuid);
@@ -267,8 +275,6 @@ public final class FurkinContractHandler {
             tamable.setOwnerUUID(ownerUuid);
             // 清一次坐定，保证契约后立即跟随（原版「右键坐下」交互保留，玩家后续仍可手动让猫坐下）。
             tamable.setOrderedToSit(false);
-            // 应用战斗模式（默认 FOLLOW = 清掉攻击目标，不参战）。
-            FurkinCombatMode.FOLLOW.applyTo(tamable);
         }
 
         // 名字：留空回退物种名（本地化 key 渲染前的默认名）。这里存的是「名字」而非 key。

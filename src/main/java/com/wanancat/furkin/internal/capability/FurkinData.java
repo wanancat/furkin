@@ -2,6 +2,7 @@ package com.wanancat.furkin.internal.capability;
 
 import com.wanancat.furkin.internal.FurkinMod;
 import com.wanancat.furkin.internal.config.FurkinServerConfig;
+import com.wanancat.furkin.internal.contract.FurkinCombatAiState;
 import com.wanancat.furkin.internal.contract.FurkinCombatMode;
 import com.wanancat.furkin.internal.contract.FurkinState;
 import com.wanancat.furkin.internal.inventory.FurkinInventory;
@@ -48,6 +49,15 @@ public final class FurkinData {
     /** 战斗模式（四档：跟随 / 被动 / 保护 / 主动）。 */
     private FurkinCombatMode combatMode;
 
+    /** 当前战斗 AI 所有权模型版本。 */
+    public static final int CURRENT_AI_STATE_VERSION = 1;
+
+    /** 战斗 AI 所有权模型版本；旧档缺失按 0。 */
+    private int aiStateVersion;
+
+    /** 战斗 AI 运行时所有权与快照；不持久化、不进入网络同步。 */
+    private transient FurkinCombatAiState combatAiState;
+
     /** 连续进食计数（递减收益防刷，运行时状态，不持久化到档案）。 */
     private int feedCount;
     /** 上次进食时间戳（毫秒），用于递减收益的「停喂恢复」。 */
@@ -77,6 +87,7 @@ public final class FurkinData {
         this.skillLevels = new HashMap<>();
         this.state = FurkinState.WILD;
         this.combatMode = FurkinCombatMode.FOLLOW;
+        this.aiStateVersion = 0;
         this.feedCount = 0;
         this.lastFeedMillis = 0;
     }
@@ -140,6 +151,35 @@ public final class FurkinData {
 
     public void setCombatMode(FurkinCombatMode combatMode) {
         this.combatMode = combatMode == null ? FurkinCombatMode.FOLLOW : combatMode;
+    }
+
+    /** 获取运行时战斗 AI 状态；尚未初始化时返回 null。 */
+    public FurkinCombatAiState getCombatAiState() {
+        return combatAiState;
+    }
+
+    /** 获取或创建运行时战斗 AI 状态。 */
+    public FurkinCombatAiState getOrCreateCombatAiState() {
+        if (combatAiState == null) {
+            combatAiState = FurkinCombatAiState.create();
+        }
+        return combatAiState;
+    }
+
+    /** 清空并移除运行时战斗 AI 状态。 */
+    public void clearCombatAiState() {
+        if (combatAiState != null) {
+            combatAiState.clear();
+            combatAiState = null;
+        }
+    }
+
+    public int getAiStateVersion() {
+        return aiStateVersion;
+    }
+
+    public void setAiStateVersion(int aiStateVersion) {
+        this.aiStateVersion = aiStateVersion;
     }
 
     /** 连续进食计数（递减收益防刷）。 */
@@ -210,6 +250,25 @@ public final class FurkinData {
         return Math.max(0, level) * FurkinServerConfig.POUCH_SLOTS_PER_LEVEL.get();
     }
 
+    /**
+     * 清除解绑后不应回流的全部运行时状态；调用方须先完成技能效果移除、物品掉落和行囊缩容。
+     */
+    public void clearForUnbind() {
+        this.companionId = null;
+        this.ownerUuid = null;
+        this.level = 1;
+        this.xp = 0;
+        this.skillPoints = 0;
+        this.skillLevels.clear();
+        this.state = FurkinState.WILD;
+        this.combatMode = FurkinCombatMode.FOLLOW;
+        this.aiStateVersion = 0;
+        this.feedCount = 0;
+        this.lastFeedMillis = 0;
+        this.cooldowns.clear();
+        clearCombatAiState();
+    }
+
     /** 是否已契约（COMPANION 或 FALLEN 都算「已进入伴侣体系」）。 */
     public boolean isCompanion() {
         return state == FurkinState.COMPANION || state == FurkinState.FALLEN;
@@ -233,6 +292,7 @@ public final class FurkinData {
         tag.putInt("skill_points", skillPoints);
         tag.putString("state", state.name());
         tag.putString("combat_mode", combatMode.name());
+        tag.putInt("ai_state_version", aiStateVersion);
 
         CompoundTag skills = new CompoundTag();
         for (Map.Entry<ResourceLocation, Integer> e : skillLevels.entrySet()) {
@@ -282,6 +342,8 @@ public final class FurkinData {
      * 从 NBT 反序列化。
      */
     public void deserializeNBT(CompoundTag tag) {
+        clearCombatAiState();
+        this.aiStateVersion = tag.getInt("ai_state_version");
         this.companionId = tag.hasUUID("companion_id") ? tag.getUUID("companion_id") : null;
         this.ownerUuid = tag.hasUUID("owner_uuid") ? tag.getUUID("owner_uuid") : null;
         this.level = tag.getInt("level");
@@ -328,6 +390,7 @@ public final class FurkinData {
         copy.skillLevels.putAll(this.skillLevels);
         copy.state = this.state;
         copy.combatMode = this.combatMode;
+        copy.aiStateVersion = this.aiStateVersion;
         copy.feedCount = this.feedCount;
         copy.lastFeedMillis = this.lastFeedMillis;
         copy.cooldowns.putAll(this.cooldowns);

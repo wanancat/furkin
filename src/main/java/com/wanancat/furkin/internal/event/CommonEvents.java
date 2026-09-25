@@ -29,11 +29,13 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.TamableAnimal;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.event.AddReloadListenerEvent;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.entity.EntityJoinLevelEvent;
 import net.minecraftforge.event.entity.living.LivingAttackEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.living.LivingHurtEvent;
@@ -60,6 +62,30 @@ public final class CommonEvents {
     @SubscribeEvent
     public static void onRegisterCommands(RegisterCommandsEvent event) {
         FurkinCommand.register(event.getDispatcher(), event.getBuildContext());
+    }
+
+    /**
+     * 服务端实体入世时重建绒亲战斗 AI（WP-02A）。
+     *
+     * <p>区块读盘路径下 capability NBT 已在事件触发前完成反序列化；新建实体路径下
+     * attachment 也已存在。事件处理器只处理服务端和已契约的 {@link TamableAnimal}。</p>
+     */
+    @SubscribeEvent
+    public static void onEntityJoinLevel(EntityJoinLevelEvent event) {
+        if (event.isCanceled() || !(event.getLevel() instanceof ServerLevel)) {
+            return;
+        }
+        if (!(event.getEntity() instanceof TamableAnimal tamable)) {
+            return;
+        }
+        FurkinData data = tamable.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
+        if (data == null || !data.isCompanion()) {
+            return;
+        }
+        if (!data.getCombatMode().applyTo(tamable)) {
+            FurkinMod.LOGGER.warn("Furkin AI restore rejected on entity join: entity={} id={}",
+                    tamable.getUUID(), data.getCompanionId());
+        }
     }
 
     /**

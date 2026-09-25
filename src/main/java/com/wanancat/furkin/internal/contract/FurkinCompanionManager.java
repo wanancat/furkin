@@ -360,6 +360,7 @@ public final class FurkinCompanionManager {
         data.setXp(entry.getXp()); // M2：经验从档案恢复（旧档 xp 默认 0）。
         data.setSkillPoints(entry.getSkillPoints()); // M2：技能点从档案恢复。
         data.setCombatMode(entry.getCombatMode()); // M2：战斗模式从档案恢复（跨召唤记忆）。
+        data.setAiStateVersion(FurkinData.CURRENT_AI_STATE_VERSION);
         data.setState(FurkinState.COMPANION);
         // 技能快照读回（M2 起填充具体技能）。
         if (entry.getSkillSnapshot() != null && !entry.getSkillSnapshot().isEmpty()) {
@@ -401,8 +402,12 @@ public final class FurkinCompanionManager {
             // 快照回灌只恢复意图，姿势 flag 若不清会「坐着滑行」。
             tamable.setOrderedToSit(false);
             tamable.setInSittingPose(false);
-            // 应用战斗模式（从档案恢复，跨召唤记忆）。
-            data.getCombatMode().applyTo(tamable);
+            // 应用战斗模式（从档案恢复，跨召唤记忆）。失败时实体尚未入世，不落 summoned。
+            if (!data.getCombatMode().applyTo(tamable)) {
+                FurkinMod.LOGGER.warn("Furkin {} failed: combat AI apply rejected for id={}",
+                        actionLog, companionId);
+                return false;
+            }
         }
 
         // 血量写回（2026-09-22 乌狸定案：召唤时「保持收回前的血量」）：
