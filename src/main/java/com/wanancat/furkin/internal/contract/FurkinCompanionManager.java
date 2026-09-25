@@ -22,9 +22,13 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.TamableAnimal;
+import net.minecraft.world.level.portal.PortalInfo;
+import net.minecraft.world.phys.Vec3;
+import net.minecraftforge.common.util.ITeleporter;
 import net.minecraftforge.network.PacketDistributor;
 
 import java.util.UUID;
+import java.util.function.Function;
 
 /**
  * 伴侣管理 —— 收回 / 召唤 的核心逻辑（设计稿 §3.1「拥有与活跃」）。
@@ -183,6 +187,7 @@ public final class FurkinCompanionManager {
         entry.setEquipmentSnapshot(EquipmentSlots.extractFrom(snapshot));
         entry.setAlive(true);
         entry.setSummoned(false); // 收回：实体不在场。
+        entry.clearEntityLocation(); // WP-09：实体已 discard，定位字段不得继续指向失效 UUID。
         archive.putEntry(entry);
 
         // 移除实体（discard 不触发死亡掉落 / 不广播死亡）。
@@ -456,6 +461,7 @@ public final class FurkinCompanionManager {
         // 避免 rebuild 中途失败时留下「alive=true 却无实体」的中间态。
         entry.setAlive(true);
         entry.setSummoned(true);
+        entry.setEntityLocation(living); // WP-09：召唤/复活后记录新实体 UUID 与维度。
         FurkinArchiveData.get(serverLevel).putEntry(entry);
 
         // 同步能力数据到客户端。
@@ -498,11 +504,13 @@ public final class FurkinCompanionManager {
             return false;
         }
 
-        // 找到在场实体：遍历世界按 companionId 匹配能力对象。
-        LivingEntity target = findLivingByCompanionId(serverLevel, companionId);
+        // 按档案中的 UUID + 维度定位；此前只扫当前维度，跨维度传送会把
+        // 主世界宠物误判为“丢失”并错误地改回未召唤。
+        LivingEntity target = FurkinEntityLocator.locate(player.getServer(), entry);
         if (target == null) {
             // 档案标记已召唤但实体不在场（数据不一致）→ 自愈：改回未召唤。
             entry.setSummoned(false);
+            entry.clearEntityLocation();
             archive.putEntry(entry);
             FurkinMod.LOGGER.warn("Furkin teleport: entity missing for id={}, marked dismissed",
                     companionId);
@@ -512,30 +520,52 @@ public final class FurkinCompanionManager {
         // 传送：绕到玩家朝向正前方一格（避免与玩家重叠）。
         double dx = -Math.sin(Math.toRadians(player.getYRot())) * 1.5;
         double dz = Math.cos(Math.toRadians(player.getYRot())) * 1.5;
-        target.teleportTo(player.getX() + dx, player.getY(), player.getZ() + dz);
+        double targetX = player.getX() + dx;
+        double targetY = player.getY();
+        double targetZ = player.getZ() + dz;
+        LivingEntity relocated = target;
+        if (target.getLevel() != serverLevel) {
+            // 1.19.2 的 Entity#changeDimension(ServerLevel, ITeleporter) 已核实为公开 API。
+            // 用固定落点 teleporter，既完成跨维度实体迁移，也保留能力 NBT。
+            Entity changed = target.changeDimension(serverLevel,
+                    new FixedTeleporter(targetX, targetY, targetZ,
+                            player.getYRot(), player.getXRot()));
+            if (!(changed instanceof LivingEntity living)) {
+                FurkinMod.LOGGER.warn(
+                        "Furkin teleport failed: dimension change returned no living entity for id={}",
+                        companionId);
+                return false;
+            }
+            relocated = living;
+        } else {
+            target.teleportTo(targetX, targetY, targetZ);
+        }
+        // WP-09：传送成功后刷新一次定位。
+        entry.setEntityLocation(relocated);
+        archive.putEntry(entry);
 
         // 唤醒跟随：清坐定 + 坐姿，保证传送后立即跟随且不残留坐姿。
-        if (target instanceof TamableAnimal tamable) {
+        if (relocated instanceof TamableAnimal tamable) {
             tamable.setOrderedToSit(false);
             tamable.setInSittingPose(false);
         }
+
+        final LivingEntity syncedTarget = relocated;
+        FurkinNetwork.channel().send(
+                PacketDistributor.TRACKING_ENTITY_AND_SELF.with(() -> syncedTarget),
+                new SyncFurkinDataPacket(syncedTarget.getId(),
+                        syncedTarget.getCapability(FurkinCapability.FURKIN_DATA)
+                                .orElseGet(FurkinData::new).syncNBT()));
 
         FurkinMod.LOGGER.info("Furkin teleported: id={} to {}",
                 companionId, player.getName().getString());
         return true;
     }
 
-    /** 在世界里按 companionId 查找在场绒亲实体（绒亲录属性区也用：活体路径取数）。 */
+    /** 按服务器级档案的 UUID / 维度定向查找在场绒亲实体。 */
     public static LivingEntity findLivingByCompanionId(ServerLevel level, UUID companionId) {
-        for (Entity entity : level.getEntities().getAll()) {
-            if (entity instanceof LivingEntity living) {
-                FurkinData data = living.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
-                if (data != null && companionId.equals(data.getCompanionId())) {
-                    return living;
-                }
-            }
-        }
-        return null;
+        FurkinArchiveEntry entry = FurkinArchiveData.get(level).getEntry(companionId);
+        return entry == null ? null : FurkinEntityLocator.locate(level.getServer(), entry);
     }
 
     /**
@@ -549,5 +579,29 @@ public final class FurkinCompanionManager {
             }
         }
         return count;
+    }
+
+    /** 将实体迁到指定维度坐标时使用的固定落点传送器。 */
+    private static final class FixedTeleporter implements ITeleporter {
+
+        private final double x;
+        private final double y;
+        private final double z;
+        private final float yRot;
+        private final float xRot;
+
+        private FixedTeleporter(double x, double y, double z, float yRot, float xRot) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.yRot = yRot;
+            this.xRot = xRot;
+        }
+
+        @Override
+        public PortalInfo getPortalInfo(Entity entity, ServerLevel destination,
+                                        Function<ServerLevel, PortalInfo> defaultPortalInfo) {
+            return new PortalInfo(new Vec3(x, y, z), Vec3.ZERO, yRot, xRot);
+        }
     }
 }

@@ -8,6 +8,7 @@ import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkEvent;
+import net.minecraftforge.network.PacketDistributor;
 
 import java.util.Locale;
 import java.util.UUID;
@@ -26,6 +27,7 @@ public final class RecordActionPacket {
     public enum Action {
         DISMISS,
         UNBIND,
+        FORCE_UNBIND,
         RENAME,
         REACQUIRE_SOULSTONE,
         SET_COMBAT_MODE
@@ -125,6 +127,20 @@ public final class RecordActionPacket {
                     case CLEANUP_FAILED -> "furkin.msg.unbind_cleanup_failed";
                     default -> "furkin.msg.unbind_failed";
                 };
+                sendActionResult(player, packet.companionId, packet.action, r,
+                        r == FurkinRecordActionHandler.Result.ENTITY_UNRESOLVED);
+            }
+            case FORCE_UNBIND -> {
+                FurkinRecordActionHandler.Result r =
+                        FurkinRecordActionHandler.forceUnbind(player, packet.companionId);
+                ok = r == FurkinRecordActionHandler.Result.OK;
+                msgKey = switch (r) {
+                    case OK -> "furkin.msg.force_unbound";
+                    case ENTITY_RESOLVED, NOT_SUMMONED -> "furkin.msg.force_unbind_not_needed";
+                    case CLEANUP_FAILED -> "furkin.msg.force_unbind_failed";
+                    default -> "furkin.msg.unbind_failed";
+                };
+                sendActionResult(player, packet.companionId, packet.action, r, false);
             }
             case RENAME -> {
                 FurkinRecordActionHandler.Result r =
@@ -181,5 +197,14 @@ public final class RecordActionPacket {
         if (packet.refreshRecord) {
             FurkinRecordItem.refreshRecordList(player);
         }
+    }
+
+    /** 回一条动作结果包，供已打开的绒亲录决定是否进入强制解绑确认。 */
+    private static void sendActionResult(ServerPlayer player, UUID companionId, Action action,
+                                         FurkinRecordActionHandler.Result result,
+                                         boolean forceUnbindAllowed) {
+        FurkinNetwork.channel().send(
+                PacketDistributor.PLAYER.with(() -> player),
+                new RecordActionResultPacket(companionId, action, result, forceUnbindAllowed));
     }
 }

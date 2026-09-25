@@ -5,6 +5,7 @@ import com.wanancat.furkin.api.companion.FurkinSpeciesRegistry;
 import com.wanancat.furkin.internal.FurkinMod;
 import com.wanancat.furkin.internal.capability.FurkinCapability;
 import com.wanancat.furkin.internal.capability.FurkinData;
+import com.wanancat.furkin.internal.contract.FurkinCompanionManager;
 import com.wanancat.furkin.internal.inventory.PouchDrop;
 import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.network.SyncFurkinDataPacket;
@@ -213,14 +214,6 @@ public final class SkillProgress {
 
     /** 在世界里按 companionId 查找在场绒亲实体。 */
     private static LivingEntity findLivingByCompanionId(ServerLevel level, UUID companionId) {
-        for (Entity entity : level.getEntities().getAll()) {
-            if (entity instanceof LivingEntity living) {
-                FurkinData data = living.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
-                if (data != null && companionId.equals(data.getCompanionId())) {
-                    return living;
-                }
-            }
-        }
-        return null;
+        return FurkinCompanionManager.findLivingByCompanionId(level, companionId);
     }
 }

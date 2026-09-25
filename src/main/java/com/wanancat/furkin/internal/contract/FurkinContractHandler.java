@@ -287,6 +287,7 @@ public final class FurkinContractHandler {
             entry.setSpecies(target.getType());
             entry.setAlive(true);
             entry.setSummoned(true); // 契约当场实体在场，标记为已召唤。
+            entry.setEntityLocation(target); // WP-09：记录定向定位所需的实体 UUID 与维度。
             entry.setLevel(1);
             // 实体外观快照：品种 / 毛色等在契约当场就存下，保证召唤后外观一致。
             entry.setEntitySnapshot(target.saveWithoutId(new CompoundTag()));

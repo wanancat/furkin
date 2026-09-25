@@ -117,5 +117,14 @@
   "furkin.screen.contract_name.title": "Name Your Furkin",
   "furkin.screen.contract_name.hint": "Enter a name (blank for species name)",
   "furkin.screen.contract_name.confirm": "Confirm",
-  "furkin.screen.contract_name.cancel": "Cancel"
+  "furkin.screen.contract_name.cancel": "Cancel",
+  "furkin.msg.force_unbound": "Companion force-unbound; cleanup runs when the entity next enters a loaded world.",
+  "furkin.msg.force_unbind_not_needed": "Companion can be located now; use normal unbind.",
+  "furkin.msg.force_unbind_failed": "Force unbind failed; archive kept for retry.",
+  "furkin.screen.force_unbind.title": "Force Unbind?",
+  "furkin.screen.force_unbind.line1": "The companion entity cannot be located.",
+  "furkin.screen.force_unbind.line2": "Confirm to remove the archive and leave a cleanup tombstone.",
+  "furkin.screen.force_unbind.line3": "If the entity returns, its Furkin data will be removed automatically.",
+  "furkin.screen.force_unbind.confirm": "Force Unbind",
+  "furkin.screen.force_unbind.cancel": "Cancel"
 }

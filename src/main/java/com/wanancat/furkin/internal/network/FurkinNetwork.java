@@ -135,6 +135,16 @@ public final class FurkinNetwork {
                 OpenFurkinScreenPacket::handle,
                 Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         );
+
+        // 服务端 → 客户端：绒亲录动作结果（强制解绑确认资格）。
+        CHANNEL.registerMessage(
+                id++,
+                RecordActionResultPacket.class,
+                RecordActionResultPacket::encode,
+                RecordActionResultPacket::decode,
+                RecordActionResultPacket::handle,
+                Optional.of(NetworkDirection.PLAY_TO_CLIENT)
+        );
     }
 
     /** 暴露通道给包发送方（服务端契约/召唤/收回后广播）。 */

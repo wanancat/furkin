@@ -117,5 +117,14 @@
   "furkin.screen.contract_name.title": "为绒亲命名",
   "furkin.screen.contract_name.hint": "输入名字（留空使用物种名）",
   "furkin.screen.contract_name.confirm": "确认",
-  "furkin.screen.contract_name.cancel": "取消"
+  "furkin.screen.contract_name.cancel": "取消",
+  "furkin.msg.force_unbound": "已强制解绑；实体下次入世时会自动完成清理。",
+  "furkin.msg.force_unbind_not_needed": "实体现在可以定位，请使用常规解绑。",
+  "furkin.msg.force_unbind_failed": "强制解绑失败；档案已保留，可重试。",
+  "furkin.screen.force_unbind.title": "强制解绑？",
+  "furkin.screen.force_unbind.line1": "无法定位该绒亲实体。",
+  "furkin.screen.force_unbind.line2": "确认将删除档案，并留下清理墓碑。",
+  "furkin.screen.force_unbind.line3": "实体再次入世时，其绒亲数据会被自动清理。",
+  "furkin.screen.force_unbind.confirm": "强制解绑",
+  "furkin.screen.force_unbind.cancel": "取消"
 }

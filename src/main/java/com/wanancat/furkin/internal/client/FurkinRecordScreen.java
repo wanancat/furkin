@@ -2,6 +2,7 @@ package com.wanancat.furkin.internal.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.wanancat.furkin.internal.contract.FurkinCombatMode;
+import com.wanancat.furkin.internal.contract.FurkinRecordActionHandler;
 import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.network.RecordActionPacket;
 import com.wanancat.furkin.internal.network.RecordListPacket;
@@ -145,6 +146,28 @@ public final class FurkinRecordScreen extends Screen {
     public static void handleRefresh(List<RecordListPacket.Entry> entries) {
         if (Minecraft.getInstance().screen instanceof FurkinRecordScreen record) {
             record.acceptRefresh(entries);
+        }
+    }
+
+    /**
+     * 收到服务端动作结果：仅当常规解绑明确返回实体未解析且服务端允许时，
+     * 打开强制解绑确认页。
+     */
+    public static void handleActionResult(UUID companionId, RecordActionPacket.Action action,
+                                          FurkinRecordActionHandler.Result result,
+                                          boolean forceUnbindAllowed) {
+        if (Minecraft.getInstance().screen instanceof FurkinRecordScreen record) {
+            record.acceptActionResult(companionId, action, result, forceUnbindAllowed);
+        }
+    }
+
+    private void acceptActionResult(UUID companionId, RecordActionPacket.Action action,
+                                    FurkinRecordActionHandler.Result result,
+                                    boolean forceUnbindAllowed) {
+        if (forceUnbindAllowed
+                && action == RecordActionPacket.Action.UNBIND
+                && result == FurkinRecordActionHandler.Result.ENTITY_UNRESOLVED) {
+            ForceUnbindConfirmScreen.open(companionId, this);
         }
     }
 

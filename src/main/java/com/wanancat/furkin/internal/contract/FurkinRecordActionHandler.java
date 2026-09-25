@@ -14,6 +14,7 @@ import com.wanancat.furkin.internal.network.OpenFurkinScreenPacket;
 import com.wanancat.furkin.internal.network.SyncFurkinDataPacket;
 import com.wanancat.furkin.internal.record.FurkinArchiveData;
 import com.wanancat.furkin.internal.record.FurkinArchiveEntry;
+import com.wanancat.furkin.internal.record.FurkinRevocationData;
 import com.wanancat.furkin.internal.registry.ModItems;
 import com.wanancat.furkin.internal.skill.Skill;
 import com.wanancat.furkin.internal.skill.SkillRegistry;
@@ -26,7 +27,6 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.SimpleMenuProvider;
-import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.TamableAnimal;
 import net.minecraft.world.entity.ai.attributes.Attribute;
@@ -68,6 +68,7 @@ public final class FurkinRecordActionHandler {
         ON_COOLDOWN,
         NO_DIAMOND,
         ENTITY_UNRESOLVED,
+        ENTITY_RESOLVED,
         CLEANUP_FAILED
     }
 
@@ -119,12 +120,15 @@ public final class FurkinRecordActionHandler {
         }
 
         if (entry.isSummoned()) {
-            LivingEntity target = findLivingByCompanionId(serverLevel, companionId);
+            LivingEntity target = FurkinEntityLocator.locate(player.getServer(), entry);
             if (target == null) {
-                // 档案标记已召唤但本维度定位不到：不删档、不猜测重建。WP-09 再补
-                // 跨维度定向定位和强制解绑入口。
+                // 实体未加载 / 记录维度失效 / 旧档缺少定位信息：只报失败，不删档，不创建实体。
                 return Result.ENTITY_UNRESOLVED;
             }
+
+            // 记录本次成功解析的维度，便于清理失败后的下一次定向重试。
+            entry.setEntityLocation(target);
+            archive.putEntry(entry);
 
             FurkinUnbindCleanup.Result cleanup = FurkinUnbindCleanup.cleanup(
                     target, companionId, FurkinUnbindCleanup.Trigger.NORMAL);
@@ -152,6 +156,55 @@ public final class FurkinRecordActionHandler {
         archive.removeEntry(companionId);
 
         FurkinMod.LOGGER.info("Furkin unbound: id={} by {}",
+                companionId, player.getName().getString());
+        return Result.OK;
+    }
+
+    /**
+     * 强制解绑：在常规解绑确认实体仍不可解析后，先写服务器级注销墓碑，再删除普通档案。
+     *
+     * <p>本方法不会创建、召唤或重建实体；原实体以后任意维度入世时由延迟清理路径处理。
+     * 如果实体当前已可解析，则返回 {@link Result#ENTITY_RESOLVED}，要求调用方走常规解绑。</p>
+     *
+     * @param player      主人
+     * @param companionId 宠物身份 UUID
+     * @return 结果枚举
+     */
+    public static Result forceUnbind(ServerPlayer player, UUID companionId) {
+        ServerLevel serverLevel = player.getLevel();
+
+        FurkinArchiveData archive = FurkinArchiveData.get(serverLevel);
+        FurkinArchiveEntry entry = archive.getEntry(companionId);
+        if (entry == null) {
+            return Result.NOT_FOUND;
+        }
+        if (entry.getOwnerUuid() == null || !entry.getOwnerUuid().equals(player.getUUID())) {
+            return Result.NOT_OWNER;
+        }
+        if (!entry.isSummoned()) {
+            return Result.NOT_SUMMONED;
+        }
+        if (FurkinEntityLocator.locate(player.getServer(), entry) != null) {
+            return Result.ENTITY_RESOLVED;
+        }
+
+        try {
+            FurkinRevocationData revocations = FurkinRevocationData.get(player.getServer());
+            revocations.put(companionId, player.getUUID(), serverLevel.getGameTime());
+            if (!revocations.contains(companionId)) {
+                FurkinMod.LOGGER.error("Furkin revocation tombstone was not persisted: id={}",
+                        companionId);
+                return Result.CLEANUP_FAILED;
+            }
+        } catch (RuntimeException exception) {
+            FurkinMod.LOGGER.error("Furkin revocation tombstone write failed: id={}",
+                    companionId, exception);
+            return Result.CLEANUP_FAILED;
+        }
+
+        // 墓碑写入成功后才删除普通档案；实体本身留给入世延迟清理路径处理。
+        archive.removeEntry(companionId);
+        FurkinMod.LOGGER.info("Furkin force-unbound: id={} by {}",
                 companionId, player.getName().getString());
         return Result.OK;
     }
@@ -502,16 +555,8 @@ public final class FurkinRecordActionHandler {
         return Component.literal(name.trim());
     }
 
-    /** 在世界里按 companionId 查找在场绒亲实体。 */
+    /** 按服务器级档案的 UUID / 维度定向查找在场绒亲实体。 */
     private static LivingEntity findLivingByCompanionId(ServerLevel level, UUID companionId) {
-        for (Entity entity : level.getEntities().getAll()) {
-            if (entity instanceof LivingEntity living) {
-                FurkinData data = living.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
-                if (data != null && companionId.equals(data.getCompanionId())) {
-                    return living;
-                }
-            }
-        }
-        return null;
+        return FurkinCompanionManager.findLivingByCompanionId(level, companionId);
     }
 }

@@ -1,12 +1,19 @@
 package com.wanancat.furkin.internal.record;
 
+import com.wanancat.furkin.internal.FurkinMod;
 import com.wanancat.furkin.internal.contract.FurkinCombatMode;
+import net.minecraft.core.Registry;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.level.Level;
 import net.minecraftforge.registries.ForgeRegistries;
 
+import javax.annotation.Nullable;
 import java.util.UUID;
 
 /**
@@ -30,6 +37,12 @@ public final class FurkinArchiveEntry {
 
     /** 身份 UUID（主键）。 */
     private final UUID companionId;
+
+    /** 最近一次确认的在世实体 UUID；未召唤或旧档缺失时为空。 */
+    private UUID entityUuid;
+
+    /** 最近一次确认的实体所在维度；未召唤或旧档缺失时为空。 */
+    private ResourceKey<Level> entityDimension;
 
     /** 主人 UUID。 */
     private UUID ownerUuid;
@@ -72,6 +85,8 @@ public final class FurkinArchiveEntry {
 
     public FurkinArchiveEntry(UUID companionId) {
         this.companionId = companionId;
+        this.entityUuid = null;
+        this.entityDimension = null;
         this.species = null;
         this.alive = true;
         this.summoned = false;
@@ -88,6 +103,28 @@ public final class FurkinArchiveEntry {
 
     public UUID getCompanionId() {
         return companionId;
+    }
+
+    @Nullable
+    public UUID getEntityUuid() {
+        return entityUuid;
+    }
+
+    @Nullable
+    public ResourceKey<Level> getEntityDimension() {
+        return entityDimension;
+    }
+
+    /** 记录实体身份与当前维度；只在实体确实在场时调用。 */
+    public void setEntityLocation(Entity entity) {
+        this.entityUuid = entity.getUUID();
+        this.entityDimension = entity.getLevel().dimension();
+    }
+
+    /** 实体离场或被移除后清空位置，避免后续误用失效 UUID。 */
+    public void clearEntityLocation() {
+        this.entityUuid = null;
+        this.entityDimension = null;
     }
 
     public UUID getOwnerUuid() {
@@ -198,6 +235,12 @@ public final class FurkinArchiveEntry {
     public CompoundTag serializeNBT() {
         CompoundTag tag = new CompoundTag();
         tag.putUUID("companion_id", companionId);
+        if (entityUuid != null) {
+            tag.putUUID("entity_uuid", entityUuid);
+        }
+        if (entityDimension != null) {
+            tag.putString("entity_dimension", entityDimension.location().toString());
+        }
         if (ownerUuid != null) {
             tag.putUUID("owner_uuid", ownerUuid);
         }
@@ -224,6 +267,17 @@ public final class FurkinArchiveEntry {
     public static FurkinArchiveEntry deserializeNBT(CompoundTag tag) {
         UUID id = tag.getUUID("companion_id");
         FurkinArchiveEntry entry = new FurkinArchiveEntry(id);
+        entry.entityUuid = tag.hasUUID("entity_uuid") ? tag.getUUID("entity_uuid") : null;
+        if (tag.contains("entity_dimension", Tag.TAG_STRING)) {
+            String rawDimension = tag.getString("entity_dimension");
+            ResourceLocation dimensionId = ResourceLocation.tryParse(rawDimension);
+            if (dimensionId == null) {
+                FurkinMod.LOGGER.warn("Ignoring invalid entity_dimension '{}' for companion {}",
+                        rawDimension, id);
+            } else {
+                entry.entityDimension = ResourceKey.create(Registry.DIMENSION_REGISTRY, dimensionId);
+            }
+        }
         entry.ownerUuid = tag.hasUUID("owner_uuid") ? tag.getUUID("owner_uuid") : null;
         if (tag.contains("species")) {
             ResourceLocation speciesId = new ResourceLocation(tag.getString("species"));

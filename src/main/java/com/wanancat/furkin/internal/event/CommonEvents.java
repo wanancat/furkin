@@ -8,6 +8,7 @@ import com.wanancat.furkin.internal.config.FurkinServerConfig;
 import com.wanancat.furkin.internal.contract.FurkinCompanionManager;
 import com.wanancat.furkin.internal.contract.FurkinContractHandler;
 import com.wanancat.furkin.internal.contract.FurkinRecordActionHandler;
+import com.wanancat.furkin.internal.contract.FurkinUnbindCleanup;
 import com.wanancat.furkin.internal.equipment.EquipmentSlots;
 import com.wanancat.furkin.internal.growth.CombatParticipationTracker;
 import com.wanancat.furkin.internal.growth.FurkinFeeding;
@@ -19,6 +20,7 @@ import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.network.SyncFurkinDataPacket;
 import com.wanancat.furkin.internal.record.FurkinArchiveData;
 import com.wanancat.furkin.internal.record.FurkinArchiveEntry;
+import com.wanancat.furkin.internal.record.FurkinRevocationData;
 import com.wanancat.furkin.internal.registry.ModItems;
 import com.wanancat.furkin.internal.skill.SkillPassiveDispatcher;
 import com.wanancat.furkin.internal.skill.SkillRegistry;
@@ -72,20 +74,82 @@ public final class CommonEvents {
      */
     @SubscribeEvent
     public static void onEntityJoinLevel(EntityJoinLevelEvent event) {
-        if (event.isCanceled() || !(event.getLevel() instanceof ServerLevel)) {
+        if (event.isCanceled() || !(event.getLevel() instanceof ServerLevel serverLevel)) {
             return;
         }
-        if (!(event.getEntity() instanceof TamableAnimal tamable)) {
+
+        Entity entity = event.getEntity();
+        if (!(entity instanceof LivingEntity living)) {
             return;
         }
-        FurkinData data = tamable.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
-        if (data == null || !data.isCompanion()) {
+
+        FurkinData data = living.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
+        if (data == null) {
             return;
         }
+
+        if (tryHandleRevocation(living, serverLevel, data)) {
+            return;
+        }
+
+        if (!(entity instanceof TamableAnimal tamable) || !data.isCompanion()) {
+            return;
+        }
+
+        // WP-09：已召唤实体重新入世时刷新定向定位信息。
+        FurkinArchiveData archive = FurkinArchiveData.get(serverLevel);
+        FurkinArchiveEntry entry = data.getCompanionId() == null
+                ? null : archive.getEntry(data.getCompanionId());
+        if (entry != null && entry.isSummoned()
+                && (!entity.getUUID().equals(entry.getEntityUuid())
+                || !serverLevel.dimension().equals(entry.getEntityDimension()))) {
+            entry.setEntityLocation(entity);
+            archive.putEntry(entry);
+        }
+
         if (!data.getCombatMode().applyTo(tamable)) {
             FurkinMod.LOGGER.warn("Furkin AI restore rejected on entity join: entity={} id={}",
                     tamable.getUUID(), data.getCompanionId());
         }
+    }
+
+    /**
+     * 在实体入世时命中服务器级注销墓碑并执行延迟清理。
+     *
+     * @return 是否命中墓碑；命中时无论清理成功或失败都返回 {@code true}，避免继续按
+     * 已注销档案重应用 AI。
+     */
+    private static boolean tryHandleRevocation(LivingEntity living, ServerLevel serverLevel,
+                                               FurkinData data) {
+        UUID companionId = data.getCompanionId();
+        if (companionId == null) {
+            return false;
+        }
+
+        FurkinRevocationData revocations = FurkinRevocationData.get(serverLevel.getServer());
+        if (!revocations.contains(companionId)) {
+            return false;
+        }
+
+        FurkinUnbindCleanup.Result cleanup = FurkinUnbindCleanup.cleanup(
+                living, companionId, FurkinUnbindCleanup.Trigger.REVOCATION);
+        if (!cleanup.success()) {
+            FurkinMod.LOGGER.warn(
+                    "Furkin revocation cleanup deferred: id={}, entity={}, stage={}",
+                    companionId, living.getUUID(), cleanup.failedStage());
+            return true;
+        }
+
+        if (!revocations.remove(companionId)) {
+            FurkinMod.LOGGER.warn(
+                    "Furkin revocation cleanup completed but tombstone was already absent: id={}, entity={}",
+                    companionId, living.getUUID());
+        }
+
+        FurkinNetwork.channel().send(
+                PacketDistributor.TRACKING_ENTITY_AND_SELF.with(() -> living),
+                new SyncFurkinDataPacket(living.getId(), data.syncNBT()));
+        return true;
     }
 
     /**
@@ -351,6 +415,7 @@ public final class CommonEvents {
         }
         entry.setAlive(false);
         entry.setSummoned(false); // 实体随死亡被移除，不再是「在场」。
+        entry.clearEntityLocation(); // WP-09：死亡后清空失效实体定位。
         archive.putEntry(entry);
 
         // M4.1 死亡掉魂石：在死亡位置生成一枚绑定该宠物身份的魂石（纯钥匙）。
