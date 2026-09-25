@@ -29,7 +29,6 @@ included (because they're rather fluff~y~).
 | --------------- | ------- |
 | Minecraft       | 1.20.1  |
 | Minecraft Forge | 47.0+   |
-| Java            | 17      |
 
 **Zero hard dependencies.** No required library mods.
 
@@ -65,7 +64,7 @@ included (because they're rather fluff~y~).
 
 ## For Mod Developers
 
-Furkin is designed as a **predecessor mod**: depend on it and register your own species,
+Furkin can serve as a **predecessor mod**: depend on it and register your own species,
 skills, and effects through the public API (`com.wanancat.furkin.api`).
 
 ```java

@@ -28,7 +28,6 @@
 | ---------------- | ------ |
 | Minecraft        | 1.20.1 |
 | Minecraft Forge  | 47.0+  |
-| Java             | 17     |
 
 **零强制前置。** 不需要任何依赖库模组。
 
@@ -60,7 +59,7 @@
 
 ## 模组开发者
 
-Furkin 定位为**前置模组**：依赖它，通过公开 API（`com.wanancat.furkin.api`）
+Furkin 可作为**前置模组**：依赖它，通过公开 API（`com.wanancat.furkin.api`）
 注册你自己的物种、技能与效果。
 
 ```java
