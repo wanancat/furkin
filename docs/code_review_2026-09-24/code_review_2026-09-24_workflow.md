@@ -4,7 +4,7 @@
 - 制定日期：2026-09-24
 - 依据报告：`docs/code_review_2026-09-24/code_review_2026-09-24.md`
 - 审查基线：`main@66dd99b78357f224c66aafe6faf9aa76a6a8a78e`
-- 当前工作分支：`mc1.20.1/dev`
+- 当前工作分支：`mc1.20.1`
 - 适用版本：Minecraft 1.20.1 / Forge 47.2.0
 - 文档目的：把审查报告中的 9 项问题转化为可排序、可验证、可追踪、可关闭的整改流程
 
@@ -80,7 +80,7 @@
 - 审查报告：`docs/code_review_2026-09-24/code_review_2026-09-24.md`
 - 契约前置设计参考：`docs/code_review_2026-09-24/contract_precondition_workflow.md`
 - 项目规则：`AGENTS.md` 和根目录构建配置
-- 当前工作分支：`mc1.20.1/dev`
+- 当前工作分支：`mc1.20.1`
 
 ### 3.2 范围内
 
@@ -107,7 +107,7 @@
 开始实施前确认：
 
 - [ ] `git status` 已检查，临时诊断文件和生成物不会被误提交。
-- [ ] 当前分支为 `mc1.20.1/dev`，或用户明确指定的其他分支。
+- [ ] 当前分支为 `mc1.20.1`，或用户明确指定的其他分支。
 - [ ] 工作区基线可从报告 HEAD 或后续明确记录的新基线重建。
 - [ ] JDK 17 在当前 PowerShell 进程已设置。
 - [ ] 若需要 `runServer` / `runClient`，用户已自行同意 EULA 并准备好运行环境。
@@ -717,3 +717,5 @@ $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 - 2026-09-25：新建[下一版本待办](next_version_backlog.md)，登记 NV-01「跟随绒亲自动传送触发距离」与 NV-02「玩家攻击自身及队友绒亲的友伤配置」。两项均为开放待办，不在本轮已关闭整改工作包内实施。
 
 - 2026-09-25：完成 `1.20.1-0.0.2.0` 发版准备。`gradle.properties` 已切版；中英文 changelog 已将原 `Unreleased` 固化为本版本条目。`build --rerun-tasks` 通过，产物为 `build/libs/furkin-1.20.1-0.0.2.0.jar`，SHA-256 `AA405617AF15103C65D77D3892B2B2071C8F605305A3A8C7832C9FD561BB4797`；`runServer` 到达 `Done`，最新日志无项目 `ERROR`、`FATAL`、异常栈、注册失败或资源缺失。日志中保留旧档 legacy AI `WARN` 和开发环境 OSHI/Forge 版本提示。切版后的客户端实机回归已完成：进入现有测试世界，协议连接、绒亲录召唤后即时刷新和普通解绑均通过；客户端与集成服务端日志无项目 `ERROR`、`FATAL`、异常栈或注册失败。
+
+- 2026-09-25：GitHub Release `v1.20.1-0.0.2.0` 已发布，地址为 <https://github.com/wanancat/furkin/releases/tag/v1.20.1-0.0.2.0>；发布资产 `furkin-1.20.1-0.0.2.0.jar` 已回下载校验，远端 SHA-256 与本地构建一致。工作分支已由 `mc1.20.1/dev` 改名为 `mc1.20.1`，旧远端分支已删除；历史记录里原有的旧分支推送记录保留原文。
