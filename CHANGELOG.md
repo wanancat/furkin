@@ -43,6 +43,8 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 
 - **命令回执本地化 / Command feedback localization** —— `/furkin` 命令的固定成功、失败、状态和数量回执现使用翻译键，随客户端中英文语言切换；动态 UUID、名称和数量继续作为翻译参数注入。
   *Fixed `/furkin` command success, failure, status and quantity feedback now uses translation keys and follows the client language; dynamic UUIDs, names and counts remain translation arguments.*
+- **契约确认权威校验 / Contract confirmation authority** —— 契约确认现在必须匹配服务端待确认会话，并重新校验物种、归属、目标身份、距离和主手堆叠；过期、伪造或重放请求不会建档或消耗物品。
+  *Contract confirmation now requires a matching server-issued pending session and revalidates species, ownership, target identity, distance and the exact main-hand stack; stale, forged or replayed requests cannot create an archive or consume an item.*
 
 - **技能退款与数据校验 / Skill refunds and schema validation** —— 洗点现按每级实际支付成本退款，热改技能 `cost` 不会重写已支付金额；加载期拒绝非正 `cost`、非法 `maxLevel` / `tier` / `requiresLevel`，避免非法技能数据制造或吞掉技能点。
   *Respec now refunds the amount actually paid per level, and hot-changing a skill's `cost` no longer rewrites past payments. Loading rejects non-positive `cost`, invalid `maxLevel` / `tier` / `requiresLevel`, preventing malformed skill data from creating or consuming skill points incorrectly.*
