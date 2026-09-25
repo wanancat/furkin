@@ -22,7 +22,7 @@ import java.util.Optional;
  */
 public final class FurkinNetwork {
 
-    private static final String PROTOCOL_VERSION = "1";
+    private static final String PROTOCOL_VERSION = "2";
 
     private static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(FurkinMod.MODID, "main"),
@@ -133,6 +133,16 @@ public final class FurkinNetwork {
                 OpenFurkinScreenPacket::encode,
                 OpenFurkinScreenPacket::decode,
                 OpenFurkinScreenPacket::handle,
+                Optional.of(NetworkDirection.PLAY_TO_CLIENT)
+        );
+
+        // 服务端 → 客户端：绒亲录动作结果（强制解绑确认资格）。
+        CHANNEL.registerMessage(
+                id++,
+                RecordActionResultPacket.class,
+                RecordActionResultPacket::encode,
+                RecordActionResultPacket::decode,
+                RecordActionResultPacket::handle,
                 Optional.of(NetworkDirection.PLAY_TO_CLIENT)
         );
     }

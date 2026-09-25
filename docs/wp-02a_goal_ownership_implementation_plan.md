@@ -1,6 +1,6 @@
 # WP-02A：goal 所有权与生命周期实施计划
 
-- 计划状态：A0-A8 已完成；`compileJava`、`build`、`runServer`、`runClient` 均通过，最终 JAR 不含临时夹具；未提交、未推送
+- 计划状态：A0-A8 已完成并推送至 `origin/mc1.20.1/dev`（提交 `184e82e`）；`compileJava`、`build`、`runServer`、`runClient` 均通过，最终 JAR 不含临时夹具
 - 制定日期：2026-09-24
 - 工作分支：`mc1.20.1/dev`
 - 代码基线：`c783547a2ccb9484223c6a6d094eeeabbce0fef2`

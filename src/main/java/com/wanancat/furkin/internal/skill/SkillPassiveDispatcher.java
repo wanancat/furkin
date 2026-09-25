@@ -702,6 +702,29 @@ public final class SkillPassiveDispatcher {
         data.getCooldowns().keySet().removeIf(id -> HarvestSpec.of(id).isPresent());
     }
 
+    /**
+     * 清除该绒亲身上由被动分发器维护的运行时痕迹（解绑时调用）。
+     *
+     * <p>{@code pack_tactics} 使用 transient 属性 modifier，不经过
+     * {@link SkillEffectApplier#removeAll} 的静态技能效果链。若不显式移除，解绑后
+     * 状态虽回到 WILD、tick 不再刷新，攻击力加成仍会留在实体属性上。</p>
+     *
+     * <p>周期计时也在这里一并清掉；调用方随后仍会清空完整 {@code cooldowns}。</p>
+     *
+     * @param companion 即将解除绒亲归属的实体
+     * @param data      其能力数据
+     */
+    public static void clearRuntimeEffects(LivingEntity companion, FurkinData data) {
+        if (companion == null || data == null) {
+            return;
+        }
+        clearPeriodicTimers(data);
+        AttributeInstance attack = companion.getAttribute(Attributes.ATTACK_DAMAGE);
+        if (attack != null) {
+            attack.removeModifier(PACK_TACTICS_UUID);
+        }
+    }
+
     // ===== 工具 =====
 
     /**

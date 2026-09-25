@@ -3,6 +3,10 @@ package com.wanancat.furkin.internal.equipment;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.Containers;
+import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
@@ -94,6 +98,80 @@ public final class EquipmentSlots {
         for (EquipmentSlot slot : ARMOR_BY_INDEX) {
             mob.setDropChance(slot, 0.0F);
         }
+    }
+
+    /**
+     * 把四个盔甲槽掉落到实体脚下并清空；空槽不生成物品实体。
+     *
+     * <p>复用 {@link Containers#dropContents(net.minecraft.world.level.Level, net.minecraft.world.entity.Entity, net.minecraft.world.Container)}
+     * 与现有 {@link MobEquipmentContainer}，不手写物品实体散落逻辑。掉落失败会自然抛异常，由统一解绑管线保留档案或墓碑并允许重试。</p>
+     *
+     * @param living 目标实体；客户端侧、非 Mob 或空装备时静默返回 false
+     * @return 是否至少有一个非空盔甲槽被处理
+     */
+    public static boolean dropAndClear(LivingEntity living) {
+        if (!(living.level() instanceof ServerLevel level)) {
+            return false;
+        }
+        MobEquipmentContainer equipment = new MobEquipmentContainer(living);
+        if (equipment.isEmpty()) {
+            return false;
+        }
+        Containers.dropContents(level, living, equipment);
+        equipment.clearContent();
+        return true;
+    }
+
+    /**
+     * 把四个盔甲槽的掉落概率恢复为原版默认值。
+     *
+     * <p>解绑后实体回到普通动物语义，不能继续继承绒亲死亡不掉落规则。第三方模组的
+     * 自定义原始掉率没有公开精确 getter，因此按设计写回 {@link Mob#DEFAULT_EQUIPMENT_DROP_CHANCE}。</p>
+     *
+     * @param living 目标实体；非 {@link Mob} 时静默跳过
+     */
+    public static void restoreDefaultDropChances(LivingEntity living) {
+        if (!(living instanceof Mob mob)) {
+            return;
+        }
+        for (EquipmentSlot slot : ARMOR_BY_INDEX) {
+            mob.setDropChance(slot, Mob.DEFAULT_EQUIPMENT_DROP_CHANCE);
+        }
+    }
+
+    /**
+     * 把档案里的四件盔甲掉落到发起解绑的玩家脚下。
+     *
+     * <p>用于目标实体已收回或已死亡、无法在实体脚下掉落的解绑路径。NBT 仍复用原版
+     * {@code ArmorItems} 格式；仅当至少一个槽非空时才创建容器并调用官方掉落流程。</p>
+     *
+     * @param player       发起解绑的玩家
+     * @param equipmentTag 档案的 {@code equipmentSnapshot}
+     * @return 是否至少掉落了一个非空槽
+     */
+    public static boolean dropArchivedEquipment(ServerPlayer player, CompoundTag equipmentTag) {
+        if (player == null || !(player.level() instanceof ServerLevel level)
+                || equipmentTag == null
+                || !equipmentTag.contains(KEY_ARMOR_ITEMS, Tag.TAG_LIST)) {
+            return false;
+        }
+        ListTag list = equipmentTag.getList(KEY_ARMOR_ITEMS, Tag.TAG_COMPOUND);
+        int count = Math.min(ARMOR_BY_INDEX.length, list.size());
+        SimpleContainer equipment = new SimpleContainer(count);
+        boolean hasItems = false;
+        for (int i = 0; i < count; i++) {
+            ItemStack stack = ItemStack.of(list.getCompound(i));
+            if (!stack.isEmpty()) {
+                equipment.setItem(i, stack);
+                hasItems = true;
+            }
+        }
+        if (!hasItems) {
+            return false;
+        }
+        Containers.dropContents(level, player, equipment);
+        equipment.clearContent();
+        return true;
     }
 
     // ===== ② 存档摘取 =====

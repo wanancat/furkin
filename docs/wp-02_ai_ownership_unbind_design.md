@@ -1,10 +1,10 @@
 # WP-02：AI 所有权、解绑清理与生命周期设计
 
-- 文档状态：设计已完成；3 项关键决策已确认，待输出实施计划
+- 文档状态：设计已完成；WP-02A A0-A8 已完成；WP-02B B0-B7 文档与运行验证关闭完成，H-02 已关闭；提交/推送待乌狸授权
 - 制定日期：2026-09-24
 - 工作分支：`mc1.20.1/dev`
 - 审查基线：`66dd99b78357f224c66aafe6faf9aa76a6a8a78e`
-- 当前代码基线：`c783547a2ccb9484223c6a6d094eeeabbce0fef2`
+- 当前代码基线：`184e82e0565f40961fd7b232c7e66f72d31f68c9`（WP-02A 已推送；WP-02B 工作区待提交）
 - 适用版本：Minecraft 1.20.1 / Forge 47.2.0
 - 依据：
   - `docs/code_review_2026-09-24.md` H-02、M-03
@@ -271,6 +271,7 @@ WP-02 同时覆盖两个存在技术依赖的问题：
 | 物品 | 处置 |
 |---|---|
 | 行囊 | 掉落到实体脚下，然后清空并将容量缩回 0 |
+| 未召唤/已亡档案的盔甲快照 | 掉落到发起解绑的玩家脚下，然后删除档案 |
 | 四个盔甲槽 | 掉落到实体脚下，然后清空 |
 | 盔甲掉率 | 清空后恢复 `Mob.DEFAULT_EQUIPMENT_DROP_CHANCE` |
 | 主手/副手 | 不属于绒亲装备功能线，不处理 |
@@ -316,7 +317,7 @@ WP-02 同时覆盖两个存在技术依赖的问题：
   - 命中后按正常解绑顺序清理行囊、装备、技能、状态和本模组 AI。
   - 物品掉落在实体真实位置。
   - 清理全部成功后移除墓碑；失败则保留墓碑，下次入世重试。
-- `entry.isSummoned() == false` 时实体本就不在场，按现有语义删除档案。
+- `entry.isSummoned() == false` 时实体本就不在场；若档案存在非空 `equipmentSnapshot`，先掉落到发起解绑的玩家脚下，再删除档案。
 
 边界：
 
@@ -729,7 +730,7 @@ com.wanancat.furkin.internal.record.FurkinRevocationData
 推荐顺序：
 
 1. 校验档案主人。
-2. 读取 `entry.isSummoned()`。
+2. 读取 `entry.isSummoned()`；未召唤/已亡时先按 §3.5 处置非空 `equipmentSnapshot`。
 3. 如果已召唤，使用 `entity_uuid` 和 `entity_dimension` 做 `ServerLevel#getEntity(UUID)` 索引查询；记录维度失效时最多尝试所有已加载维度。
 4. 如果已召唤但实体仍不可解析，返回 `ENTITY_UNRESOLVED` 并停止；不删档，不创建实体，不自动召唤。
 5. 清除本模组 goal。
@@ -902,6 +903,7 @@ $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 1. **[已确认]** 解绑装备掉落到世界并清空，同时恢复默认掉率。
 2. **[已确认]** 旧档已丢失的原版/第三方 goal 不做猜测性修复；重新召唤或复活重建时升级为新机制。
 3. **[已确认]** 已召唤但实体不可解析时，常规解绑失败且不删档；提供“强制解绑 + 服务器级注销墓碑”的玩家自救路径，不创建新实体。
+4. **[已确认]** 未召唤/已亡档案存在非空 `equipmentSnapshot` 时，先将其掉落到发起解绑的玩家脚下，再删除普通档案。
 
 ---
 
@@ -921,12 +923,14 @@ $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 - `FurkinArchiveEntry` 增加 `entity_uuid`、`entity_dimension` 的持久化与兼容读取。
 - 新增服务器级 `FurkinRevocationData`。
 - `EquipmentSlots` 增加装备掉落、清空和默认掉率恢复。
-- 改造 `FurkinRecordActionHandler.clearFurkinLayer`，失败时不删档。
+- 改造 `FurkinRecordActionHandler.unbind(...)`：定向定位、共享清理，失败时不删档。
+- 实施状态（2026-09-25）：WP-02B B0-B7 已完成；B6 夹具实际输出 checks=114 failed=0 restartPass=true；跨重启墓碑、延迟清理、失败重试、物品掉落和 AI 恢复均已验证；B7 已完成 H-02 关闭与文档/变更记录同步；提交/推送待乌狸授权。
 - 清理行囊、装备、冷却、进食、技能效果和原版归属。
 - 新增 UUID 定向定位；维度记录失效时只做已加载维度的 UUID 索引查询。
 - 已召唤实体不可解析时返回 `ENTITY_UNRESOLVED`，不删档，不重建。
 - 增加带二次确认的强制解绑：先写墓碑，再删普通档案。
-- `EntityJoinLevelEvent` 增加墓碑命中后的共享清理路径；成功才移除墓碑。
+- B4 已实现 FORCE_UNBIND、动作结果回执、确认界面和 /furkin forget <id> force；协议版本提升到 2。B5 已接入入世清理与失败重试。
+- `EntityJoinLevelEvent` 的墓碑命中路径已实现：成功才移除墓碑并同步客户端，失败保留墓碑供下次入世重试。
 - 验证解绑后杀死实体不丢物品、重新契约不回流旧状态。
 - 验证未加载区块、跨维度、服务器重启和延迟清理失败重试。
 
@@ -954,6 +958,8 @@ $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 - 旧档边界在文档、日志和验证中明确。
 - 所有临时夹具删除，最终构建产物不包含测试类。
 - `compileJava`、`build`、`runServer`、`runClient` 与日志复核通过。
+- B6 证据（2026-09-25）：两轮 runServer 夹具输出 `WP02B_B6_FIXTURE_OK checks=114 failed=0 restartPass=true`；临时夹具已删除，最终 JAR 不含夹具；删除夹具后的 runServer 与 runClient 启动验证通过。B7 已据此完成文档、变更记录和 H-02 关闭。
+- 关闭结论（2026-09-25）：WP-02B B0-B7 的代码、运行验证、文档、变更记录与 H-02 关闭已完成；提交/推送待乌狸明确授权。
 
 ---
 

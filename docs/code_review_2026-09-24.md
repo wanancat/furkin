@@ -201,7 +201,7 @@ if (entity instanceof LivingEntity target) {
 
 ### H-02：解绑未清理行囊、装备和战斗 AI，可能永久丢物品
 
-- 状态：已确认
+- 状态：已修复（WP-02B，2026-09-25）
 - 严重度：高
 - 公开影响：解绑后可能出现行囊物品隐藏、盔甲永久丢失和战斗 AI 残留。
 
@@ -279,6 +279,14 @@ EquipmentSlots.sealDrops(target);
    - 解绑后杀死实体，确认装备不会消失。
    - 解绑后重新契约，确认旧行囊和旧冷却不会回流。
    - 解绑前分别设置 FOLLOW、PASSIVE、PROTECT、AGGRESSIVE，确认无残留攻击行为。
+
+#### 修复验证（2026-09-25）
+
+- 定位与失败语义：档案记录实体 UUID/维度；常规解绑使用定向索引查询，不可解析时返回 `ENTITY_UNRESOLVED`，不删档、不创建替代实体。
+- 清理范围：行囊、四件装备、掉率、AI goal、技能效果、冷却、进食、坐姿、名字和原版归属均已纳入共享清理，全部成功后才删档。
+- 不可解析自救：强制解绑先写服务器级 `FurkinRevocationData`，成功后才删普通档案；原实体以后任意维度入世时执行延迟清理，成功才移除墓碑，失败保留重试。
+- 运行证据：两轮 `runServer` 夹具输出 `WP02B_B6_FIXTURE_OK checks=114 failed=0 restartPass=true`；`clean build`、无夹具 `runServer` 与 `runClient` 启动验证通过；最终 JAR 不含夹具。
+- 残余边界：H-03 的完整全局档案合并仍归 WP-03；旧档缺少 UUID/维度时只能走强制解绑；第三方自定义掉率只恢复原版默认值，第三方私有/动态 goal 不做猜测恢复。
 
 ---
 

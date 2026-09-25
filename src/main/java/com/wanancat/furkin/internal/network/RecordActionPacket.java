@@ -8,6 +8,7 @@ import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkEvent;
+import net.minecraftforge.network.PacketDistributor;
 
 import java.util.Locale;
 import java.util.UUID;
@@ -26,6 +27,7 @@ public final class RecordActionPacket {
     public enum Action {
         DISMISS,
         UNBIND,
+        FORCE_UNBIND,
         RENAME,
         REACQUIRE_SOULSTONE,
         SET_COMBAT_MODE
@@ -119,7 +121,26 @@ public final class RecordActionPacket {
                 FurkinRecordActionHandler.Result r =
                         FurkinRecordActionHandler.unbind(player, packet.companionId);
                 ok = r == FurkinRecordActionHandler.Result.OK;
-                msgKey = ok ? "furkin.msg.unbound" : "furkin.msg.unbind_failed";
+                msgKey = switch (r) {
+                    case OK -> "furkin.msg.unbound";
+                    case ENTITY_UNRESOLVED -> "furkin.msg.unbind_entity_unresolved";
+                    case CLEANUP_FAILED -> "furkin.msg.unbind_cleanup_failed";
+                    default -> "furkin.msg.unbind_failed";
+                };
+                sendActionResult(player, packet.companionId, packet.action, r,
+                        r == FurkinRecordActionHandler.Result.ENTITY_UNRESOLVED);
+            }
+            case FORCE_UNBIND -> {
+                FurkinRecordActionHandler.Result r =
+                        FurkinRecordActionHandler.forceUnbind(player, packet.companionId);
+                ok = r == FurkinRecordActionHandler.Result.OK;
+                msgKey = switch (r) {
+                    case OK -> "furkin.msg.force_unbound";
+                    case ENTITY_RESOLVED, NOT_SUMMONED -> "furkin.msg.force_unbind_not_needed";
+                    case CLEANUP_FAILED -> "furkin.msg.force_unbind_failed";
+                    default -> "furkin.msg.unbind_failed";
+                };
+                sendActionResult(player, packet.companionId, packet.action, r, false);
             }
             case RENAME -> {
                 FurkinRecordActionHandler.Result r =
@@ -170,12 +191,20 @@ public final class RecordActionPacket {
                         : Component.translatable(msgKey, msgArg),
                 ok);
 
-        // 录内按钮点完不关屏（2026-09-22 她定）⇒ 主动重发一份列表，让界面就地刷新。
         // ⚠️ 用 refreshRecordList（openScreen=false）—— **不重开屏**。
         // 技能面板也走本包切档，若无条件重发 + 开屏，面板点一下就被拽去录界面
         // （2026-09-22 她报的那个 bug）。且只对「绒亲录」发来的包做（refreshRecord）。
         if (packet.refreshRecord) {
             FurkinRecordItem.refreshRecordList(player);
         }
+    }
+
+    /** 回一条动作结果包，供已打开的绒亲录决定是否进入强制解绑确认。 */
+    private static void sendActionResult(ServerPlayer player, UUID companionId, Action action,
+                                         FurkinRecordActionHandler.Result result,
+                                         boolean forceUnbindAllowed) {
+        FurkinNetwork.channel().send(
+                PacketDistributor.PLAYER.with(() -> player),
+                new RecordActionResultPacket(companionId, action, result, forceUnbindAllowed));
     }
 }

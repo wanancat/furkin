@@ -29,6 +29,17 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 
 ---
 
+## [Unreleased]
+
+**Fixed**
+
+- **Unbind cleanup** —— Unbinding now drops and clears the pouch and four equipment slots, restores displaced AI, vanilla default drop chances, skill effects, cooldowns, feeding and sitting state; the archive is removed only after cleanup succeeds.
+- **Unresolved companion recovery** —— If a summoned companion cannot currently be resolved, regular unbinding no longer removes its archive. A confirmed force-unbind can be used instead; cleanup completes when the entity next enters the world and is retried if it fails.
+- **Targeted lookup** —— Archives now store the entity UUID and dimension, so unbinding uses targeted index lookup without loading chunks, scanning all entities, or adding tick polling.
+- **Network protocol** —— Force-unbind adds request/result packets and raises the protocol version to 2; clients and servers must use the same protocol version.
+
+---
+
 ## [1.20.1-0.0.1.1] - 2026-09-24
 
 **Fixed**

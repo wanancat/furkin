@@ -258,6 +258,28 @@ public final class FurkinData {
         return Math.max(0, level) * FurkinServerConfig.POUCH_SLOTS_PER_LEVEL.get();
     }
 
+    /**
+     * 清除解绑后不应回流的全部运行时状态；调用方须先完成技能效果移除、物品掉落和行囊缩容。
+     *
+     * <p>本方法只做幂等赋值与清表，不持有实体、不掉落物品，避免在运行时数据层埋下
+     * 静默吞物品或依赖世界状态的路径。</p>
+     */
+    public void clearForUnbind() {
+        this.companionId = null;
+        this.ownerUuid = null;
+        this.level = 1;
+        this.xp = 0;
+        this.skillPoints = 0;
+        this.skillLevels.clear();
+        this.state = FurkinState.WILD;
+        this.combatMode = FurkinCombatMode.FOLLOW;
+        this.aiStateVersion = 0;
+        this.feedCount = 0;
+        this.lastFeedMillis = 0;
+        this.cooldowns.clear();
+        clearCombatAiState();
+    }
+
     /** 是否已契约（COMPANION 或 FALLEN 都算「已进入伴侣体系」）。 */
     public boolean isCompanion() {
         return state == FurkinState.COMPANION || state == FurkinState.FALLEN;

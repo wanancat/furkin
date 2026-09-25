@@ -37,6 +37,21 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 
 ---
 
+## [Unreleased]
+
+**修复 / Fixed**
+
+- **解绑清理 / Unbind cleanup** —— 解绑现在会掉落并清空行囊与四件装备，恢复被接管的 AI、原版默认掉率、技能效果、冷却、进食和坐姿等状态；只有全部清理成功后才删除档案。
+  *Unbinding now drops and clears the pouch and four equipment slots, restores displaced AI, vanilla default drop chances, skill effects, cooldowns, feeding and sitting state; the archive is removed only after cleanup succeeds.*
+- **不可解析实体自救 / Unresolved companion recovery** —— 已召唤实体暂时无法定位时，常规解绑不再删档；玩家可二次确认强制解绑，原实体以后入世时再完成清理，失败会保留墓碑并重试。
+  *If a summoned companion cannot currently be resolved, regular unbinding no longer removes its archive. A confirmed force-unbind can be used instead; cleanup completes when the entity next enters the world and is retried if it fails.*
+- **定向定位 / Targeted lookup** —— 档案记录实体 UUID 与维度，解绑只做定向索引查询，不加载区块、不扫描全服实体、不产生 tick 轮询。
+  *Archives now store the entity UUID and dimension, so unbinding uses targeted index lookup without loading chunks, scanning all entities, or adding tick polling.*
+- **网络协议 / Network protocol** —— 强制解绑新增请求/结果包，协议版本提升到 2；客户端与服务端需使用同一协议版本。
+  *Force-unbind adds request/result packets and raises the protocol version to 2; clients and servers must use the same protocol version.*
+
+---
+
 ## [1.20.1-0.0.1.1] - 2026-09-24
 
 **修复 / Fixed**

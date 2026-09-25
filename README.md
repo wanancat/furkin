@@ -47,6 +47,7 @@ included (because they're rather fluff~y~).
 
 ![Furkin Record](./docs/images/companion_record_en_us.png)
 
+- When unbinding, the companion's pouch and equipment drop at its current position, and its displaced AI and vanilla default drop chances are restored. If a summoned companion cannot be resolved, the Furkin Record offers a confirmed force-unbind; cleanup completes when it next enters the world.
 - Sneak + right-click your companion to level up its skills and adjust its equipment.
   It's ready to join you on an adventure.
 

@@ -99,7 +99,10 @@ public final class FurkinCommand {
                         .then(Commands.literal("forget")
                                 .then(Commands.argument("pet_id", StringArgumentType.word())
                                         .executes(ctx -> forget(ctx.getSource(),
-                                                StringArgumentType.getString(ctx, "pet_id")))))
+                                                StringArgumentType.getString(ctx, "pet_id"), false))
+                                        .then(Commands.literal("force")
+                                                .executes(ctx -> forget(ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "pet_id"), true)))))
                         .then(Commands.literal("rename")
                                 .then(Commands.argument("pet_id", StringArgumentType.word())
                                         .then(Commands.argument("name", StringArgumentType.greedyString())
@@ -289,7 +292,7 @@ public final class FurkinCommand {
     }
 
     /** 忘记（解绑）一只属于本人的绒亲。走统一处理器（规则一套，与录内按钮同源）。 */
-    private static int forget(CommandSourceStack src, String petIdRaw) {
+    private static int forget(CommandSourceStack src, String petIdRaw, boolean force) {
         if (!(src.getEntity() instanceof ServerPlayer player)) {
             return 0;
         }
@@ -298,17 +301,27 @@ public final class FurkinCommand {
         try {
             petId = UUID.fromString(petIdRaw);
         } catch (IllegalArgumentException e) {
-            src.sendFailure(Component.literal("Invalid pet id: " + petIdRaw));
+            src.sendFailure(Component.translatable("furkin.msg.invalid_pet_id", petIdRaw));
             return 0;
         }
 
-        FurkinRecordActionHandler.Result r = FurkinRecordActionHandler.unbind(player, petId);
+        FurkinRecordActionHandler.Result r = force
+                ? FurkinRecordActionHandler.forceUnbind(player, petId)
+                : FurkinRecordActionHandler.unbind(player, petId);
         final String sid = shortId(petId.toString());
         switch (r) {
-            case OK -> src.sendSuccess(() -> Component.literal("Unbound " + sid), false);
-            case NOT_FOUND -> src.sendFailure(Component.literal("No such companion: " + sid));
-            case NOT_OWNER -> src.sendFailure(Component.literal("Not your companion."));
-            default -> src.sendFailure(Component.literal("Unbind failed."));
+            case OK -> src.sendSuccess(() -> Component.translatable(
+                    force ? "furkin.msg.force_unbound" : "furkin.msg.unbound"), false);
+            case NOT_FOUND -> src.sendFailure(
+                    Component.translatable("furkin.msg.unbind_not_found", sid));
+            case NOT_OWNER -> src.sendFailure(Component.translatable("furkin.msg.not_owner"));
+            case ENTITY_RESOLVED, NOT_SUMMONED -> src.sendFailure(
+                    Component.translatable("furkin.msg.force_unbind_not_needed"));
+            case ENTITY_UNRESOLVED -> src.sendFailure(
+                    Component.translatable("furkin.msg.unbind_entity_unresolved"));
+            case CLEANUP_FAILED -> src.sendFailure(Component.translatable(
+                    force ? "furkin.msg.force_unbind_failed" : "furkin.msg.unbind_cleanup_failed"));
+            default -> src.sendFailure(Component.translatable("furkin.msg.unbind_failed"));
         }
         return 1;
     }

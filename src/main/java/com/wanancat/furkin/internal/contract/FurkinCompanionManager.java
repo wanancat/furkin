@@ -185,6 +185,7 @@ public final class FurkinCompanionManager {
         entry.setEquipmentSnapshot(EquipmentSlots.extractFrom(snapshot));
         entry.setAlive(true);
         entry.setSummoned(false); // 收回：实体不在场。
+        entry.clearEntityLocation(); // WP-02B：实体已 discard，定位字段不得继续指向失效 UUID。
         archive.putEntry(entry);
 
         // 移除实体（discard 不触发死亡掉落 / 不广播死亡）。
@@ -462,6 +463,7 @@ public final class FurkinCompanionManager {
         // 避免 rebuild 中途失败时留下「alive=true 却无实体」的中间态。
         entry.setAlive(true);
         entry.setSummoned(true);
+        entry.setEntityLocation(living); // WP-02B：召唤/复活后记录新实体 UUID 与维度。
         FurkinArchiveData.get(serverLevel).putEntry(entry);
 
         // 同步能力数据到客户端。
@@ -511,6 +513,7 @@ public final class FurkinCompanionManager {
         if (target == null) {
             // 档案标记已召唤但实体不在场（数据不一致）→ 自愈：改回未召唤。
             entry.setSummoned(false);
+            entry.clearEntityLocation();
             archive.putEntry(entry);
             FurkinMod.LOGGER.warn("Furkin teleport: entity missing for id={}, marked dismissed",
                     companionId);
@@ -521,6 +524,9 @@ public final class FurkinCompanionManager {
         double dx = -Math.sin(Math.toRadians(player.getYRot())) * 1.5;
         double dz = Math.cos(Math.toRadians(player.getYRot())) * 1.5;
         target.teleportTo(player.getX() + dx, player.getY(), player.getZ() + dz);
+        // WP-02B：传送成功后刷新一次定位，覆盖同维度移动与后续扩展路径。
+        entry.setEntityLocation(target);
+        archive.putEntry(entry);
 
         // 唤醒跟随：清坐定 + 坐姿，保证传送后立即跟随且不残留坐姿。
         if (target instanceof TamableAnimal tamable) {
