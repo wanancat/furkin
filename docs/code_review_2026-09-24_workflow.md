@@ -1,6 +1,6 @@
 # Furkin 1.20.1 代码审查整改工作流
 
-- 文档状态：执行中；WP-01 服务端核心完成，客户端集成验证待办；WP-02 已推送至 `184e82e`，H-02 已关闭；WP-03 已推送至 `7de91ba`，H-03 已关闭；WP-04 包清单、版本策略、同源码双端启动验证完成；真实混连实测待补；提交/推送待授权
+- 文档状态：执行中；WP-01 服务端核心完成，客户端集成验证待办；WP-02 已推送至 `184e82e`，H-02 已关闭；WP-03 已推送至 `7de91ba`，H-03 已关闭；WP-04 包清单、版本策略、同源码双端启动验证完成；真实混连实测待补；WP-05 已推送至 `6f11f68`，M-02/M-04 已关闭；WP-06 已实施并完成静态、服务端和客户端烟测；强制解绑特有分支未复现；全部提交/推送逐项授权
 - 制定日期：2026-09-24
 - 依据报告：`docs/code_review_2026-09-24.md`
 - 审查基线：`main@66dd99b78357f224c66aafe6faf9aa76a6a8a78e`
@@ -502,6 +502,15 @@ $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 
 共享网络包和共享处理路径不加载客户端类，专用服务端启动安全。
 
+#### 当前进度与审计记录
+
+- 2026-09-25：以 `6f11f68` 为基线完成共享源码客户端引用审计，共发现 5 处：`SyncFurkinDataPacket` 的 `Minecraft`、`OpenFurkinScreenPacket` 的 `FurkinPanelScreen`、`RecordActionResultPacket` 的 `FurkinRecordScreen`、`RequestContractNamePacket` 的 `ContractNameScreen`、`RecordListPacket` 的 `FurkinRecordScreen`。
+- 实施完成：新增 `internal.client.FurkinClientPacketHandler`，5 条客户端回调已迁移；共享网络包不再直接引用 `Minecraft` 或具体界面类。
+- 静态验证：`compileJava`、`build --rerun-tasks` 通过；网络包字节码未出现 `net/minecraft/client` 引用。
+- 运行验证：`runServer` 到达 `Done (2.689s)!`；`runClient` 进服后实机通过数据同步、技能面板、绒亲录打开/刷新、契约命名和普通解绑；最终日志无错误级记录。
+- 残余：强制解绑特有状态未能复现；仅记录普通解绑已覆盖同一回执处理器入口。
+- 设计/审计记录：[WP-06 客户端类隔离设计](wp-06_client_isolation_design.md)。
+
 #### 实施步骤
 
 1. 列出共享包对 `Minecraft`、Screen 等客户端类的直接引用。
@@ -639,7 +648,7 @@ $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 - [x] WP-04 审计文档、AGENTS 长期规则与关闭记录（2026-09-25；提交/推送待授权）
 - [x] WP-05 M-02 技能退款与 schema 校验（2026-09-25；checks=35 failed=0）
 - [x] WP-05 M-04 热重载效果重建（2026-09-25；checks=26 failed=0）
-- [ ] WP-06 L-01 客户端类隔离
+- [x] WP-06 L-01 客户端类隔离（2026-09-25；静态引用清零，build/runServer/runClient 通过；强制解绑特有分支未复现）
 - [ ] WP-07 L-02 命令本地化
 - [ ] 最终 build、runServer、runClient 和日志复核
 - [ ] 版本、README、changelog、SKILL_TREE 同步

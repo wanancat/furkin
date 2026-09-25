@@ -1,6 +1,6 @@
 package com.wanancat.furkin.internal.network;
 
-import com.wanancat.furkin.internal.client.FurkinRecordScreen;
+import com.wanancat.furkin.internal.client.FurkinClientPacketHandler;
 import com.wanancat.furkin.internal.contract.FurkinCombatMode;
 import com.wanancat.furkin.internal.record.RecordAttributes;
 import net.minecraft.network.FriendlyByteBuf;
@@ -19,7 +19,7 @@ import java.util.function.Supplier;
  * <p><b>两种用途，靠 {@link #openScreen} 区分</b>：
  * <ul>
  *   <li><b>开屏</b>（右键绒亲录物品）—— 客户端收到后经 {@link DistExecutor} 调
- *       {@link FurkinRecordScreen#open(List)} 打开界面。</li>
+ *       {@code FurkinRecordScreen#open(List)} 打开界面。</li>
  *   <li><b>刷新</b>（录内按钮点完，服务端回发以就地更新）—— 不重开屏，交给已在的录界面
  *       自己换数据。</li>
  * </ul>
@@ -203,15 +203,8 @@ public final class RecordListPacket {
         //   openScreen = true  → 右键物品开屏，setScreen 换出新录界面；
         //   openScreen = false → 刷新用途，**只喂给已在的录界面**，当前屏不是录则什么都不做
         //                        （否则她在技能面板点档位会被弹进录界面）。
-        final boolean open = packet.openScreen;
-        final List<Entry> data = packet.entries;
-        ctx.enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> {
-            if (open) {
-                FurkinRecordScreen.open(data);
-            } else {
-                FurkinRecordScreen.handleRefresh(data);
-            }
-        }));
+        ctx.enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT,
+                () -> () -> FurkinClientPacketHandler.handleRecordList(packet)));
         ctx.setPacketHandled(true);
     }
 }

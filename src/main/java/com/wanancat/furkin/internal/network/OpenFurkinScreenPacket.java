@@ -1,6 +1,6 @@
 package com.wanancat.furkin.internal.network;
 
-import com.wanancat.furkin.internal.client.FurkinPanelScreen;
+import com.wanancat.furkin.internal.client.FurkinClientPacketHandler;
 import com.wanancat.furkin.internal.skill.SkillTree;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraftforge.api.distmarker.Dist;
@@ -265,7 +265,7 @@ public final class OpenFurkinScreenPacket {
     public static void handle(OpenFurkinScreenPacket packet, Supplier<NetworkEvent.Context> ctxSupplier) {
         NetworkEvent.Context ctx = ctxSupplier.get();
         ctx.enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT,
-                () -> () -> FurkinPanelScreen.onSkillData(packet)));
+                () -> () -> FurkinClientPacketHandler.handleSkillData(packet)));
         ctx.setPacketHandled(true);
     }
 }

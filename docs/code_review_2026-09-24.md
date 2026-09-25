@@ -672,6 +672,14 @@ float damage = BleedingSpec.of()
 3. 使用 Forge 客户端分发入口时，把客户端类引用隔离到不在服务端加载的类中。
 4. 在专用服务端执行启动与进服验证。
 
+#### 修复验证（2026-09-25）
+
+- 新增 `internal.client.FurkinClientPacketHandler`，5 条客户端回调从共享网络包迁入客户端专用处理器。
+- `internal.network` 已无 `Minecraft` 或具体界面类直接引用；字节码检查确认网络包只引用客户端处理器，不再引用 `net/minecraft/client`。
+- `build --rerun-tasks` 通过；`runServer` 到达 `Done (2.689s)!`，日志无 `NoClassDefFoundError`、`ClassNotFoundException`、`ERROR`、`FATAL` 或异常栈。
+- `runClient` 实机通过绒亲数据同步、技能面板、绒亲录打开/刷新、契约命名和普通解绑；最终客户端日志无错误级记录。
+- 强制解绑特有状态未能复现，保留为特定 UI 分支残余验证；普通解绑已覆盖同一 `RecordActionResultPacket` 处理器入口。
+
 ---
 
 ### L-02：调试命令回执大量硬编码英文

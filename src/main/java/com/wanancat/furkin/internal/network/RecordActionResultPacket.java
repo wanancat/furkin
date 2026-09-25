@@ -1,6 +1,6 @@
 package com.wanancat.furkin.internal.network;
 
-import com.wanancat.furkin.internal.client.FurkinRecordScreen;
+import com.wanancat.furkin.internal.client.FurkinClientPacketHandler;
 import com.wanancat.furkin.internal.contract.FurkinRecordActionHandler;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraftforge.api.distmarker.Dist;
@@ -70,9 +70,7 @@ public final class RecordActionResultPacket {
                               Supplier<NetworkEvent.Context> ctxSupplier) {
         NetworkEvent.Context ctx = ctxSupplier.get();
         ctx.enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT,
-                () -> () -> FurkinRecordScreen.handleActionResult(
-                        packet.companionId, packet.action, packet.result,
-                        packet.forceUnbindAllowed)));
+                () -> () -> FurkinClientPacketHandler.handleRecordActionResult(packet)));
         ctx.setPacketHandled(true);
     }
 }
