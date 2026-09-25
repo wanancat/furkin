@@ -8,6 +8,8 @@
   "furkin.species.dog": "Dog",
   "furkin.species.unknown": "Unknown",
   "furkin.msg.active_limit": "Active companion limit reached (%s). Dismiss one before contracting another.",
+  "furkin.msg.contract_health": "Target is too healthy to contract (needs ≤ %s).",
+  "furkin.msg.contract_health_with_absolute": "Target is too healthy to contract (needs ≤ %s or ≤ %s health).",
   "furkin.msg.summoned": "Companion summoned",
   "furkin.msg.summon_failed": "Summon failed (not found / not owner / not alive / already summoned / active limit)",
   "furkin.msg.summon_not_found": "No such companion",

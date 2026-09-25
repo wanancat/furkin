@@ -19,13 +19,18 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.NeutralMob;
 import net.minecraft.world.entity.TamableAnimal;
+import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraftforge.network.PacketDistributor;
 
+import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -36,7 +41,10 @@ import java.util.UUID;
  * 服务端重新校验并执行契约。契约即建档，与是否合成绒亲录无关。</p>
  *
  * <p>边界规则（不消耗契约）：已契约 / 已倒下 / 不在注册表内 / 非生物实体 /
- * 已被其他玩家拥有 / 主手状态或距离发生变化。</p>
+ * 已被其他玩家拥有 / 主手状态或距离发生变化 / 生命值高于分类门槛。</p>
+ *
+ * <p>生命值门槛按 Enemy → NeutralMob → 其他分类，百分比和绝对值使用 OR。
+ * 只有 {@link ContractCheckResult#HEALTH_TOO_HIGH} 会产生生命值提示并吞掉原版右键。</p>
  */
 public final class FurkinContractHandler {
 
@@ -45,6 +53,20 @@ public final class FurkinContractHandler {
 
     /** 服务端线程专用：玩家 UUID → 当前待确认契约。新请求覆盖旧请求。 */
     private static final Map<UUID, PendingContract> PENDING_CONTRACTS = new HashMap<>();
+
+    /** 契约前置校验结果。仅在 internal 包内流转，不构成公开 API。 */
+    public enum ContractCheckResult {
+        PASSED,
+        INVALID_TARGET,
+        UNREGISTERED,
+        ALREADY_COMPANION,
+        OWNED_BY_OTHER,
+        OUT_OF_REACH,
+        ACTIVE_LIMIT,
+        INVALID_HAND,
+        INVALID_HEALTH,
+        HEALTH_TOO_HIGH
+    }
 
     private FurkinContractHandler() {
     }
@@ -58,20 +80,27 @@ public final class FurkinContractHandler {
      * {@link com.wanancat.furkin.internal.network.ConfirmContractPacket} 回调
      * {@link #confirmContract}，由服务端重新校验并真正落契约。</p>
      *
-     * <p>返回 true 表示「已发出命名请求」（契约尚未落地），false 表示「边界不通过，无动作」。</p>
+     * <p>返回 {@link ContractCheckResult#PASSED} 表示已发出命名请求（契约尚未落地）；
+     * 其他结果表示边界不通过。只有 {@link ContractCheckResult#HEALTH_TOO_HIGH}
+     * 会在此处发送生命值提示，供事件层同时取消原版右键行为。</p>
      *
      * @param player 发起契约的玩家（主人）
      * @param target 被契约的实体
      * @param hand   契约物品所在堆叠
-     * @return 是否已发出命名请求
+     * @return 前置校验结果
      */
-    public static boolean tryContract(ServerPlayer player, LivingEntity target, ItemStack hand) {
+    public static ContractCheckResult tryContract(ServerPlayer player, LivingEntity target, ItemStack hand) {
         // 任意新的契约尝试都先使旧请求失效，避免旧命名窗口在新请求失败后仍可确认。
         PENDING_CONTRACTS.remove(player.getUUID());
 
         ServerLevel level = player.serverLevel();
-        if (!passesContractChecks(player, target, hand, level)) {
-            return false;
+        ContractCheckResult result = checkContract(player, target, hand, level);
+        if (result == ContractCheckResult.HEALTH_TOO_HIGH) {
+            sendHealthBlockedMessage(player, target);
+            return result;
+        }
+        if (result != ContractCheckResult.PASSED) {
+            return result;
         }
 
         PENDING_CONTRACTS.put(player.getUUID(), new PendingContract(
@@ -85,14 +114,13 @@ public final class FurkinContractHandler {
         FurkinNetwork.channel().send(
                 PacketDistributor.PLAYER.with(() -> player),
                 new com.wanancat.furkin.internal.network.RequestContractNamePacket(target.getId()));
-        return true;
+        return ContractCheckResult.PASSED;
     }
-
     /**
      * 服务端确认契约（第二步：命名确认后的唯一权威入口）。
      *
-     * <p>会话先被消费，因此任何确认包都最多执行一次。随后按当前服务端状态重新查找目标，
-     * 校验维度、实体身份、存活、注册表、能力、归属、活跃上限、主手、距离和名字。</p>
+     * <p>会话先被消费，因此任何确认包都最多执行一次。先校验会话、目标身份、快捷栏、
+     * 主手内容和名字；这些均通过后再执行共享资格与生命值校验，避免无效确认包触发提示。</p>
      *
      * @param player   发起确认的玩家
      * @param entityId 客户端回传的实体 ID
@@ -119,13 +147,18 @@ public final class FurkinContractHandler {
         }
 
         ItemStack hand = player.getMainHandItem();
-        if (!passesContractChecks(player, target, hand, level)) {
-            return;
-        }
-
         if (player.getInventory().selected != pending.selectedSlot
                 || !ItemStack.matches(hand, pending.expectedHand)
                 || !isValidContractName(name)) {
+            return;
+        }
+
+        ContractCheckResult result = checkContract(player, target, hand, level);
+        if (result == ContractCheckResult.HEALTH_TOO_HIGH) {
+            sendHealthBlockedMessage(player, target);
+            return;
+        }
+        if (result != ContractCheckResult.PASSED) {
             return;
         }
 
@@ -134,7 +167,6 @@ public final class FurkinContractHandler {
                     target.getUUID(), player.getName().getString());
         }
     }
-
     /** 玩家登出时清理待确认会话，避免无效记录长期残留。 */
     public static void clearPendingContract(UUID playerId) {
         PENDING_CONTRACTS.remove(playerId);
@@ -143,34 +175,35 @@ public final class FurkinContractHandler {
     /**
      * 契约执行前的公共权威校验。
      *
-     * <p>只返回状态，不改写能力、档案、名字或物品。活跃上限失败沿用现有 action bar 提示。</p>
+     * <p>只返回结果，不改写能力、档案、名字或物品。活跃上限失败沿用现有 action bar 提示。
+     * 生命值门槛放在主手校验之后，避免空手或错误物品被误报为“生命值过高”。</p>
      */
-    private static boolean passesContractChecks(
+    private static ContractCheckResult checkContract(
             ServerPlayer player, LivingEntity target, ItemStack hand, ServerLevel level) {
         if (target == player || target instanceof Player) {
-            return false;
+            return ContractCheckResult.INVALID_TARGET;
         }
         if (target.level() != level || !target.isAlive() || target.isRemoved()) {
-            return false;
+            return ContractCheckResult.INVALID_TARGET;
         }
         if (!FurkinSpeciesRegistry.isRegisteredEntity(target)) {
-            return false;
+            return ContractCheckResult.UNREGISTERED;
         }
 
         FurkinData data = target.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
         if (data == null || data.isCompanion()) {
-            return false;
+            return ContractCheckResult.ALREADY_COMPANION;
         }
 
         if (target instanceof TamableAnimal tamable) {
             UUID ownerUuid = tamable.getOwnerUUID();
             if (ownerUuid != null && !ownerUuid.equals(player.getUUID())) {
-                return false;
+                return ContractCheckResult.OWNED_BY_OTHER;
             }
         }
 
         if (!player.canReach(target, 3.0D)) {
-            return false;
+            return ContractCheckResult.OUT_OF_REACH;
         }
 
         if (countActive(level, player.getUUID()) >= FurkinServerConfig.ACTIVE_LIMIT.get()) {
@@ -180,12 +213,80 @@ public final class FurkinContractHandler {
                     Component.translatable("furkin.msg.active_limit",
                             FurkinServerConfig.ACTIVE_LIMIT.get()),
                     true);
-            return false;
+            return ContractCheckResult.ACTIVE_LIMIT;
         }
 
-        return hand != null
-                && !hand.isEmpty()
-                && hand.getItem() instanceof FurkinContractItem;
+        if (hand == null || hand.isEmpty() || !(hand.getItem() instanceof FurkinContractItem)) {
+            return ContractCheckResult.INVALID_HAND;
+        }
+
+        return checkHealth(target);
+    }
+
+    /**
+     * 按 Enemy → NeutralMob → 其他检查生命值门槛。
+     *
+     * <p>百分比与绝对值使用 OR：任一分支通过即可。绝对值为 0 时禁用该分支；
+     * 百分比为 100 时，正常满血目标不会被该分类额外限制。</p>
+     */
+    private static ContractCheckResult checkHealth(LivingEntity target) {
+        HealthGate gate = healthGateFor(target);
+        double currentHealth = target.getHealth();
+        double maxHealth = target.getMaxHealth();
+        if (!isFinitePositive(currentHealth) || !isFinitePositive(maxHealth)) {
+            return ContractCheckResult.INVALID_HEALTH;
+        }
+
+        double healthPercent = currentHealth * 100.0D / maxHealth;
+        boolean percentPass = gate.percentThreshold() >= 100.0D
+                || healthPercent <= gate.percentThreshold();
+        boolean absolutePass = gate.absoluteThreshold() > 0.0D
+                && currentHealth <= gate.absoluteThreshold();
+        return percentPass || absolutePass
+                ? ContractCheckResult.PASSED
+                : ContractCheckResult.HEALTH_TOO_HIGH;
+    }
+
+    /** Enemy 优先于 NeutralMob，其他实体使用兜底阈值。 */
+    private static HealthGate healthGateFor(LivingEntity target) {
+        if (target instanceof Enemy) {
+            return new HealthGate(
+                    FurkinServerConfig.CONTRACT_ENEMY_HEALTH_PERCENT.get(),
+                    FurkinServerConfig.CONTRACT_ENEMY_HEALTH_ABSOLUTE.get());
+        }
+        if (target instanceof NeutralMob) {
+            return new HealthGate(
+                    FurkinServerConfig.CONTRACT_NEUTRAL_HEALTH_PERCENT.get(),
+                    FurkinServerConfig.CONTRACT_NEUTRAL_HEALTH_ABSOLUTE.get());
+        }
+        return new HealthGate(
+                FurkinServerConfig.CONTRACT_OTHER_HEALTH_PERCENT.get(),
+                FurkinServerConfig.CONTRACT_OTHER_HEALTH_ABSOLUTE.get());
+    }
+
+    private static boolean isFinitePositive(double value) {
+        return Double.isFinite(value) && value > 0.0D;
+    }
+
+    /** 只在生命值确实是唯一失败原因时提示；其他失败原因不发送生命值文案。 */
+    private static void sendHealthBlockedMessage(ServerPlayer player, LivingEntity target) {
+        HealthGate gate = healthGateFor(target);
+        String percent = formatThreshold(gate.percentThreshold()) + "%";
+        Component message = gate.absoluteThreshold() > 0.0D
+                ? Component.translatable("furkin.msg.contract_health_with_absolute",
+                percent, formatThreshold(gate.absoluteThreshold()))
+                : Component.translatable("furkin.msg.contract_health", percent);
+        player.displayClientMessage(message, true);
+    }
+
+    /** 配置值来自 TOML，避免浮点数以不受控的小数位数显示。 */
+    private static String formatThreshold(double value) {
+        return new DecimalFormat("0.##", DecimalFormatSymbols.getInstance(Locale.ROOT))
+                .format(value);
+    }
+
+    /** 一次生命值门槛的分类阈值；仅在服务端判定期间使用。 */
+    private record HealthGate(double percentThreshold, double absoluteThreshold) {
     }
 
     /** 客户端输入框限制为 32 字符；服务端独立拒绝超长、控制字符和旧版格式标记。 */

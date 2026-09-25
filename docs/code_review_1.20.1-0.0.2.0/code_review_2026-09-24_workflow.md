@@ -78,7 +78,7 @@
 ### 3.1 输入
 
 - 审查报告：`docs/code_review_1.20.1-0.0.2.0/code_review_2026-09-24.md`
-- 契约前置设计参考：`docs/code_review_1.20.1-0.0.2.0/contract_precondition_workflow.md`
+- 契约前置设计参考：`docs/contract_precondition_workflow_v2/README.md`
 - 项目规则：`AGENTS.md` 和根目录构建配置
 - 当前工作分支：`mc1.20.1`
 

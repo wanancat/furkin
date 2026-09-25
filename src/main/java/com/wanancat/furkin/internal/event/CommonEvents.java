@@ -44,6 +44,7 @@ import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.living.LivingHurtEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
+import net.minecraftforge.entity.PartEntity;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.network.PacketDistributor;
@@ -197,7 +198,14 @@ public final class CommonEvents {
             return;
         }
 
-        if (!(event.getTarget() instanceof LivingEntity target)) {
+        Entity interactionTarget = event.getTarget();
+        if (interactionTarget instanceof PartEntity<?> part
+                && part.getParent() instanceof LivingEntity parent) {
+            // 多部件生物（如 Twilight Forest 的 Hydra）主实体不可拾取，右键命中的是
+            // PartEntity；其 interact 会转发给父实体，这里同步把契约目标解析到父实体。
+            interactionTarget = parent;
+        }
+        if (!(interactionTarget instanceof LivingEntity target)) {
             return;
         }
 
@@ -249,9 +257,11 @@ public final class CommonEvents {
             return;
         }
 
-        // 分支②：普通右键 → 契约。
-        boolean contracted = FurkinContractHandler.tryContract(player, target, player.getMainHandItem());
-        if (contracted) {
+        // 分支②：普通右键 → 契约。生命值过高也取消原版右键，避免目标切换坐姿等副作用。
+        FurkinContractHandler.ContractCheckResult result =
+                FurkinContractHandler.tryContract(player, target, player.getMainHandItem());
+        if (result == FurkinContractHandler.ContractCheckResult.PASSED
+                || result == FurkinContractHandler.ContractCheckResult.HEALTH_TOO_HIGH) {
             event.setCancellationResult(InteractionResult.SUCCESS);
             event.setCanceled(true);
         }

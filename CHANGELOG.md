@@ -37,6 +37,26 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 
 ---
 
+## [1.20.1-0.0.3.0] - 2026-09-25
+
+**新增 / Added**
+
+- **可配置的契约生命值门槛 / Configurable contract health gates** —— 已注册物种现在按 `Enemy > NeutralMob > 其他` 分类，每类均可配置“最高生命百分比”和“绝对生命值”，两者任一满足即可契约。默认 Enemy / NeutralMob 为 `30%` 或 `4` 点，其他分类为 `100%` 且绝对分支禁用；六项配置位于服务端 `furkin-server.toml`。发起命名和确认命名都会重新校验，命名期间回血也会被拒绝。
+  *Registered species now use `Enemy > NeutralMob > other` classification, with configurable percentage and absolute health gates. Either branch may pass: Enemy and NeutralMob default to `30%` or `4` health, while other targets default to `100%` with the absolute branch disabled. Both the naming request and confirmation revalidate the gate, so regenerating above it before confirmation is rejected.*
+- **多部件实体契约兼容 / Multipart entity interaction compatibility** —— 实体交互目标为 Forge `PartEntity` 时，会通过公开 `getParent()` 解析到父实体。Twilight Forest Hydra 这类主实体不可拾取、只能点击部件的生物现在可以正常判断门槛、契约、收回和重新召唤。
+  *When an entity interaction targets a Forge `PartEntity`, Furkin resolves the public `getParent()` entity. Multipart creatures such as the Twilight Forest Hydra, whose main entity is not directly pickable, can now pass the health gate and complete contract, dismiss and resummon flows.*
+
+**说明 / Notes**
+
+- 只有 `HEALTH_TOO_HIGH` 会显示生命值提示并取消原版右键；未注册、错误归属、超距等既有失败不扩大取消范围。
+  *Only `HEALTH_TOO_HIGH` shows the health message and cancels the vanilla interaction; existing failures such as unregistered species, wrong ownership or being out of reach are not newly cancelled.*
+- 非 `TamableAnimal` Enemy 目前仅保证建档、收回和重新召唤，不保证跟随、停战、护主或主动索敌。
+  *Non-`TamableAnimal` enemies currently guarantee archive, dismiss and resummon flows only; following, ceasefire, owner defence and aggressive targeting are not yet guaranteed.*
+- 公开 API 未变化，`MAJORAPI` 保持 `0`；网络协议保持 `2`。
+  *No public API changes were made, `MAJORAPI` remains `0`, and the network protocol remains `2`.*
+
+---
+
 ## [1.20.1-0.0.2.0] - 2026-09-25
 
 **修复 / Fixed**

@@ -29,6 +29,21 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 
 ---
 
+## [1.20.1-0.0.3.0] - 2026-09-25
+
+**Added**
+
+- **Configurable contract health gates** —— Registered species now use `Enemy > NeutralMob > other` classification, with configurable percentage and absolute health gates. Either branch may pass: Enemy and NeutralMob default to `30%` or `4` health, while other targets default to `100%` with the absolute branch disabled. The six values live in the server `furkin-server.toml`. Both the naming request and confirmation revalidate the gate, so regenerating above it before confirmation is rejected.
+- **Multipart entity interaction compatibility** —— When an entity interaction targets a Forge `PartEntity`, Furkin resolves the public `getParent()` entity. Multipart creatures such as the Twilight Forest Hydra, whose main entity is not directly pickable, can now pass the health gate and complete contract, dismiss and resummon flows.
+
+**Notes**
+
+- Only `HEALTH_TOO_HIGH` shows the health message and cancels the vanilla interaction; existing failures such as unregistered species, wrong ownership or being out of reach are not newly cancelled.
+- Non-`TamableAnimal` enemies currently guarantee archive, dismiss and resummon flows only; following, ceasefire, owner defence and aggressive targeting are not yet guaranteed.
+- No public API changes were made, `MAJORAPI` remains `0`, and the network protocol remains `2`.
+
+---
+
 ## [1.20.1-0.0.2.0] - 2026-09-25
 
 **Fixed**

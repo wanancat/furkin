@@ -17,12 +17,30 @@ included (because they're rather fluff~y~).
 
 ## Features
 
-- **Contract** — turn any registered species into a companion with a single item, no prior taming required.
+- **Contract** — turn any registered species into a companion with a single item, no prior taming required. Enemy, neutral and other targets have configurable health gates.
 - **Skill tree** — a shared trunk plus species-specific branches.
 - **Equipment** — companions wear vanilla armor (all 4 slots), third-party armor works with zero config.
 - **Travel pouch** — a carry-along inventory that grows with the `travel_pouch` skill level, with shrinking, reclaiming and death-drop handling built in. Finally, someone else carries the cobblestone.
 - **Revival** — a soulstone-based revive system that preserves all growth.
 
+## Contract Health Gates
+
+Contracting is checked when the naming request starts and again when it is confirmed:
+
+| Target class | Default gate |
+|---|---|
+| `Enemy` | At or below `30%`, or at or below `4` health |
+| `NeutralMob` | At or below `30%`, or at or below `4` health |
+| Other registered species | Full health allowed (`100%`; absolute branch disabled) |
+
+The six values live in the server config (`contractEnemyHealthPercent` / `contractEnemyHealthAbsolute`,
+`contractNeutralHealthPercent` / `contractNeutralHealthAbsolute`,
+`contractOtherHealthPercent` / `contractOtherHealthAbsolute`). Either the percentage branch or the
+absolute branch may pass. Setting an absolute value to `0` disables that branch; setting a percentage
+to `100` disables the percentage limit for that class.
+
+Only species registered with Furkin can enter this check. Non-`TamableAnimal` enemies are currently
+supported for archive, dismiss and resummon flows, but not for full follow/ceasefire/aggressive AI.
 ## Dependencies
 
 | Requirement     | Version |

@@ -24,6 +24,54 @@ public class FurkinServerConfig {
             .comment("Maximum number of simultaneously active companions (summoned).", "Design intent: 3.")
             .defineInRange("activeLimit", 3, 1, 64);
 
+    // ===== 契约健康门槛 =====
+    //
+    // 每个分类各有百分比和绝对值两项，判定为「当前生命值 <= 最大生命值 * 百分比 / 100
+    // 或 当前生命值 <= 绝对值」。绝对值为 0 时禁用绝对分支；百分比为 100 时正常满血
+    // 目标不会被该分类额外限制。Enemy 优先于 NeutralMob，其他实体使用兜底配置。
+
+    /** 敌方生物的契约生命值百分比门槛（0–100）。 */
+    public static final ForgeConfigSpec.DoubleValue CONTRACT_ENEMY_HEALTH_PERCENT = BUILDER
+            .comment("Contract health gate for Enemy targets: maximum health percentage.",
+                    "Passes when current health <= percent, or current health <= absolute (when absolute > 0).",
+                    "Design intent: 30.")
+            .defineInRange("contractEnemyHealthPercent", 30.0D, 0.0D, 100.0D);
+
+    /** 敌方生物的契约绝对生命值门槛（0 = 禁用该分支）。 */
+    public static final ForgeConfigSpec.DoubleValue CONTRACT_ENEMY_HEALTH_ABSOLUTE = BUILDER
+            .comment("Contract health gate for Enemy targets: absolute health threshold.",
+                    "Set to 0 to disable this branch.",
+                    "Design intent: 4.0 (two hearts).")
+            .defineInRange("contractEnemyHealthAbsolute", 4.0D, 0.0D, 1024.0D);
+
+    /** 中立生物的契约生命值百分比门槛（0–100）。 */
+    public static final ForgeConfigSpec.DoubleValue CONTRACT_NEUTRAL_HEALTH_PERCENT = BUILDER
+            .comment("Contract health gate for NeutralMob targets: maximum health percentage.",
+                    "Passes when current health <= percent, or current health <= absolute (when absolute > 0).",
+                    "Design intent: 30.")
+            .defineInRange("contractNeutralHealthPercent", 30.0D, 0.0D, 100.0D);
+
+    /** 中立生物的契约绝对生命值门槛（0 = 禁用该分支）。 */
+    public static final ForgeConfigSpec.DoubleValue CONTRACT_NEUTRAL_HEALTH_ABSOLUTE = BUILDER
+            .comment("Contract health gate for NeutralMob targets: absolute health threshold.",
+                    "Set to 0 to disable this branch.",
+                    "Design intent: 4.0 (two hearts).")
+            .defineInRange("contractNeutralHealthAbsolute", 4.0D, 0.0D, 1024.0D);
+
+    /** 其他生物的契约生命值百分比门槛（0–100；100 表示不限制）。 */
+    public static final ForgeConfigSpec.DoubleValue CONTRACT_OTHER_HEALTH_PERCENT = BUILDER
+            .comment("Contract health gate for other targets: maximum health percentage.",
+                    "100 disables the percentage limit for this category.",
+                    "Design intent: 100.")
+            .defineInRange("contractOtherHealthPercent", 100.0D, 0.0D, 100.0D);
+
+    /** 其他生物的契约绝对生命值门槛（0 = 禁用该分支）。 */
+    public static final ForgeConfigSpec.DoubleValue CONTRACT_OTHER_HEALTH_ABSOLUTE = BUILDER
+            .comment("Contract health gate for other targets: absolute health threshold.",
+                    "Set to 0 to disable this branch.",
+                    "Design intent: 0 (disabled).")
+            .defineInRange("contractOtherHealthAbsolute", 0.0D, 0.0D, 1024.0D);
+
     // ===== 成长 / 经验 =====
 
     /** 战斗经验系数（宠物所得经验 = 玩家所得 × 该系数）。设计稿默认 100%。 */
