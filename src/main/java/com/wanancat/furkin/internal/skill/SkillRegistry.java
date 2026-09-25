@@ -40,6 +40,9 @@ public final class SkillRegistry {
         // SkillParams 是块缓存（底层），HarvestSpec 是解析后的规格缓存（派生层），两层都要清。
         SkillParams.invalidateCache();
         HarvestSpec.invalidateCache();
+
+        // 资源重载不直接触碰实体；置位后在服务器 tick 末尾统一校准已加载绒亲，避免跨线程修改实体。
+        SkillRuntimeCalibrator.requestRebuild();
     }
 
     /** 构建一个资源重载监听器，注册到模组加载时的事件。 */

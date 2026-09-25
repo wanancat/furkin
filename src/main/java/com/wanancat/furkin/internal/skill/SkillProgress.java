@@ -11,6 +11,7 @@ import com.wanancat.furkin.internal.network.FurkinNetwork;
 import com.wanancat.furkin.internal.network.SyncFurkinDataPacket;
 import com.wanancat.furkin.internal.record.FurkinArchiveData;
 import com.wanancat.furkin.internal.record.FurkinArchiveEntry;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -18,6 +19,8 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraftforge.network.PacketDistributor;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -27,7 +30,7 @@ import java.util.UUID;
  * <ul>
  *   <li>{@link #tryUnlock} 加点：校验（归属/已召唤/技能存在/物种可见/前置满足/点数够/未满级）
  *       → 扣点 → 写 {@code skillLevels} → 挂效果 → 回写档案 → 广播。</li>
- *   <li>{@link #resetSkills} 洗点：清空 {@code skillLevels} → 移除效果 → 按 Σ已投等级退点。</li>
+ *   <li>{@link #resetSkills} 洗点：清空 {@code skillLevels} → 移除效果 → 按实际累计支付点数退点。</li>
  * </ul>
  */
 public final class SkillProgress {
@@ -104,10 +107,17 @@ public final class SkillProgress {
             return Result.NOT_ENOUGH_POINTS;
         }
 
-        // 落账：扣点 + 升级 + 挂效果。
+        // 旧档没有实际支付表时先按当前定义迁移；成功加点后只追加本次实际支付成本。
+        if (!data.hasKnownSkillInvestments()) {
+            migrateInvestments(tree, data.getSkillLevels(), data.getSkillInvestments());
+            data.setSkillInvestmentsKnown(true);
+        }
+
+        // 落账：扣点 + 升级 + 累计实付成本 + 挂效果。
         data.setSkillPoints(data.getSkillPoints() - skill.getCost());
         int newLevel = current + 1;
         data.getSkillLevels().put(skillId, newLevel);
+        data.getSkillInvestments().merge(skillId, skill.getCost(), Integer::sum);
         SkillEffectApplier.applySkill(target, tree, skillId, newLevel);
 
         // 行囊格数是「invested 等级的派生值」，投了 travel_pouch 就即时刷新容量
@@ -128,7 +138,7 @@ public final class SkillProgress {
     }
 
     /**
-     * 洗点：清空全部技能 + 按 Σ已投等级全额退点。
+     * 洗点：清空全部技能 + 按实际累计支付点数全额退点。
      *
      * <p>目标须在场（摘效果需要实体引用）。未召唤时退化为清档案快照 + 退点。</p>
      *
@@ -146,13 +156,15 @@ public final class SkillProgress {
         if (target != null) {
             FurkinData data = target.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
             if (data != null) {
-                SkillEffectApplier.removeAll(target, tree, data.getSkillLevels());
-                int refund = 0;
-                for (int lv : data.getSkillLevels().values()) {
-                    refund += lv;
+                SkillEffectApplier.clearAll(target, tree, data.getSkillLevels());
+                if (!data.hasKnownSkillInvestments()) {
+                    migrateInvestments(tree, data.getSkillLevels(), data.getSkillInvestments());
+                    data.setSkillInvestmentsKnown(true);
                 }
+                int refund = totalInvestments(data.getSkillInvestments());
                 data.setSkillPoints(data.getSkillPoints() + refund);
                 data.getSkillLevels().clear();
+                data.getSkillInvestments().clear();
                 // 技能已清空 ⇒ 其产出节拍记录随之作废。不清的话，玩家重学该技能时那条过期
                 // 记录会立刻命中，绕过「首次只布计时、不产出」的保证（症状 = 刚学就产一份）。
                 SkillPassiveDispatcher.clearPeriodicTimers(data);
@@ -166,13 +178,16 @@ public final class SkillProgress {
                 return refund;
             }
         } else {
-            // 未召唤：技能等级在档案 skillSnapshot 里，清快照 + 退点。
-            int refund = 0;
-            for (String key : entry.getSkillSnapshot().getAllKeys()) {
-                refund += entry.getSkillSnapshot().getInt(key);
+            // 未召唤：技能等级在档案 skillSnapshot 里，清快照 + 退实际支付点数。
+            Map<ResourceLocation, Integer> archivedLevels = levelsFromSnapshot(entry.getSkillSnapshot());
+            if (!entry.hasKnownSkillInvestments()) {
+                migrateInvestments(tree, archivedLevels, entry.getSkillInvestments());
+                entry.setSkillInvestmentsKnown(true);
             }
+            int refund = totalInvestments(entry.getSkillInvestments());
             entry.setSkillPoints(entry.getSkillPoints() + refund);
-            entry.setSkillSnapshot(new net.minecraft.nbt.CompoundTag());
+            entry.setSkillSnapshot(new CompoundTag());
+            entry.getSkillInvestments().clear();
             archive.putEntry(entry);
             return refund;
         }
@@ -209,7 +224,64 @@ public final class SkillProgress {
         entry.setXp(data.getXp());
         entry.setSkillPoints(data.getSkillPoints());
         entry.setSkillSnapshot(data.syncNBT().getCompound("skill_levels"));
+        entry.setSkillInvestments(data.getSkillInvestments());
+        entry.setSkillInvestmentsKnown(data.hasKnownSkillInvestments());
         archive.putEntry(entry);
+    }
+
+    /** 从档案技能快照反解技能等级，用于旧档实付成本迁移。 */
+    private static Map<ResourceLocation, Integer> levelsFromSnapshot(CompoundTag snapshot) {
+        Map<ResourceLocation, Integer> levels = new LinkedHashMap<>();
+        if (snapshot == null) {
+            return levels;
+        }
+        for (String key : snapshot.getAllKeys()) {
+            levels.put(new ResourceLocation(key), snapshot.getInt(key));
+        }
+        return levels;
+    }
+
+    /**
+     * 旧档缺少实际支付表时的一次性迁移。优先使用当前技能定义的成本；
+     * 技能定义已删除时无法还原历史成本，按每级 1 点保守兜底并留 WARN。
+     */
+    private static void migrateInvestments(SkillTree tree,
+                                           Map<ResourceLocation, Integer> levels,
+                                           Map<ResourceLocation, Integer> investments) {
+        investments.clear();
+        for (Map.Entry<ResourceLocation, Integer> entry : levels.entrySet()) {
+            ResourceLocation skillId = entry.getKey();
+            Skill skill = tree.get(skillId).orElse(null);
+            int cost;
+            if (skill == null) {
+                cost = 1;
+                FurkinMod.LOGGER.warn(
+                        "Skill investment migration for {}: definition is missing; assuming cost 1",
+                        skillId);
+            } else {
+                cost = skill.getCost();
+            }
+            long paid = (long) Math.max(0, entry.getValue()) * Math.max(1, cost);
+            if (paid > Integer.MAX_VALUE) {
+                FurkinMod.LOGGER.warn(
+                        "Skill investment migration for {} overflows int: {}; clamping", skillId, paid);
+                paid = Integer.MAX_VALUE;
+            }
+            investments.put(skillId, (int) paid);
+        }
+    }
+
+    /** 汇总实际累计支付点数；损坏数据溢出时钳制到 int 上限并留 WARN。 */
+    private static int totalInvestments(Map<ResourceLocation, Integer> investments) {
+        long total = 0L;
+        for (int value : investments.values()) {
+            total += Math.max(0, value);
+        }
+        if (total > Integer.MAX_VALUE) {
+            FurkinMod.LOGGER.warn("Skill investment total overflows int: {}; clamping", total);
+            return Integer.MAX_VALUE;
+        }
+        return (int) total;
     }
 
     /** 在世界里按 companionId 查找在场绒亲实体。 */

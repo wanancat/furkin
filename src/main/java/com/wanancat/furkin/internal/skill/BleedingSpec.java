@@ -38,6 +38,10 @@ import java.util.Optional;
  * 因此 effect 侧直接反查同一份规格即可 —— 走的是与 harvest / feeder 完全相同的
  * {@link SkillParams} 取块 + 缓存通道，{@code /reload} 后自然失效重读。</p>
  *
+ * <p><b>热重载语义是实时的</b>：{@link com.wanancat.furkin.internal.effect.BleedingEffect} 每个结算 tick
+ * 都重新查询本规格，因此 {@code /reload} 后已有流血立即使用新 DPS，但不会改写已经施加的
+ * {@code MobEffectInstance} 持续时间；技能定义被删除或参数失效时查询为空，已有流血不再造成伤害并自然到期。</p>
+ *
  * <p><b>等级索引口径</b>：{@code damageForLevel} 收的是「技能等级」（1-based），
  * 而 effect 侧只有 {@code amplifier}（= 等级 − 1），故调用处传
  * {@code amplifier + 1}。等级超出阵列长度时取最后一项（同

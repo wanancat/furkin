@@ -156,6 +156,26 @@ Skills are **data-driven**; each skill maps to one JSON config file (`data/furki
 | `species`     | string[] | empty                    | Species (empty = all; `furkin:cat` / `furkin:dog`)            |
 | `effects`     | array    | empty                    | Effect list (each entry = `type` + `params`)                  |
 
+### 数据约束 / Data Constraints
+
+**中文**
+
+- `cost` 必须 ≥ 1；`tier` 必须 ≥ 1；`maxLevel` 必须为 `-1`（无限）或 ≥ 1。
+- `requiresLevel` 必须是对象；其中每个值必须 ≥ 1。
+- `requires`、`requiresLevel`、`levelGate` 引用的技能必须存在；`requiresLevel` 不得超过目标技能的 `maxLevel`；目标 `maxLevel=-1` 时不设该上限。
+- 违反任一条的定义会在加载期被拒绝并记录 `WARN`；引用被拒技能的依赖技能也会级联拒绝。
+- 加点会累计每级当时实际支付的 `cost`。洗点按累计实付退款；热改 `cost` 只影响之后加点，不重写已支付部分。
+- 旧档缺少实付记录时，首次加点/洗点按当前定义一次性迁移；定义已删除时按 `cost=1` 兜底并 `WARN`。
+
+**English**
+
+- `cost` must be >= 1; `tier` must be >= 1; `maxLevel` must be -1 (unlimited) or >= 1.
+- `requiresLevel` must be an object, and every value must be >= 1.
+- Skills referenced by `requires`, `requiresLevel`, and `levelGate` must exist. `requiresLevel` may not exceed the target's `maxLevel`; a target with `maxLevel=-1` imposes no such cap.
+- A definition violating any rule is rejected at load time with a WARN; dependents of rejected skills are rejected transitively.
+- Successful unlocks accumulate the actual `cost` paid per level. Respec refunds cumulative actual payments; hot-changing `cost` affects future unlocks only and does not rewrite past payments.
+- When an old save lacks payment records, the first unlock or respec migrates the current definition once. If the definition has been deleted, the fallback is `cost=1` with a WARN.
+
 ### 效果项结构 / Effect Entry
 
 每条效果项为 `{ "type": "...", "params": {...} }`，其中 `type` 指向已注册的效果类型：
@@ -262,6 +282,13 @@ values are never silently clamped or defaulted. Two exceptions: `harvest`'s `cou
 only if the pool ends up empty). Also, when `interval` has fewer entries than the skill's levels the
 **last entry is reused** (a legal shorthand, not an out-of-range error) — `maxLevel 3` with
 `interval[1200]` means 1200 ticks at every level.
+
+**热重载语义 / Hot-reload semantics**
+
+- `furkin:attribute` 的所有 modifier 使用固定名称 `furkin.skill.attribute`。`/reload` 后在服务器 tick 末尾清理已加载绒亲上的全部技能属性 modifier，再按当前技能树重建；删除技能、切换属性目标或修改数值不会留下重复或失效加成。重载时未加载的实体在下次入世时校准。
+  *All `furkin:attribute` modifiers use the fixed name `furkin.skill.attribute`. After `/reload`, loaded companions have all skill attribute modifiers cleared and rebuilt from the current tree at the end of the server tick, so deleting a skill, retargeting an attribute, or changing a value cannot leave duplicate or stale bonuses. Entities unloaded during the reload are calibrated when they next enter the world.*
+- `bleeding_bite` 按实时语义读取当前 JSON：`/reload` 立即改变已有流血的 DPS，但不改写已施加的持续时间；定义删除或参数失效后，已有流血不再造成伤害并自然到期。
+  *`bleeding_bite` reads the current JSON live: `/reload` immediately changes the DPS of existing bleeding but does not rewrite an already-applied duration. If the definition is removed or becomes invalid, existing bleeding stops dealing damage and expires naturally.*
 
 ---
 

@@ -37,6 +37,19 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 
 ---
 
+## [Unreleased]
+
+> 目标版本 / Target version: `1.19.2-0.0.2.0`
+
+### Fixed / 修复
+
+- **技能退款与数据校验 / Skill refunds and schema validation** —— 洗点现按每级实际支付成本退款，热改技能 `cost` 不会重写已支付金额；旧档缺少实付表时按当前定义一次性迁移，已删除定义按 `cost=1` 兜底并告警。加载期拒绝非正 `cost`、非法 `maxLevel` / `tier` / `requiresLevel`，以及悬空或不可达的 `requires` / `requiresLevel` / `levelGate` 引用，避免非法技能数据制造或吞掉技能点。
+  *Respec now refunds the amount actually paid per level, and hot-changing a skill's `cost` no longer rewrites past payments. Legacy saves without a payment ledger migrate from the current definition once; deleted definitions fall back to `cost=1` with a warning. Loading rejects non-positive `cost`, invalid `maxLevel` / `tier` / `requiresLevel`, and missing or unreachable `requires` / `requiresLevel` / `levelGate` references, preventing malformed skill data from creating or consuming skill points incorrectly.*
+- **技能热重载一致性 / Skill hot-reload consistency** —— `/reload` 后会按当前技能树清理并重建已加载绒亲的 `furkin:attribute` modifier，删除技能、切换属性目标或修改数值不会留下重复/失效加成；重载时未加载实体在入世时校准。`bleeding_bite` 保持实时语义：立即采用新 DPS，不重写已施加持续时间，定义失效后停止伤害并自然到期。
+  *After `/reload`, loaded companions now clear and rebuild their `furkin:attribute` modifiers from the current tree, preventing duplicate or stale bonuses when a skill is deleted, retargeted, or rebalanced; entities unloaded during the reload are calibrated on join. `bleeding_bite` keeps live semantics: new DPS applies immediately, existing duration is preserved, and damage stops if the definition becomes invalid.*
+
+---
+
 ## [1.19.2-0.0.1.0] - 2026-09-24
 
 **Minecraft 1.19.2 移植版 / Minecraft 1.19.2 port** —— 在保留 `1.20.1-0.0.1.0` 功能范围的前提下，将构建目标迁移到 Minecraft 1.19.2 / Forge 43.x。

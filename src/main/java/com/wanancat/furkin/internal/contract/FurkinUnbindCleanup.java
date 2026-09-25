@@ -139,7 +139,7 @@ public final class FurkinUnbindCleanup {
             EquipmentSlots.restoreDefaultDropChances(target);
 
             stage = Stage.SKILL_EFFECTS;
-            SkillEffectApplier.removeAll(target, SkillRegistry.tree(), data.getSkillLevels());
+            SkillEffectApplier.clearAll(target, SkillRegistry.tree(), data.getSkillLevels());
             SkillPassiveDispatcher.clearRuntimeEffects(target, data);
 
             stage = Stage.RUNTIME_DATA;
