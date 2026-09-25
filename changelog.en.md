@@ -33,6 +33,8 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 
 **Fixed**
 
+- **Immediate record refresh after summon** —— After a successful summon from the Furkin Record, the list now immediately shows the green "Summoned" state and refreshes the right-side dismiss and combat-mode actions without reopening the screen.
+
 - **Command feedback localization** —— `/furkin` command success, failure, status and quantity feedback now uses translation keys and follows the client language; dynamic UUIDs, names and counts remain translation arguments.
 - **Contract confirmation authority** —— Contract confirmation now requires a matching server-issued pending session and revalidates species, ownership, target identity, distance and the exact main-hand stack; stale, forged or replayed requests cannot create an archive or consume an item.
 - **Skill refunds and schema validation** —— Respec now refunds the amount actually paid per level, and hot-changing a skill's `cost` no longer rewrites past payments. Loading rejects non-positive `cost`, invalid `maxLevel` / `tier` / `requiresLevel`, preventing malformed skill data from creating or consuming skill points incorrectly.

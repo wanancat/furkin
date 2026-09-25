@@ -1,6 +1,7 @@
 package com.wanancat.furkin.internal.network;
 
 import com.wanancat.furkin.internal.contract.FurkinCompanionManager;
+import com.wanancat.furkin.internal.item.FurkinRecordItem;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkEvent;
@@ -13,7 +14,7 @@ import java.util.function.Supplier;
  *
  * <p>服务端收到后按档案状态分流：<b>未召唤</b> → {@link FurkinCompanionManager#summon}
  * 重建实体；<b>已召唤（在场）</b> → {@link FurkinCompanionManager#teleportToOwner}
- * 传送到主人身边。均回一条反馈给玩家。</p>
+ * 传送到主人身边。均回一条反馈给玩家，并刷新已打开的绒亲录列表。</p>
  */
 public final class RequestSummonPacket {
 
@@ -42,7 +43,7 @@ public final class RequestSummonPacket {
         ctx.setPacketHandled(true);
     }
 
-    /** 服务端应用：走统一分流（召唤 / 传送），并按结果回反馈。 */
+    /** 服务端应用：走统一分流（召唤 / 传送），回反馈，并刷新已打开的绒亲录。 */
     private static void applyServer(ServerPlayer player, UUID companionId) {
         // 分流逻辑与命令 /furkin summon 共用同一个入口（2026-09-22 定）：
         // 未召唤 → 重建实体；已召唤 → 传送到身边。两处规则必须一份代码。
@@ -55,23 +56,27 @@ public final class RequestSummonPacket {
                             result == FurkinCompanionManager.SummonResult.TELEPORTED
                                     ? "furkin.msg.teleported"
                                     : "furkin.msg.summoned"), true);
-            return;
+        } else {
+            // 失败按具体原因分档（2026-09-22 定）：原先只分「传送失败 / 召唤失败」两档，
+            // 文案又是并列五选一的笼统句，玩家看不出到底卡在哪一条。
+            // 现与命令侧 /furkin summon 的 switch 同分档（同一套 SummonResult 枚举），
+            // 两侧均走本地化回执；此路径由界面按钮触发，不使用服务端已生成的文本。
+            // ACTIVE_LIMIT 带 %s（本世界上限），故传参。
+            net.minecraft.network.chat.Component msg = switch (result) {
+                case NOT_FOUND -> net.minecraft.network.chat.Component.translatable("furkin.msg.summon_not_found");
+                case NOT_OWNER -> net.minecraft.network.chat.Component.translatable("furkin.msg.not_owner");
+                case NOT_ALIVE -> net.minecraft.network.chat.Component.translatable("furkin.msg.summon_not_alive");
+                case ACTIVE_LIMIT -> net.minecraft.network.chat.Component.translatable(
+                        "furkin.msg.active_limit",
+                        com.wanancat.furkin.internal.config.FurkinServerConfig.ACTIVE_LIMIT.get());
+                default -> net.minecraft.network.chat.Component.translatable("furkin.msg.summon_failed");
+            };
+            player.displayClientMessage(msg, false);
         }
 
-        // 失败按具体原因分档（2026-09-22 定）：原先只分「传送失败 / 召唤失败」两档，
-        // 文案又是并列五选一的笼统句，玩家看不出到底卡在哪一条。
-        // 现与命令侧 /furkin summon 的 switch 同分档（同一套 SummonResult 枚举），
-        // 两侧均走本地化回执；此路径由界面按钮触发，不使用服务端已生成的文本。
-        // ACTIVE_LIMIT 带 %s（本世界上限），故传参。
-        net.minecraft.network.chat.Component msg = switch (result) {
-            case NOT_FOUND -> net.minecraft.network.chat.Component.translatable("furkin.msg.summon_not_found");
-            case NOT_OWNER -> net.minecraft.network.chat.Component.translatable("furkin.msg.not_owner");
-            case NOT_ALIVE -> net.minecraft.network.chat.Component.translatable("furkin.msg.summon_not_alive");
-            case ACTIVE_LIMIT -> net.minecraft.network.chat.Component.translatable(
-                    "furkin.msg.active_limit",
-                    com.wanancat.furkin.internal.config.FurkinServerConfig.ACTIVE_LIMIT.get());
-            default -> net.minecraft.network.chat.Component.translatable("furkin.msg.summon_failed");
-        };
-        player.displayClientMessage(msg, false);
+        // RequestSummonPacket 只由绒亲录发出。成功召唤后必须回发 openScreen=false
+        // 的列表刷新，否则界面仍持有召唤前的 `summoned` 快照，绿色「在场」要重开才出现。
+        // 屏幕已关闭或已切走时，客户端会安全忽略该刷新包。
+        FurkinRecordItem.refreshRecordList(player);
     }
 }

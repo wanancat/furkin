@@ -41,6 +41,9 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 
 **修复 / Fixed**
 
+- **绒亲录召唤后即时刷新 / Immediate record refresh after summon** —— 从绒亲录成功召唤后，列表立即显示绿色「在场」，右侧「收回」和战斗模式按钮同步刷新，不再需要关闭重开界面。
+  *After a successful summon from the Furkin Record, the list now refreshes immediately: the green "Summoned" state and right-side actions update without reopening the screen.*
+
 - **命令回执本地化 / Command feedback localization** —— `/furkin` 命令的固定成功、失败、状态和数量回执现使用翻译键，随客户端中英文语言切换；动态 UUID、名称和数量继续作为翻译参数注入。
   *Fixed `/furkin` command success, failure, status and quantity feedback now uses translation keys and follows the client language; dynamic UUIDs, names and counts remain translation arguments.*
 - **契约确认权威校验 / Contract confirmation authority** —— 契约确认现在必须匹配服务端待确认会话，并重新校验物种、归属、目标身份、距离和主手堆叠；过期、伪造或重放请求不会建档或消耗物品。

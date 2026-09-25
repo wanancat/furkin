@@ -703,3 +703,14 @@ $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 - 范围或依赖变化时更新登记表和风险表。
 - 审查报告是历史快照，不改写其原始结论；新发现应进入本工作流或单独问题记录。
 - 全部工作完成后，本文件更新为完成记录，并保留未执行项和残余风险。
+
+---
+
+## 14. 关闭后补丁记录
+
+- 2026-09-25：修复「绒亲录内成功召唤后不关闭界面，绿色『在场』不立即出现」的客户端刷新缺陷。
+- 根因：服务端 `summonOrTeleport` 已正确落 `summoned=true`，但 `RequestSummonPacket` 成功分支只发送 action bar 回执，没有像 `RecordActionPacket` 一样调用 `FurkinRecordItem.refreshRecordList(player)`。
+- 修复：在 `RequestSummonPacket.applyServer` 结算完成后复用 `refreshRecordList`，以 `openScreen=false` 刷新已打开的绒亲录；不改变网络包结构、字段、包 ID 或 `PROTOCOL_VERSION`。
+- 验证：`compileJava --rerun-tasks`、`build --rerun-tasks`、`runServer` 和真实 `runClient` 均通过；人工确认召唤后绿色「在场」与右侧按钮即时更新。
+- 记录：[绒亲录召唤后即时刷新修复](fix_summon_record_refresh.md)。
+- 状态：代码与实机复测完成；提交/推送待授权。该补丁不属于原始 9 项审查问题，不重新打开第 12 节的整改关闭结论。
