@@ -1,12 +1,12 @@
 # Furkin 1.20.1 WP-04 网络协议版本治理审计
 
-- 文档状态：包清单、版本策略和回归验证完成；真实双版本混连拒绝实测保留为残余验证
+- 文档状态：已完成（2026-09-25）；包清单、版本策略、真实双版本混连拒绝和同版本登录验证均已完成
 - 审计日期：2026-09-25
 - 基线提交：`7de91ba`（`fix: 统一跨维度绒亲档案`）
 - 对应问题：`M-01` 网络协议版本未随包结构变化递增
 - 适用版本：Minecraft 1.20.1 / Forge 47.2.0
 
-> 本文件记录 WP-04 的治理规则、包清单、版本历史和已完成验证；真实双版本混连拒绝仍作为残余验证保留。
+> 本文件记录 WP-04 的治理规则、包清单、版本历史和真实双端验证；M-01 已关闭。
 
 ---
 
@@ -136,27 +136,51 @@ Forge `NetworkInstance` 的实现是：
 - `tryClientVersionOnServer` 调用 `serverAcceptedVersions`；
 - 当前两个谓词都是 `PROTOCOL_VERSION::equals`，因此 `"1"` 与 `"2"` 不相等，不能通过版本协商。
 
-本次没有构造两个不同版本模组并进行真实客户端/服务端握手测试，因此该部分只能记为接口语义核对，不能记为真实混连实测。
+### 4.3.1 真实混连验证（2026-09-25）
+
+测试组合：
+
+- 协议 `1` 客户端：独立工作树检出 `184e82e`，`PROTOCOL_VERSION = "1"`。
+- 协议 `2` 服务端：当前 `55f6b19`，专用服务器监听 `25565`。
+- 连接地址使用 `127.0.0.1:25565`。此前 `localhost` 解析到链路本地 IPv6 地址并出现超时，改用 IPv4 回环后握手立即完成；该现象属于测试环境地址选择，不是模组协议行为。
+
+结果：
+
+- 客户端界面显示 `Connection closed - mismatched mod channel list`。
+- 客户端 `debug.log` 记录 `Channel 'furkin:main' : Version test of '2' from server : REJECTED`。
+- 客户端随后记录 `Channels [furkin:main] rejected their server side version number` 和 `Terminating connection with server, mismatched mod list`。
+- 服务端未进入游戏，连接在登录握手阶段断开。
+
+### 4.3.2 相同协议版本登录验证（2026-09-25）
+
+测试组合：
+
+- 协议 `2` 客户端：独立工作树检出 `55f6b19`。
+- 协议 `2` 服务端：当前 `55f6b19`。
+
+结果：
+
+- 客户端 `debug.log` 记录 `Channel 'furkin:main' : Version test of '2' from server : ACCEPTED`，随后记录 `Accepted server connection`。
+- 服务端 `debug.log` 记录 `Channel 'furkin:main' : Version test of '2' from client : ACCEPTED`，随后记录 `Accepted client connection mod list`。
+- 服务端 `latest.log` 记录 `Dev joined the game`，确认客户端完成登录并进入世界。
+- 两端 `latest.log` 均未发现 `ERROR`、`FATAL`、Java 异常栈或协议处理错误；仅有既有的 Forge、OSHI、Realms 等环境警告。
 
 ### 4.4 审计结论
 
 - M-01 的代码边界已由 `"2"` 建立，历史 `"1"` 版本统一视为不兼容。
 - 版本递增规则已经进入代码注释、项目级 `AGENTS.md` 和本审计文档。
 - 当前无线格式变更，因此没有为了 WP-04 单独提升到 `"3"`。
-- 真实双版本混连拒绝验证未执行，作为残余验证保留。
+- 协议 `1` 客户端连接协议 `2` 服务端的真实握手拒绝已复现，并由客户端日志、服务端日志和界面提示三层证据确认。
 
 ---
 
-## 5. 关闭边界
+## 5. 关闭结论
 
-WP-04 可以在以下边界内关闭：
+WP-04 已于 2026-09-25 关闭，关闭条件均满足：
 
-- 当前包清单与 `"2"` 的映射明确。
-- 后续协议变更规则已固化。
+- 当前包清单与协议 `2` 的映射明确。
+- 后续协议变更规则已固化在 `FurkinNetwork`、项目级 `AGENTS.md` 和本审计文档。
 - 同源码双端启动验证通过。
-- Forge 精确版本谓词提供不匹配拒绝路径。
-
-仍未完成、不得伪造为已执行的残余项：
-
-- 使用真实 `"1"` 客户端连接 `"2"` 服务端并确认握手拒绝。
-- 使用真实 `"2"` 客户端与 `"2"` 服务端完成一次登录并进入游戏。
+- 协议 `1` 客户端连接协议 `2` 服务端时，Forge 精确版本谓词返回 `REJECTED`，界面显示 `mismatched mod channel list`，未进入游戏。
+- 协议 `2` 客户端连接协议 `2` 服务端时，双方通道 `furkin:main` 版本 `2` 均为 `ACCEPTED`，并成功进入世界。
+- 测试使用独立工作树，未污染当前分支；测试工作树和运行目录已清理。
