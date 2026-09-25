@@ -5,6 +5,7 @@ import com.wanancat.furkin.internal.attribute.AttributeDisplay;
 import com.wanancat.furkin.internal.capability.FurkinCapability;
 import com.wanancat.furkin.internal.capability.FurkinData;
 import com.wanancat.furkin.internal.config.FurkinServerConfig;
+import com.wanancat.furkin.internal.equipment.EquipmentSlots;
 import com.wanancat.furkin.internal.inventory.FurkinInventory;
 import com.wanancat.furkin.internal.item.FurkinSoulstoneItem;
 import com.wanancat.furkin.internal.menu.FurkinPouchMenu;
@@ -15,7 +16,6 @@ import com.wanancat.furkin.internal.record.FurkinArchiveData;
 import com.wanancat.furkin.internal.record.FurkinArchiveEntry;
 import com.wanancat.furkin.internal.registry.ModItems;
 import com.wanancat.furkin.internal.skill.Skill;
-import com.wanancat.furkin.internal.skill.SkillEffectApplier;
 import com.wanancat.furkin.internal.skill.SkillRegistry;
 import com.wanancat.furkin.internal.skill.SkillTree;
 import com.wanancat.furkin.internal.skill.effect.AttributeEffect;
@@ -66,7 +66,9 @@ public final class FurkinRecordActionHandler {
         INVALID_NAME,
         NOT_DEAD,
         ON_COOLDOWN,
-        NO_DIAMOND
+        NO_DIAMOND,
+        ENTITY_UNRESOLVED,
+        CLEANUP_FAILED
     }
 
     /**
@@ -116,21 +118,37 @@ public final class FurkinRecordActionHandler {
             return Result.NOT_OWNER;
         }
 
-        // 已召唤 → 找到在场实体，摘掉绒亲层后留普通动物。
         if (entry.isSummoned()) {
             LivingEntity target = findLivingByCompanionId(serverLevel, companionId);
-            if (target != null) {
-                clearFurkinLayer(target);
-                // 同步客户端：状态回 WILD 后头顶图标消失。
-                FurkinNetwork.channel().send(
-                        PacketDistributor.TRACKING_ENTITY_AND_SELF.with(() -> target),
-                        new SyncFurkinDataPacket(target.getId(),
-                                target.getCapability(FurkinCapability.FURKIN_DATA)
-                                        .orElseGet(FurkinData::new).syncNBT()));
+            if (target == null) {
+                // 档案标记已召唤但本维度定位不到：不删档、不猜测重建。WP-09 再补
+                // 跨维度定向定位和强制解绑入口。
+                return Result.ENTITY_UNRESOLVED;
+            }
+
+            FurkinUnbindCleanup.Result cleanup = FurkinUnbindCleanup.cleanup(
+                    target, companionId, FurkinUnbindCleanup.Trigger.NORMAL);
+            if (!cleanup.success()) {
+                return Result.CLEANUP_FAILED;
+            }
+
+            // 同步客户端：状态回 WILD 后头顶图标消失。
+            FurkinNetwork.channel().send(
+                    PacketDistributor.TRACKING_ENTITY_AND_SELF.with(() -> target),
+                    new SyncFurkinDataPacket(target.getId(),
+                            target.getCapability(FurkinCapability.FURKIN_DATA)
+                                    .orElseGet(FurkinData::new).syncNBT()));
+        } else {
+            try {
+                EquipmentSlots.dropArchivedEquipment(player, entry.getEquipmentSnapshot());
+            } catch (Exception exception) {
+                FurkinMod.LOGGER.error("Furkin unbound archive equipment drop failed: id={}",
+                        companionId, exception);
+                return Result.CLEANUP_FAILED;
             }
         }
 
-        // 删档（已召唤 / 未召唤都删）。
+        // 所有清理/归还动作成功后才删除档案。
         archive.removeEntry(companionId);
 
         FurkinMod.LOGGER.info("Furkin unbound: id={} by {}",
@@ -482,35 +500,6 @@ public final class FurkinRecordActionHandler {
                             .orElseGet(() -> entry.getSpecies().getDescriptionId()));
         }
         return Component.literal(name.trim());
-    }
-
-    /** 摘掉绒亲数据层：身份 / 状态 / 技能 / 等级 / 战斗模式清空，TamableAnimal 清 TAME 与主人，清 CustomName。 */
-    private static void clearFurkinLayer(LivingEntity target) {
-        FurkinData data = target.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
-        if (data != null) {
-            // 先摘技能效果（attribute modifier 等运行时表现），再清数据，避免残留属性加成。
-            SkillEffectApplier.removeAll(target, SkillRegistry.tree(), data.getSkillLevels());
-            data.setCompanionId(null);
-            data.setOwnerUuid(null);
-            data.setLevel(1);
-            data.setXp(0);
-            data.setSkillPoints(0);
-            data.getSkillLevels().clear();
-            data.setCombatMode(FurkinCombatMode.FOLLOW);
-            data.setState(FurkinState.WILD);
-        }
-
-        // 清原版驯服归属（回落野生）。注意：不动 targetSelector / goalSelector ——
-        // 解绑 = 回落「普通动物」，原版 AI 自行接管（狗原版会自己挂攻击目标）。
-        if (target instanceof TamableAnimal tamable) {
-            tamable.setTame(false);
-            tamable.setOwnerUUID(null);
-            tamable.setOrderedToSit(false);
-        }
-
-        // 清名字（乌狸定：解绑不保留名字）。
-        target.setCustomName(null);
-        target.setCustomNameVisible(false);
     }
 
     /** 在世界里按 companionId 查找在场绒亲实体。 */

@@ -700,6 +700,26 @@ public final class SkillPassiveDispatcher {
         }
         data.getCooldowns().keySet().removeIf(id -> HarvestSpec.of(id).isPresent());
     }
+    /**
+     * 清除该绒亲身上由被动分发器维护的运行时痕迹（解绑时调用）。
+     *
+     * <p>解绑会清空技能等级并删除档案；如果只做数据清空，群猎战术的 transient
+     * modifier 会留在实体属性里，形成“已不再是绒亲仍有技能加成”的残留。这里同时
+     * 清周期计时和固定 UUID modifier，后续 WP-05 再补按旧树清理被删除定义的路径。</p>
+     *
+     * @param companion 即将解除绒亲归属的实体
+     * @param data      其能力数据
+     */
+    public static void clearRuntimeEffects(LivingEntity companion, FurkinData data) {
+        if (companion == null || data == null) {
+            return;
+        }
+        clearPeriodicTimers(data);
+        AttributeInstance attack = companion.getAttribute(Attributes.ATTACK_DAMAGE);
+        if (attack != null) {
+            attack.removeModifier(PACK_TACTICS_UUID);
+        }
+    }
 
     // ===== 工具 =====
 

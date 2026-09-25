@@ -18,6 +18,8 @@
   "furkin.msg.dismiss_failed": "Dismiss failed (not owner / not summoned)",
   "furkin.msg.unbound": "Companion unbound",
   "furkin.msg.unbind_failed": "Unbind failed (not found / not owner)",
+  "furkin.msg.unbind_entity_unresolved": "Companion entity cannot be located; archive kept. Force unbind may be available.",
+  "furkin.msg.unbind_cleanup_failed": "Unbind cleanup failed; archive kept for retry.",
   "furkin.msg.renamed": "Renamed",
   "furkin.msg.rename_failed": "Rename failed (not found / not owner / invalid name)",
   "furkin.msg.soulstone_reacquired": "Soulstone re-acquired",

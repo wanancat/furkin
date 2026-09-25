@@ -119,7 +119,12 @@ public final class RecordActionPacket {
                 FurkinRecordActionHandler.Result r =
                         FurkinRecordActionHandler.unbind(player, packet.companionId);
                 ok = r == FurkinRecordActionHandler.Result.OK;
-                msgKey = ok ? "furkin.msg.unbound" : "furkin.msg.unbind_failed";
+                msgKey = switch (r) {
+                    case OK -> "furkin.msg.unbound";
+                    case ENTITY_UNRESOLVED -> "furkin.msg.unbind_entity_unresolved";
+                    case CLEANUP_FAILED -> "furkin.msg.unbind_cleanup_failed";
+                    default -> "furkin.msg.unbind_failed";
+                };
             }
             case RENAME -> {
                 FurkinRecordActionHandler.Result r =

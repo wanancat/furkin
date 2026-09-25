@@ -18,6 +18,8 @@
   "furkin.msg.dismiss_failed": "收回失败（非本人 / 未在场）",
   "furkin.msg.unbound": "已解绑绒亲",
   "furkin.msg.unbind_failed": "解绑失败（不存在 / 非本人）",
+  "furkin.msg.unbind_entity_unresolved": "定位不到绒亲实体，档案已保留；可尝试强制解绑。",
+  "furkin.msg.unbind_cleanup_failed": "解绑清理失败，档案已保留，可稍后重试。",
   "furkin.msg.renamed": "已改名",
   "furkin.msg.rename_failed": "改名失败（不存在 / 非本人 / 名字无效）",
   "furkin.msg.soulstone_reacquired": "已重获魂石",
