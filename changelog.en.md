@@ -29,7 +29,7 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 
 ---
 
-## [Unreleased]
+## [1.20.1-0.0.2.0] - 2026-09-25
 
 **Fixed**
 

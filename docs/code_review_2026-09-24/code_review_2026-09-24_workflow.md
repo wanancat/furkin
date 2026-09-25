@@ -715,3 +715,5 @@ $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 - 记录：[绒亲录召唤后即时刷新修复](fix_summon_record_refresh.md)。
 - 状态：代码与实机复测完成；提交/推送待授权。该补丁不属于原始 9 项审查问题，不重新打开第 12 节的整改关闭结论。
 - 2026-09-25：新建[下一版本待办](next_version_backlog.md)，登记 NV-01「跟随绒亲自动传送触发距离」与 NV-02「玩家攻击自身及队友绒亲的友伤配置」。两项均为开放待办，不在本轮已关闭整改工作包内实施。
+
+- 2026-09-25：完成 `1.20.1-0.0.2.0` 发版准备。`gradle.properties` 已切版；中英文 changelog 已将原 `Unreleased` 固化为本版本条目。`build --rerun-tasks` 通过，产物为 `build/libs/furkin-1.20.1-0.0.2.0.jar`，SHA-256 `AA405617AF15103C65D77D3892B2B2071C8F605305A3A8C7832C9FD561BB4797`；`runServer` 到达 `Done`，最新日志无项目 `ERROR`、`FATAL`、异常栈、注册失败或资源缺失。日志中保留旧档 legacy AI `WARN` 和开发环境 OSHI/Forge 版本提示。切版后的客户端实机回归未重跑，因此本记录只表示发版准备完成，不表示客户端验收已重新完成。
