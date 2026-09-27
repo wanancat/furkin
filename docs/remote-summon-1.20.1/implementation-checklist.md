@@ -148,7 +148,7 @@
 - [x] 性能记录：确定性上限（默认 ≤36 区块 / ≤30s / 稳态 0）+ 实测两档（热区 ~14ms；冷区 ~511ms 已生成 / ~1897ms 需生成，单次最差 3500ms）；并发 4 单 tick 峰值 178.5ms 已记为后续优化项。见验证矩阵「性能记录」
 - [x] 生命周期取消：夹具 `cold` 覆盖登出 / 死亡 / 收回 / 解绑四路取消，夹具 `stop-pending` 覆盖停服取消（`reason=SERVER_STOPPING ticketReleased=true`）
 - [x] 最终 jar 不含 fixture / debug 类 / 临时世界
-- [x] 发布构建：`build` 成功，产物 `build/libs/furkin-1.20.1-0.0.3.0.jar`，SHA-256 `7F30346C7CA3602FC601AA7A7D2814C89EFCC09ACAA39C2DB5FC23B2974B856C`
+- [x] 发布构建：`build --rerun-tasks` 成功，产物 `build/libs/furkin-1.20.1-0.0.3.0.jar`，大小 `394950` 字节，SHA-256 `3022B4657375C9F5B15236E68BF8C2F66B377EA88DD1BDD575410155F51AF613`
 - [ ] 创建 / 推送发布 tag 并上传 GitHub Release / CurseForge（等待乌狸确认）
 - [x] 验证矩阵 P0 / P1 / P2 全部清空或显式标注未覆盖边界；未闭环项集中在验证矩阵第 7 节“仍未闭环”
 - [x] `git status` 无 `build/` / `run/` / 日志 / IDE / 临时文件
