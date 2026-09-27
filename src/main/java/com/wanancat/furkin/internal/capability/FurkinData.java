@@ -459,21 +459,39 @@ public final class FurkinData {
      */
     public FurkinData copy() {
         FurkinData copy = new FurkinData();
-        copy.companionId = this.companionId;
-        copy.ownerUuid = this.ownerUuid;
-        copy.level = this.level;
-        copy.xp = this.xp;
-        copy.skillPoints = this.skillPoints;
-        copy.skillLevels.putAll(this.skillLevels);
-        copy.skillInvestments.putAll(this.skillInvestments);
-        copy.skillInvestmentsKnown = this.skillInvestmentsKnown;
-        copy.state = this.state;
-        copy.combatMode = this.combatMode;
-        copy.aiStateVersion = this.aiStateVersion;
-        copy.feedCount = this.feedCount;
-        copy.lastFeedMillis = this.lastFeedMillis;
-        copy.cooldowns.putAll(this.cooldowns);
+        copy.copyCoreFrom(this);
         return copy;
+    }
+
+    /**
+     * 将 {@code source} 的可持久核心运行时字段复制到当前对象。
+     *
+     * <p>P1 重复实体修复要求以当前 canonical 实体的实时数据为唯一来源；本方法只覆盖
+     * 核心字段，不复制行囊物品，也不复制仅属于单只实体的 {@code combatAiState}
+     * goal 引用。调用方必须在复制后显式重建 keeper 的技能效果与战斗 AI。</p>
+     */
+    public void copyCoreFrom(FurkinData source) {
+        Objects.requireNonNull(source, "source");
+        if (source == this) {
+            return;
+        }
+        this.companionId = source.companionId;
+        this.ownerUuid = source.ownerUuid;
+        this.level = source.level;
+        this.xp = source.xp;
+        this.skillPoints = source.skillPoints;
+        this.skillLevels.clear();
+        this.skillLevels.putAll(source.skillLevels);
+        this.skillInvestments.clear();
+        this.skillInvestments.putAll(source.skillInvestments);
+        this.skillInvestmentsKnown = source.skillInvestmentsKnown;
+        this.state = source.state;
+        this.combatMode = source.combatMode;
+        this.aiStateVersion = source.aiStateVersion;
+        this.feedCount = source.feedCount;
+        this.lastFeedMillis = source.lastFeedMillis;
+        this.cooldowns.clear();
+        this.cooldowns.putAll(source.cooldowns);
     }
 
     @Override

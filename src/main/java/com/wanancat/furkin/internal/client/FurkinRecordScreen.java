@@ -70,6 +70,15 @@ public final class FurkinRecordScreen extends Screen {
     /** 右侧详情卡的管理按钮（刷新详情时精确清除，避免误删关闭按钮）。 */
     private final List<Button> detailButtons = new ArrayList<>();
 
+    /** 当前等待服务端结算的远召目标；null = 本地没有在途请求。 */
+    private UUID pendingSummonCompanionId;
+
+    /** 本地在途态已存活的 tick 数；仅用于服务端回执异常丢失时兜底解锁按钮。 */
+    private int pendingSummonTicks;
+
+    /** 覆盖服务端 timeout 上限 600 tick，并预留客户端收包时间。 */
+    private static final int SUMMON_UI_TIMEOUT_TICKS = 620;
+
     // ===== 布局常量（左列表 + 右详情，M5 打磨） =====
 
     /** 左列表区。 */
@@ -118,6 +127,8 @@ public final class FurkinRecordScreen extends Screen {
      */
     public void acceptRefresh(List<RecordListPacket.Entry> fresh) {
         UUID keep = selectedEntry() == null ? null : selectedEntry().getCompanionId();
+        // 服务端已对每个非 pending 结果回发一次列表刷新；刷新到达即代表本次 UI 在途态结束。
+        clearPendingSummon();
         this.entries = fresh;
         // 按 id 找回选中（条目可能换位 / 甚至消失 —— 被解绑后就不在列表里了）。
         this.selectedIndex = -1;
@@ -175,6 +186,19 @@ public final class FurkinRecordScreen extends Screen {
     protected void init() {
         super.init();
         rebuild();
+    }
+
+    @Override
+    public void tick() {
+        super.tick();
+        if (pendingSummonCompanionId == null) {
+            return;
+        }
+        pendingSummonTicks++;
+        if (pendingSummonTicks >= SUMMON_UI_TIMEOUT_TICKS) {
+            clearPendingSummon();
+            refreshDetail();
+        }
     }
 
     /** 按当前选中态重建：左列表（原版滚动列表）+ 右属性滚动列表 + 锚底按钮。 */
@@ -290,6 +314,7 @@ public final class FurkinRecordScreen extends Screen {
         UUID id = entry.getCompanionId();
         boolean alive = entry.isAlive();
         boolean summoned = entry.isSummoned();
+        boolean summonPending = id.equals(pendingSummonCompanionId);
         int btnW = 90;      // 单格按钮宽
         int btnH = 20;
         int gap = 4;
@@ -303,8 +328,13 @@ public final class FurkinRecordScreen extends Screen {
 
         if (alive) {
             // 第一行：召唤（左）｜ 收回（右，仅已召唤时）。
-            detailButton(Component.translatable("furkin.screen.record.summon"),
-                    btn -> requestSummon(id), DETAIL_LEFT, y, btnW, btnH);
+            Button summonButton = detailButton(
+                    Component.translatable(summonPending
+                            ? "furkin.screen.record.summoning"
+                            : "furkin.screen.record.summon"),
+                    btn -> requestSummon(id, btn), DETAIL_LEFT, y, btnW, btnH);
+            // 只允许一个本地在途请求；服务端仍保留 ALREADY_PENDING 作为最终防线。
+            summonButton.active = pendingSummonCompanionId == null;
             if (summoned) {
                 detailButton(Component.translatable("furkin.screen.record.dismiss"),
                         btn -> requestAction(RecordActionPacket.Action.DISMISS, id, null),
@@ -367,9 +397,27 @@ public final class FurkinRecordScreen extends Screen {
         return btn;
     }
 
-    /** 点「召唤」：上行请求召唤包（服务端按状态分流召唤 / 传送）；不关屏（2026-09-22 她定）。 */
-    private void requestSummon(UUID companionId) {
+    /**
+     * 点「召唤」：先进入本地在途态并禁用按钮，再上行请求召唤包。
+     *
+     * <p>服务端仍然是权威防重入口：本地门禁只负责避免同屏重复提交与给玩家明确反馈；
+     * 旧客户端或异常重包仍会被 {@code RemoteSummonService} 的 {@code ALREADY_PENDING} 拦截。</p>
+     */
+    private void requestSummon(UUID companionId, Button button) {
+        if (pendingSummonCompanionId != null) {
+            return;
+        }
+        pendingSummonCompanionId = companionId;
+        pendingSummonTicks = 0;
+        button.active = false;
+        button.setMessage(Component.translatable("furkin.screen.record.summoning"));
         FurkinNetwork.channel().sendToServer(new RequestSummonPacket(companionId));
+    }
+
+    /** 清空本地在途态；列表刷新、请求终态或本地兜底超时时调用。 */
+    private void clearPendingSummon() {
+        pendingSummonCompanionId = null;
+        pendingSummonTicks = 0;
     }
 
     /**

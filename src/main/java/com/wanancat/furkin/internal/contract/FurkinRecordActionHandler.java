@@ -153,6 +153,8 @@ public final class FurkinRecordActionHandler {
         }
 
         // 所有清理/归还动作成功后才删除档案。
+        RemoteSummonService.cancelIfPresent(player.getServer(), companionId,
+                RemoteSummonService.CancelReason.UNBOUND);
         archive.removeEntry(companionId);
 
         FurkinMod.LOGGER.info("Furkin unbound: id={} by {}",
@@ -203,7 +205,10 @@ public final class FurkinRecordActionHandler {
         }
 
         // 墓碑写入成功后才删除普通档案；实体本身留给入世延迟清理路径处理。
+        RemoteSummonService.cancelIfPresent(player.getServer(), companionId,
+                RemoteSummonService.CancelReason.UNBOUND);
         archive.removeEntry(companionId);
+        FurkinDuplicateRegistry.clearCompanion(companionId);
         FurkinMod.LOGGER.info("Furkin force-unbound: id={} by {}",
                 companionId, player.getName().getString());
         return Result.OK;

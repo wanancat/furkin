@@ -157,6 +157,7 @@ public final class FurkinUnbindCleanup {
             FurkinMod.LOGGER.info(
                     "Furkin unbind cleanup complete: id={}, entity={}, dimension={}, trigger={}",
                     companionId, target.getUUID(), target.getLevel().dimension().location(), trigger);
+            FurkinDuplicateRegistry.onCompanionCleared(companionId, target.getUUID());
             return Result.ok();
         } catch (Exception exception) {
             // 墓碑清理若在身份字段已清空后才失败，必须把 companionId 放回去；

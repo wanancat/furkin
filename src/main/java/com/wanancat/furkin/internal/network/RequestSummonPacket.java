@@ -1,8 +1,12 @@
 package com.wanancat.furkin.internal.network;
 
-import com.wanancat.furkin.internal.contract.FurkinCompanionManager;
+import com.wanancat.furkin.internal.config.FurkinServerConfig;
+import com.wanancat.furkin.internal.contract.RemoteSummonOrigin;
+import com.wanancat.furkin.internal.contract.RemoteSummonResult;
+import com.wanancat.furkin.internal.contract.RemoteSummonService;
 import com.wanancat.furkin.internal.item.FurkinRecordItem;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkEvent;
 
@@ -12,9 +16,9 @@ import java.util.function.Supplier;
 /**
  * 客户端 → 服务端：请求召唤某只绒亲（绒亲录列表界面点条目触发）。
  *
- * <p>服务端收到后按档案状态分流：<b>未召唤</b> → {@link FurkinCompanionManager#summon}
- * 重建实体；<b>已召唤（在场）</b> → {@link FurkinCompanionManager#teleportToOwner}
- * 传送到主人身边。均回一条反馈给玩家。</p>
+ * <p>服务端收到后交给 {@link RemoteSummonService}：已加载实体立即传送，未加载实体走
+ * 临时区块加载；异步终态再通过回调发送本地化反馈并刷新绒亲录列表。载荷和协议版本
+ * 均保持不变。</p>
  */
 public final class RequestSummonPacket {
 
@@ -43,39 +47,66 @@ public final class RequestSummonPacket {
         ctx.setPacketHandled(true);
     }
 
-    /** 服务端应用：走统一分流（召唤 / 传送），并按结果回反馈。 */
+    /** 服务端应用：交给统一远召 service，并处理即时/异步两阶段反馈。 */
     private static void applyServer(ServerPlayer player, UUID companionId) {
-        // 分流逻辑与命令 /furkin summon 共用同一个入口（2026-09-22 定）：
-        // 未召唤 → 重建实体；已召唤 → 传送到身边。两处规则必须一份代码。
-        FurkinCompanionManager.SummonResult result =
-                FurkinCompanionManager.summonOrTeleport(player, companionId);
+        RemoteSummonResult result = RemoteSummonService.forServer(player.getServer()).request(
+                player,
+                companionId,
+                RemoteSummonOrigin.RECORD,
+                (feedbackPlayer, ignoredCompanionId, terminalResult) ->
+                        sendRecordFeedback(feedbackPlayer, terminalResult, true));
 
-        if (result.ok()) {
+        if (result == RemoteSummonResult.PENDING) {
             player.displayClientMessage(
-                    net.minecraft.network.chat.Component.translatable(
-                            result == FurkinCompanionManager.SummonResult.TELEPORTED
-                                    ? "furkin.msg.teleported"
-                                    : "furkin.msg.summoned"), true);
-            // 录内召唤/传送后不关屏，必须复用既有刷新入口回发最新列表；
-            // 否则服务端状态虽已改变，当前界面仍显示旧状态。
-            FurkinRecordItem.refreshRecordList(player);
+                    Component.translatable("furkin.msg.remote_summon_pending"), true);
             return;
         }
+        sendRecordFeedback(player, result, false);
+    }
 
-        // 失败按具体原因分档（2026-09-22 定）：原先只分「传送失败 / 召唤失败」两档，
-        // 文案又是并列五选一的笼统句，玩家看不出到底卡在哪一条。
-        // 现与命令侧 /furkin summon 的 switch 同分档（同一套 SummonResult 枚举），
-        // 只是把命令侧的英文回执换成本地化 key（此路径由界面按钮触发，须走 lang）。
-        // ACTIVE_LIMIT 带 %s（本世界上限），故传参。
-        net.minecraft.network.chat.Component msg = switch (result) {
-            case NOT_FOUND -> net.minecraft.network.chat.Component.translatable("furkin.msg.summon_not_found");
-            case NOT_OWNER -> net.minecraft.network.chat.Component.translatable("furkin.msg.not_owner");
-            case NOT_ALIVE -> net.minecraft.network.chat.Component.translatable("furkin.msg.summon_not_alive");
-            case ACTIVE_LIMIT -> net.minecraft.network.chat.Component.translatable(
-                    "furkin.msg.active_limit",
-                    com.wanancat.furkin.internal.config.FurkinServerConfig.ACTIVE_LIMIT.get());
-            default -> net.minecraft.network.chat.Component.translatable("furkin.msg.summon_failed");
-        };
-        player.displayClientMessage(msg, false);
+    private static void sendRecordFeedback(ServerPlayer player, RemoteSummonResult result,
+                                           boolean asynchronous) {
+        if (result == RemoteSummonResult.COMPLETED_TELEPORT) {
+            player.displayClientMessage(Component.translatable(
+                    asynchronous ? "furkin.msg.remote_summon_completed" : "furkin.msg.teleported"), true);
+        } else if (result == RemoteSummonResult.COMPLETED_REBUILD) {
+            player.displayClientMessage(Component.translatable(
+                    asynchronous ? "furkin.msg.remote_summon_completed" : "furkin.msg.summoned"), true);
+        } else {
+            Component message = switch (result) {
+                case NOT_FOUND -> Component.translatable("furkin.msg.summon_not_found");
+                case NOT_OWNER -> Component.translatable("furkin.msg.not_owner");
+                case NOT_ALIVE -> Component.translatable("furkin.msg.summon_not_alive");
+                case ACTIVE_LIMIT -> Component.translatable(
+                        "furkin.msg.active_limit", FurkinServerConfig.ACTIVE_LIMIT.get());
+                case ENTITY_UNRESOLVED -> Component.translatable(
+                        "furkin.msg.remote_summon_unresolved");
+                case DIMENSION_MISSING -> Component.translatable(
+                        "furkin.msg.remote_summon_dimension_missing");
+                case TELEPORT_FAILED -> Component.translatable(
+                        "furkin.msg.summon_dimension_change_failed");
+                case NO_POSITION -> Component.translatable("furkin.msg.remote_summon_no_position");
+                case TIMEOUT -> Component.translatable("furkin.msg.remote_summon_timeout");
+                case CHUNK_LOAD_FAILED -> Component.translatable(
+                        "furkin.msg.remote_summon_chunk_failed");
+                case DUPLICATE_CONFLICT -> Component.translatable(
+                        "furkin.msg.remote_summon_duplicate");
+                case DISABLED -> Component.translatable("furkin.msg.remote_summon_disabled");
+                case ALREADY_PENDING -> Component.translatable(
+                        "furkin.msg.remote_summon_already_pending");
+                case TOO_MANY_PENDING -> Component.translatable(
+                        "furkin.msg.remote_summon_too_many_pending");
+                case COOLDOWN -> Component.translatable("furkin.msg.remote_summon_cooldown");
+                case CANCELLED -> Component.translatable("furkin.msg.remote_summon_cancelled");
+                case INVALID_STATE, REBUILD_FAILED, PENDING -> Component.translatable(
+                        "furkin.msg.summon_failed");
+                default -> Component.translatable("furkin.msg.summon_failed");
+            };
+            player.displayClientMessage(message, false);
+        }
+
+        // 绒亲录 UI 的本地在途态需要一个确定的结束信号。PENDING 不刷新，保留加载态；
+        // 其余立即/异步终态都复用既有列表刷新包，不新增协议字段或协议版本。
+        FurkinRecordItem.refreshRecordList(player);
     }
 }

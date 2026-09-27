@@ -29,6 +29,24 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **True remote summon** -- When a summoned companion's chunk is unloaded, Furkin adds a bounded temporary chunk ticket at the recorded dimension/position, re-resolves the same entity by its canonical UUID after the chunks load, and teleports it. Load failure, timeout, duplicate entities, or state changes fail safely without rebuilding, copying the archive, or clearing the recorded location. Defaults: radius 1 (3x3), timeout 600 ticks, with per-player and global request limits.
+- **Duplicate companion recovery** -- Added `/furkin repair list <pet_id>` and `/furkin repair choose <pet_id> <keep_entity_uuid>`: the keeper receives the equipment/pouch items it is missing (conflicts drop at its feet) before duplicates are removed; the canonical join guard no longer treats an entity with a different UUID as the archived companion.
+- **Remote summon server config** -- `furkin-server.toml` now exposes `remoteSummonEnabled`, `remoteSummonTicketRadius`, `remoteSummonTimeoutTicks`, `remoteSummonMaxPendingPerPlayer`, `remoteSummonMaxPendingGlobal`, and `remoteSummonCooldownTicks`; defaults and ranges are documented in the remote-summon feature documentation under docs/remote-summon-1.19.2/. Disabling only rejects the remote-loading path for an already-summoned but unloaded companion; loaded-entity teleport and legal rebuild still work.
+
+### Fixed
+
+- **No more equipment loss in unloaded chunks** -- When a companion is `summoned=true` but missing from the runtime entity index, the summon path now fails safely instead of flipping the record to `summoned=false`, clearing its identity/location, or rebuilding a second entity from an old snapshot, so live equipment and pouch contents on the original entity are no longer lost.
+- **No rebuild while an identity is loaded** -- The loaded-identity index now tracks all contracted entities by `companionId`. When `summoned=false` and any same-identity entity is still loaded (including an orphan/duplicate with no canonical UUID or a different UUID), rebuild is rejected with `DUPLICATE_CONFLICT`; legal rebuild remains unchanged when none is loaded.
+- **Asynchronous remote-summon feedback** -- The companion record and `/furkin summon` now share the server-side remote-summon service: pending requests get localized feedback, the record button shows a disabled loading state, every non-pending terminal state refreshes the list, and failures / timeouts / duplicate conflicts report their reason without a false success.
+
+### API Changes
+
+- No breaking API changes; packet structure and `PROTOCOL_VERSION` (`"2"`) are unchanged.
+
 ## [1.19.2-0.0.2.0] - 2026-09-25
 
 ### Fixed

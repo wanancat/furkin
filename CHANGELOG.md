@@ -37,6 +37,31 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 
 ---
 
+## [Unreleased]
+
+### Added / 新增
+
+- **真正远距召唤 / True remote summon** —— 已召唤绒亲所在区块未加载时，按档案记录的最后已知维度与位置添加有界临时 chunk ticket，在后台加载完成后按 canonical UUID 重新定位并传送同一实体；加载失败、超时、重复实体或状态变化只安全失败，不重建、不复制档案、不清定位。默认半径 1（3x3）、超时 600 tick，并按玩家/全服限制并发。
+  *When a summoned companion's chunk is unloaded, Furkin now adds a bounded temporary chunk ticket at the recorded dimension/position, re-resolves the same entity by its canonical UUID after the chunks load, and teleports it. Load failure, timeout, duplicate entities, or state changes fail safely without rebuilding, copying the archive, or clearing the recorded location.*
+- **重复实体恢复 / Duplicate companion recovery** —— 新增 `/furkin repair list <pet_id>` 与 `/furkin repair choose <pet_id> <keep_entity_uuid>`：先把 keeper 缺失的装备/行囊搬给它（槽位冲突时掉落在脚下），再删除重复实体；canonical 入世守卫不再把 UUID 不同的实体当作档案实体。
+  *Added `/furkin repair list <pet_id>` and `/furkin repair choose <pet_id> <keep_entity_uuid>`: the keeper receives the equipment/pouch items it is missing (conflicts drop at its feet) before duplicates are removed; the canonical join guard no longer treats an entity with a different UUID as the archived companion.*
+- **远召服务端配置 / Remote summon server config** —— `furkin-server.toml` 新增 `remoteSummonEnabled`、`remoteSummonTicketRadius`、`remoteSummonTimeoutTicks`、`remoteSummonMaxPendingPerPlayer`、`remoteSummonMaxPendingGlobal`、`remoteSummonCooldownTicks`；默认值与范围见 `docs/remote-summon-1.19.2/p2-true-remote-summon.md`。`remoteSummonEnabled=false` 只关闭「已召唤但未加载」的远程加载，已加载传送和合法重建仍可用。
+  *`furkin-server.toml` now exposes `remoteSummonEnabled`, `remoteSummonTicketRadius`, `remoteSummonTimeoutTicks`, `remoteSummonMaxPendingPerPlayer`, `remoteSummonMaxPendingGlobal`, and `remoteSummonCooldownTicks`; defaults and ranges are documented in the remote-summon feature documentation under docs/remote-summon-1.19.2/. Disabling only rejects the remote-loading path for an already-summoned but unloaded companion; loaded-entity teleport and legal rebuild still work.*
+
+### Fixed / 修复
+
+- **未加载绒亲不再丢装备 / No more equipment loss in unloaded chunks** —— `summoned=true` 但运行时索引未命中时只返回失败，不再把档案改成 `summoned=false`、不再清 `entity_uuid` / `entity_dimension` / `entity_pos`、不再从旧快照重建第二只实体，因此不会丢失活动实体上的实时装备与行囊。
+  *When a companion is `summoned=true` but missing from the runtime entity index, the summon path now fails safely instead of flipping the record to `summoned=false`, clearing its identity/location, or rebuilding a second entity from an old snapshot, so live equipment and pouch contents on the original entity are no longer lost.*
+- **未召唤档案不重建已加载身份 / No rebuild while identity is loaded** —— 已加载身份索引改为按 `companionId` 登记所有已契约实体；`summoned=false` 时若运行时仍存在同一身份实体（含 canonical UUID 为空或 UUID 不同的孤儿/重复体），返回 `DUPLICATE_CONFLICT` 并拒绝重建；无任何已加载同身份实体时，合法重建保持不变。
+  *The loaded-identity index now tracks all contracted entities by `companionId`. When `summoned=false` and any same-identity entity is still loaded (including an orphan/duplicate with no canonical UUID or a different UUID), rebuild is rejected with `DUPLICATE_CONFLICT`; legal rebuild remains unchanged when none is loaded.*
+- **远召异步反馈 / Asynchronous remote-summon feedback** —— 绒亲录与 `/furkin summon` 共用服务端远召服务：pending 有本地化提示，绒亲录按钮在请求期间显示“召唤中……”并禁用，所有非 pending 终态刷新列表；失败 / 超时 / 重复冲突给出对应原因且不误报成功。
+  *The companion record and `/furkin summon` now share the server-side remote-summon service: pending requests get localized feedback, the record button shows a disabled loading state, every non-pending terminal state refreshes the list, and failures / timeouts / duplicate conflicts report their reason without a false success.*
+
+### API / API Changes
+
+- 无破坏性 API 变更；网络包结构与 `PROTOCOL_VERSION`（`"2"`）保持不变。
+  *No breaking API changes; packet structure and `PROTOCOL_VERSION` (`"2"`) are unchanged.*
+
 ## [1.19.2-0.0.2.0] - 2026-09-25
 
 ### Fixed / 修复

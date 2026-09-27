@@ -86,5 +86,50 @@ public class FurkinServerConfig {
             .comment("Deprecated placeholder: was 're-acquire cooldown significantly higher than revive', but revive has no cooldown now.", "Kept for config compatibility; revisit at M5 balance.")
             .defineInRange("soulstoneReacquireCooldownSeconds", 3600, 0, Integer.MAX_VALUE);
 
+    // ===== 远距召唤 =====
+
+    /**
+     * 远距召唤总开关。
+     *
+     * <p>关闭后只拒绝「已召唤但实体不在运行时索引」的临时区块加载路径；
+     * 已加载实体传送和 {@code summoned=false} 的合法重建不受影响。</p>
+     */
+    public static final ForgeConfigSpec.BooleanValue REMOTE_SUMMON_ENABLED = BUILDER
+            .comment("Enable true remote summon (temporary chunk loading) for summoned companions not in the runtime entity index.",
+                    "Disabling only rejects the remote chunk-loading path; loaded-entity teleport and legal rebuild from a recalled/dead record still work.",
+                    "Design intent: true.")
+            .define("remoteSummonEnabled", true);
+
+    /** 目标位置周围的 ticket 传播半径：0 = 仅中心区块，1 = 3x3，2 = 5x5。 */
+    public static final ForgeConfigSpec.IntValue REMOTE_SUMMON_TICKET_RADIUS = BUILDER
+            .comment("Ticket radius around the last known companion position.",
+                    "0 = center chunk only, 1 = 3x3 chunks, 2 = 5x5 chunks.",
+                    "Higher values load more chunks and cost more; design intent: 1.")
+            .defineInRange("remoteSummonTicketRadius", 1, 0, 2);
+
+    /** 单次远召等待区块加载的 tick 上限；超时释放临时 ticket。 */
+    public static final ForgeConfigSpec.IntValue REMOTE_SUMMON_TIMEOUT_TICKS = BUILDER
+            .comment("Maximum ticks a remote summon waits for its target chunks before timing out.",
+                    "Timeout releases the temporary ticket; design intent: 600 (30 seconds at 20 TPS).")
+            .defineInRange("remoteSummonTimeoutTicks", 600, 20, 600);
+
+    /** 每名玩家同时存在的远召 pending 上限。 */
+    public static final ForgeConfigSpec.IntValue REMOTE_SUMMON_MAX_PENDING_PER_PLAYER = BUILDER
+            .comment("Maximum concurrent remote summon requests per player.",
+                    "Design intent: 1 (one request at a time).")
+            .defineInRange("remoteSummonMaxPendingPerPlayer", 1, 1, 4);
+
+    /** 全服同时存在的远召 pending 上限。 */
+    public static final ForgeConfigSpec.IntValue REMOTE_SUMMON_MAX_PENDING_GLOBAL = BUILDER
+            .comment("Maximum concurrent remote summon requests across the whole server.",
+                    "Radius 1 means at most 9 chunk futures per request; keep this bounded.",
+                    "Design intent: 4.")
+            .defineInRange("remoteSummonMaxPendingGlobal", 4, 1, 64);
+
+    /** 同一玩家 + companion 终态后的重复请求抑制时长；0 = 关闭。 */
+    public static final ForgeConfigSpec.IntValue REMOTE_SUMMON_COOLDOWN_TICKS = BUILDER
+            .comment("Cooldown ticks before the same player can remotely summon the same companion again after a terminal result.",
+                    "0 disables cooldown; design intent: 20 (1 second at 20 TPS).")
+            .defineInRange("remoteSummonCooldownTicks", 20, 0, 200);
     public static final ForgeConfigSpec SPEC = BUILDER.build();
 }

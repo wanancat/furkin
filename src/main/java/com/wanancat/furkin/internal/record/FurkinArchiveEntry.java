@@ -2,8 +2,10 @@ package com.wanancat.furkin.internal.record;
 
 import com.wanancat.furkin.internal.FurkinMod;
 import com.wanancat.furkin.internal.contract.FurkinCombatMode;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Registry;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtUtils;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
@@ -45,6 +47,9 @@ public final class FurkinArchiveEntry {
 
     /** 最近一次确认的实体所在维度；未召唤或旧档缺失时为空。 */
     private ResourceKey<Level> entityDimension;
+
+    /** 最近一次确认的实体方块位置；旧档缺失或未召唤时为空。 */
+    private BlockPos entityPos;
 
     /** 主人 UUID。 */
     private UUID ownerUuid;
@@ -95,6 +100,7 @@ public final class FurkinArchiveEntry {
         this.companionId = companionId;
         this.entityUuid = null;
         this.entityDimension = null;
+        this.entityPos = null;
         this.species = null;
         this.alive = true;
         this.summoned = false;
@@ -125,16 +131,27 @@ public final class FurkinArchiveEntry {
         return entityDimension;
     }
 
-    /** 记录实体身份与当前维度；只在实体确实在场时调用。 */
+    @Nullable
+    public BlockPos getEntityPos() {
+        return entityPos;
+    }
+
+    public void setEntityPos(@Nullable BlockPos entityPos) {
+        this.entityPos = entityPos;
+    }
+
+    /** 记录实体身份、当前维度和方块位置；只在实体确实在场时调用。 */
     public void setEntityLocation(Entity entity) {
         this.entityUuid = entity.getUUID();
         this.entityDimension = entity.getLevel().dimension();
+        this.entityPos = entity.blockPosition();
     }
 
     /** 实体离场或被移除后清空位置，避免后续误用失效 UUID。 */
     public void clearEntityLocation() {
         this.entityUuid = null;
         this.entityDimension = null;
+        this.entityPos = null;
     }
 
     public UUID getOwnerUuid() {
@@ -270,6 +287,9 @@ public final class FurkinArchiveEntry {
         if (entityDimension != null) {
             tag.putString("entity_dimension", entityDimension.location().toString());
         }
+        if (entityPos != null) {
+            tag.put("entity_pos", NbtUtils.writeBlockPos(entityPos));
+        }
         if (ownerUuid != null) {
             tag.putUUID("owner_uuid", ownerUuid);
         }
@@ -313,6 +333,14 @@ public final class FurkinArchiveEntry {
             } else {
                 entry.entityDimension = ResourceKey.create(Registry.DIMENSION_REGISTRY, dimensionId);
             }
+        }
+        entry.entityPos = readEntityPos(tag, id);
+        if (entry.entityPos != null
+                && (entry.entityUuid == null || entry.entityDimension == null)) {
+            FurkinMod.LOGGER.warn(
+                    "Ignoring entity_pos without entity_uuid/entity_dimension for companion {}",
+                    id);
+            entry.entityPos = null;
         }
         entry.ownerUuid = tag.hasUUID("owner_uuid") ? tag.getUUID("owner_uuid") : null;
         if (tag.contains("species")) {
@@ -360,5 +388,24 @@ public final class FurkinArchiveEntry {
                 ? tag.getLong("soulstone_reacquire_at")
                 : 0L;
         return entry;
+    }
+
+    @Nullable
+    private static BlockPos readEntityPos(CompoundTag tag, UUID companionId) {
+        if (!tag.contains("entity_pos", Tag.TAG_COMPOUND)) {
+            return null;
+        }
+
+        CompoundTag posTag = tag.getCompound("entity_pos");
+        boolean valid = posTag.contains("X", Tag.TAG_INT)
+                && posTag.contains("Y", Tag.TAG_INT)
+                && posTag.contains("Z", Tag.TAG_INT);
+        if (!valid) {
+            FurkinMod.LOGGER.warn(
+                    "Ignoring invalid entity_pos for companion {}: missing X/Y/Z int fields",
+                    companionId);
+            return null;
+        }
+        return NbtUtils.readBlockPos(posTag);
     }
 }

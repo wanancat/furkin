@@ -13,7 +13,13 @@ import com.wanancat.furkin.internal.capability.FurkinData;
 import com.wanancat.furkin.internal.contract.FurkinCombatMode;
 import com.wanancat.furkin.internal.contract.FurkinCombatModeHandler;
 import com.wanancat.furkin.internal.contract.FurkinCompanionManager;
+import com.wanancat.furkin.internal.contract.FurkinDuplicateRepair;
+import com.wanancat.furkin.internal.contract.FurkinEntityLocator;
 import com.wanancat.furkin.internal.contract.FurkinRecordActionHandler;
+import com.wanancat.furkin.internal.contract.RemoteSummonOrigin;
+import com.wanancat.furkin.internal.contract.RemoteSummonResult;
+import com.wanancat.furkin.internal.contract.RemoteSummonService;
+import com.wanancat.furkin.internal.equipment.MobEquipmentContainer;
 import com.wanancat.furkin.internal.growth.FurkinGrowth;
 import com.wanancat.furkin.internal.inventory.FurkinInventory;
 import com.wanancat.furkin.internal.record.FurkinArchiveData;
@@ -44,6 +50,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 /**
  * furkin 调试 / 管理命令。
@@ -96,6 +103,17 @@ public final class FurkinCommand {
                                                 StringArgumentType.getString(ctx, "pet_id")))))
                         .then(Commands.literal("list")
                                 .executes(ctx -> list(ctx.getSource())))
+                        .then(Commands.literal("repair")
+                                .then(Commands.literal("list")
+                                        .then(Commands.argument("pet_id", StringArgumentType.word())
+                                                .executes(ctx -> repairList(ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "pet_id")))))
+                                .then(Commands.literal("choose")
+                                        .then(Commands.argument("pet_id", StringArgumentType.word())
+                                                .then(Commands.argument("keep_entity_uuid", StringArgumentType.word())
+                                                        .executes(ctx -> repairChoose(ctx.getSource(),
+                                                                StringArgumentType.getString(ctx, "pet_id"),
+                                                                StringArgumentType.getString(ctx, "keep_entity_uuid")))))))
                         .then(Commands.literal("forget")
                                 .then(Commands.argument("pet_id", StringArgumentType.word())
                                         .executes(ctx -> forget(ctx.getSource(),
@@ -171,27 +189,75 @@ public final class FurkinCommand {
             return 0;
         }
 
-        // 走统一分流（2026-09-22 定）：未召唤 → 重建；已召唤 → 传送到身边。
-        // 与绒亲录点条目同一条路径（FurkinCompanionManager.summonOrTeleport），
-        // 不再出现「录里能拉过来、命令报错」的不一致。
-        FurkinCompanionManager.SummonResult r =
-                FurkinCompanionManager.summonOrTeleport(player, petId);
-        final String sid = shortId(petId.toString());
-        switch (r) {
-            case SUMMONED -> src.sendSuccess(
-                    Component.translatable("furkin.command.summon.success", sid), false);
-            case TELEPORTED -> src.sendSuccess(
-                    Component.translatable("furkin.command.summon.teleported", sid), false);
-            case NOT_FOUND -> src.sendFailure(
-                    Component.translatable("furkin.command.companion.not_found", sid));
-            case NOT_OWNER -> src.sendFailure(Component.translatable("furkin.msg.not_owner"));
-            case NOT_ALIVE -> src.sendFailure(
-                    Component.translatable("furkin.command.summon.not_alive", sid));
-            case ACTIVE_LIMIT -> src.sendFailure(
-                    Component.translatable("furkin.command.summon.active_limit"));
-            default -> src.sendFailure(Component.translatable("furkin.command.summon.failed"));
+        // 走统一远召 service：已加载立即处理；未加载进入异步加载，终态由回调反馈。
+        RemoteSummonResult result = RemoteSummonService.forServer(player.getServer()).request(
+                player,
+                petId,
+                RemoteSummonOrigin.COMMAND,
+                (feedbackPlayer, ignoredCompanionId, terminalResult) ->
+                        sendSummonFeedback(
+                                message -> feedbackPlayer.displayClientMessage(message, false),
+                                message -> feedbackPlayer.displayClientMessage(message, false),
+                                petId,
+                                terminalResult));
+
+        if (result == RemoteSummonResult.PENDING) {
+            src.sendSuccess(Component.translatable("furkin.command.summon.remote_pending"), false);
+            return 1;
         }
+
+        sendSummonFeedback(
+                message -> src.sendSuccess(message, false),
+                src::sendFailure,
+                petId,
+                result);
         return 1;
+    }
+
+    private static void sendSummonFeedback(Consumer<Component> successSink,
+                                           Consumer<Component> failureSink,
+                                           UUID petId,
+                                           RemoteSummonResult result) {
+        final String sid = shortId(petId.toString());
+        switch (result) {
+            case COMPLETED_TELEPORT -> successSink.accept(
+                    Component.translatable("furkin.command.summon.teleported", sid));
+            case COMPLETED_REBUILD -> successSink.accept(
+                    Component.translatable("furkin.command.summon.success", sid));
+            case NOT_FOUND -> failureSink.accept(
+                    Component.translatable("furkin.command.companion.not_found", sid));
+            case NOT_OWNER -> failureSink.accept(Component.translatable("furkin.msg.not_owner"));
+            case NOT_ALIVE -> failureSink.accept(
+                    Component.translatable("furkin.command.summon.not_alive", sid));
+            case ACTIVE_LIMIT -> failureSink.accept(
+                    Component.translatable("furkin.command.summon.active_limit"));
+            case ENTITY_UNRESOLVED -> failureSink.accept(
+                    Component.translatable("furkin.command.summon.entity_unresolved", sid));
+            case DIMENSION_MISSING -> failureSink.accept(
+                    Component.translatable("furkin.msg.remote_summon_dimension_missing"));
+            case TELEPORT_FAILED -> failureSink.accept(
+                    Component.translatable("furkin.command.summon.dimension_change_failed", sid));
+            case NO_POSITION -> failureSink.accept(
+                    Component.translatable("furkin.msg.remote_summon_no_position"));
+            case TIMEOUT -> failureSink.accept(
+                    Component.translatable("furkin.msg.remote_summon_timeout"));
+            case CHUNK_LOAD_FAILED -> failureSink.accept(
+                    Component.translatable("furkin.msg.remote_summon_chunk_failed"));
+            case DUPLICATE_CONFLICT -> failureSink.accept(
+                    Component.translatable("furkin.msg.remote_summon_duplicate"));
+            case DISABLED -> failureSink.accept(
+                    Component.translatable("furkin.msg.remote_summon_disabled"));
+            case ALREADY_PENDING -> failureSink.accept(
+                    Component.translatable("furkin.msg.remote_summon_already_pending"));
+            case TOO_MANY_PENDING -> failureSink.accept(
+                    Component.translatable("furkin.msg.remote_summon_too_many_pending"));
+            case COOLDOWN -> failureSink.accept(
+                    Component.translatable("furkin.msg.remote_summon_cooldown"));
+            case CANCELLED -> failureSink.accept(
+                    Component.translatable("furkin.msg.remote_summon_cancelled"));
+            case INVALID_STATE, REBUILD_FAILED, PENDING -> failureSink.accept(
+                    Component.translatable("furkin.command.summon.failed"));
+        }
     }
 
     /**
@@ -271,6 +337,164 @@ public final class FurkinCommand {
             src.sendSuccess(Component.translatable("furkin.command.list.none"), false);
         }
         return 1;
+    }
+
+    /** 只读列出同 companionId 的当前已加载候选实体；不修改档案、实体或物品。 */
+    private static int repairList(CommandSourceStack src, String petIdRaw) {
+        if (!(src.getEntity() instanceof ServerPlayer player)) {
+            return 0;
+        }
+
+        UUID petId;
+        try {
+            petId = UUID.fromString(petIdRaw);
+        } catch (IllegalArgumentException e) {
+            src.sendFailure(Component.translatable("furkin.msg.invalid_pet_id", petIdRaw));
+            return 0;
+        }
+
+        FurkinArchiveData archive = FurkinArchiveData.get(player.getLevel());
+        FurkinArchiveEntry entry = archive.getEntry(petId);
+        if (entry == null) {
+            src.sendFailure(Component.translatable("furkin.command.companion.not_found", shortId(petIdRaw)));
+            return 0;
+        }
+        if (entry.getOwnerUuid() == null || !entry.getOwnerUuid().equals(player.getUUID())) {
+            src.sendFailure(Component.translatable("furkin.msg.not_owner"));
+            return 0;
+        }
+        if (!entry.isSummoned()) {
+            src.sendFailure(Component.translatable("furkin.command.repair.list.not_summoned"));
+            return 0;
+        }
+        if (!entry.isAlive()) {
+            src.sendFailure(Component.translatable("furkin.command.repair.list.not_alive"));
+            return 0;
+        }
+
+        String canonical = entry.getEntityUuid() == null ? "none" : entry.getEntityUuid().toString();
+        List<LivingEntity> candidates = FurkinEntityLocator.findAllLoaded(player.getServer(), entry);
+        src.sendSuccess(Component.translatable(
+                "furkin.command.repair.list.header", petId.toString(), canonical), false);
+        if (candidates.isEmpty()) {
+            src.sendSuccess(Component.translatable(
+                    "furkin.command.repair.list.empty", petId.toString(), canonical), false);
+            return 1;
+        }
+
+        for (LivingEntity candidate : candidates) {
+            FurkinData data = candidate.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
+            boolean isCanonical = candidate.getUUID().equals(entry.getEntityUuid());
+            String dimension = candidate.getLevel().dimension().location().toString();
+            String dataId = data == null || data.getCompanionId() == null
+                    ? "none" : data.getCompanionId().toString();
+            int armor = countArmor(candidate);
+            int pouch = countPouch(data);
+            int level = data == null ? 0 : data.getLevel();
+            int xp = data == null ? 0 : data.getXp();
+            int points = data == null ? 0 : data.getSkillPoints();
+            src.sendSuccess(Component.translatable(
+                    "furkin.command.repair.list.entry",
+                    candidate.getUUID().toString(), Boolean.toString(isCanonical), dimension,
+                    blockPosString(candidate), armor, pouch, level, xp, points, dataId), false);
+        }
+        return 1;
+    }
+
+    /** 显式选择 keeper 并清理同 companionId 的已加载重复体。 */
+    private static int repairChoose(CommandSourceStack src, String petIdRaw, String keepUuidRaw) {
+        if (!(src.getEntity() instanceof ServerPlayer player)) {
+            return 0;
+        }
+
+        UUID petId;
+        try {
+            petId = UUID.fromString(petIdRaw);
+        } catch (IllegalArgumentException e) {
+            src.sendFailure(Component.translatable("furkin.msg.invalid_pet_id", petIdRaw));
+            return 0;
+        }
+
+        UUID keepUuid;
+        try {
+            keepUuid = UUID.fromString(keepUuidRaw);
+        } catch (IllegalArgumentException e) {
+            src.sendFailure(Component.translatable(
+                    "furkin.command.repair.choose.invalid_keep_uuid", keepUuidRaw));
+            return 0;
+        }
+
+        FurkinDuplicateRepair.Result result = FurkinDuplicateRepair.choose(player, petId, keepUuid);
+        switch (result) {
+            case OK:
+                src.sendSuccess(Component.translatable(
+                        "furkin.command.repair.choose.success", keepUuid.toString()), false);
+                return 1;
+            case NOT_FOUND:
+                src.sendFailure(Component.translatable(
+                        "furkin.command.companion.not_found", shortId(petIdRaw)));
+                return 0;
+            case NOT_OWNER:
+                src.sendFailure(Component.translatable("furkin.msg.not_owner"));
+                return 0;
+            case NOT_SUMMONED:
+                src.sendFailure(Component.translatable("furkin.command.repair.choose.not_summoned"));
+                return 0;
+            case NOT_ALIVE:
+                src.sendFailure(Component.translatable("furkin.command.repair.choose.not_alive"));
+                return 0;
+            case NO_LOADED_CANDIDATE:
+                src.sendFailure(Component.translatable(
+                        "furkin.command.repair.choose.no_loaded_candidate", petId.toString()));
+                return 0;
+            case CANONICAL_NOT_LOADED:
+                src.sendFailure(Component.translatable(
+                        "furkin.command.repair.choose.canonical_not_loaded", petId.toString()));
+                return 0;
+            case KEEP_UUID_REQUIRED:
+                src.sendFailure(Component.translatable("furkin.command.repair.choose.keep_uuid_required"));
+                return 0;
+            case KEEP_UUID_NOT_LOADED:
+                src.sendFailure(Component.translatable(
+                        "furkin.command.repair.choose.keep_not_loaded", keepUuid.toString()));
+                return 0;
+            case CLEANUP_FAILED:
+                src.sendFailure(Component.translatable(
+                        "furkin.command.repair.choose.cleanup_failed", petId.toString()));
+                return 0;
+            default:
+                return 0;
+        }
+    }
+
+    private static int countArmor(LivingEntity entity) {
+        MobEquipmentContainer equipment = new MobEquipmentContainer(entity);
+        int count = 0;
+        for (int i = 0; i < equipment.getContainerSize(); i++) {
+            if (!equipment.getItem(i).isEmpty()) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static int countPouch(FurkinData data) {
+        if (data == null) {
+            return 0;
+        }
+        FurkinInventory pouch = data.getPouch();
+        int count = 0;
+        for (int i = 0; i < pouch.getContainerSize(); i++) {
+            if (!pouch.getItem(i).isEmpty()) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static String blockPosString(LivingEntity entity) {
+        var pos = entity.blockPosition();
+        return pos.getX() + "," + pos.getY() + "," + pos.getZ();
     }
 
     /** UUID 压缩显示：前 8 位 + {@code …} + 后 4 位（如 {@code a1b2c3d4…9f0e}）。 */

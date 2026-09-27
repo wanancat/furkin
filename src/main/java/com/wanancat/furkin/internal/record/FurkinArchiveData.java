@@ -31,7 +31,8 @@ public final class FurkinArchiveData extends SavedData {
 
     private static final String KEY_ENTRIES = "entries";
     private static final String KEY_DATA_VERSION = "data_version";
-    private static final int CURRENT_DATA_VERSION = 1;
+    private static final int CURRENT_DATA_VERSION = 2;
+    private static final int LEGACY_GLOBAL_ARCHIVE_VERSION = 1;
 
     /** 宠物身份 UUID → 档案条目。 */
     private final Map<UUID, FurkinArchiveEntry> entries = new HashMap<>();
@@ -112,8 +113,35 @@ public final class FurkinArchiveData extends SavedData {
         Objects.requireNonNull(server, "server");
         FurkinArchiveData data = server.overworld().getDataStorage()
                 .computeIfAbsent(FurkinArchiveData::load, FurkinArchiveData::new, NAME);
-        data.migrateLegacyArchives(server);
+        data.migrate(server);
         return data;
+    }
+
+    /**
+     * 分步迁移档案数据。
+     *
+     * <p>v0 -> v1 只处理旧版本按维度分裂的档案合并；v1 -> v2 是位置字段的
+     * 空迁移，不扫描实体、不补位置、不改变 summoned / alive / entity_uuid。</p>
+     */
+    private void migrate(MinecraftServer server) {
+        if (dataVersion >= CURRENT_DATA_VERSION) {
+            return;
+        }
+
+        int loadedVersion = dataVersion;
+        if (dataVersion < LEGACY_GLOBAL_ARCHIVE_VERSION) {
+            migrateLegacyArchives(server);
+            dataVersion = LEGACY_GLOBAL_ARCHIVE_VERSION;
+        }
+        if (dataVersion < CURRENT_DATA_VERSION) {
+            dataVersion = CURRENT_DATA_VERSION;
+        }
+
+        if (dataVersion != loadedVersion) {
+            setDirty();
+            FurkinMod.LOGGER.info("Furkin archive data version migrated: {} -> {}",
+                    loadedVersion, dataVersion);
+        }
     }
 
     /**
@@ -123,10 +151,6 @@ public final class FurkinArchiveData extends SavedData {
      * 同 ID 冲突没有可靠时间戳，保留主世界条目并记录诊断日志。</p>
      */
     private void migrateLegacyArchives(MinecraftServer server) {
-        if (dataVersion >= CURRENT_DATA_VERSION) {
-            return;
-        }
-
         int imported = 0;
         int conflicts = 0;
         for (ServerLevel level : server.getAllLevels()) {
@@ -153,8 +177,6 @@ public final class FurkinArchiveData extends SavedData {
             }
         }
 
-        dataVersion = CURRENT_DATA_VERSION;
-        setDirty();
         if (imported > 0 || conflicts > 0) {
             FurkinMod.LOGGER.info("Furkin archive migration completed: imported={}, conflicts={}",
                     imported, conflicts);
