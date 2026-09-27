@@ -29,9 +29,11 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 
 ---
 
-## [Unreleased]
+## [1.19.2-0.0.3.0] - 2026-09-27
 
 ### Added
+
+- **Contract health precondition** -- Contracts now check `Enemy > NeutralMob > other` classification before accepting a target: Enemy defaults to 30% or 4 HP, neutral mobs to 50% or 8 HP, and other species are unlimited by default. Initiation and confirmation share the same server-authoritative check; a too-healthy target gets a localized threshold message and cancels the vanilla interaction, while invalid health fails silently. Forge multipart entities resolve to their parent first.
 
 - **True remote summon** -- When a summoned companion's chunk is unloaded, Furkin adds a bounded temporary chunk ticket at the recorded dimension/position, re-resolves the same entity by its canonical UUID after the chunks load, and teleports it. Load failure, timeout, duplicate entities, or state changes fail safely without rebuilding, copying the archive, or clearing the recorded location. Defaults: radius 1 (3x3), timeout 600 ticks, with per-player and global request limits.
 - **Duplicate companion recovery** -- Added `/furkin repair list <pet_id>` and `/furkin repair choose <pet_id> <keep_entity_uuid>`: the keeper receives the equipment/pouch items it is missing (conflicts drop at its feet) before duplicates are removed; the canonical join guard no longer treats an entity with a different UUID as the archived companion.
@@ -45,7 +47,12 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 
 ### API Changes
 
-- No breaking API changes; packet structure and `PROTOCOL_VERSION` (`"2"`) are unchanged.
+- No breaking API changes; the public API and packet structure are unchanged, and `PROTOCOL_VERSION` remains `"2"`.
+
+### Validation
+
+- A one-off server fixture covered 33 scenarios with `pass=33 fail=0`; vanilla EnderDragon multipart event targets passed parent resolution, contract, feeding, panel, and recall paths under 1.19.2 / Forge 43.2.0.
+- `clean build` succeeded; a clean `runServer` reached `Done`, a clean `runClient` loaded resources and started, and the final JAR contains no `internal.debug` / fixture classes.
 
 ## [1.19.2-0.0.2.0] - 2026-09-25
 

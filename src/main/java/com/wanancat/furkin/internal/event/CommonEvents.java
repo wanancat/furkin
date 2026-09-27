@@ -37,6 +37,7 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.TamableAnimal;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
+import net.minecraftforge.entity.PartEntity;
 import net.minecraftforge.event.AddReloadListenerEvent;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.TickEvent;
@@ -274,7 +275,13 @@ public final class CommonEvents {
             return;
         }
 
-        if (!(event.getTarget() instanceof LivingEntity target)) {
+        Entity interactionTarget = event.getTarget();
+        if (interactionTarget instanceof PartEntity<?> part
+                && part.getParent() instanceof LivingEntity parent) {
+            // 多部件生物主实体不可直接拾取，右键命中的是 PartEntity；同步解析到父实体。
+            interactionTarget = parent;
+        }
+        if (!(interactionTarget instanceof LivingEntity target)) {
             return;
         }
 
@@ -326,9 +333,11 @@ public final class CommonEvents {
             return;
         }
 
-        // 分支②：普通右键 → 契约。
-        boolean contracted = FurkinContractHandler.tryContract(player, target, player.getMainHandItem());
-        if (contracted) {
+        // 分支②：普通右键 → 契约。生命值过高也取消原版右键，避免目标切换坐姿等副作用。
+        FurkinContractHandler.ContractCheckResult result =
+                FurkinContractHandler.tryContract(player, target, player.getMainHandItem());
+        if (result == FurkinContractHandler.ContractCheckResult.PASSED
+                || result == FurkinContractHandler.ContractCheckResult.HEALTH_TOO_HIGH) {
             event.setCancellationResult(InteractionResult.SUCCESS);
             event.setCanceled(true);
         }

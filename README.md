@@ -19,7 +19,7 @@ included (because they're rather fluff~y~).
 
 ## Features
 
-- **Contract** — turn any registered species into a companion with a single item, no prior taming required.
+- **Contract** — turn any registered species into a companion with a single item, no prior taming required; eligible targets must first meet the configurable health gate.
 - **Skill tree** — a shared trunk plus species-specific branches.
 - **Equipment** — companions wear vanilla armor (all 4 slots), third-party armor works with zero config.
 - **Travel pouch** — a carry-along inventory that grows with the `travel_pouch` skill level, with shrinking, reclaiming and death-drop handling built in. Finally, someone else carries the cobblestone.
@@ -43,7 +43,7 @@ included (because they're rather fluff~y~).
 
 ## Usage
 
-- Craft a **Furkin Contract** from wool and paper, then right-click any valid animal to bond it as a companion.
+- Craft a **Furkin Contract** from wool and paper, then right-click any valid animal to bond it as a companion. Enemy targets default to 30% or 4 HP, neutral mobs to 50% or 8 HP, and other registered species have no extra health gate; thresholds live in `furkin-server.toml`.
 - Craft a **Furkin Record** from a Furkin Contract and a book to manage your companions
   (summon, recall, unbind, toggle combat mode, and more).
 

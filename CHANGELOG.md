@@ -37,9 +37,12 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 
 ---
 
-## [Unreleased]
+## [1.19.2-0.0.3.0] - 2026-09-27
 
 ### Added / 新增
+
+- **契约血量前置 / Contract health precondition** —— 契约前按 `Enemy > NeutralMob > 其他` 检查生命值：Enemy 默认 `30%` 或 `4` 点、NeutralMob 默认 `50%` 或 `8` 点、其他默认不限制；发起命名与确认阶段共用服务端权威校验，生命值过高时显示对应提示并取消原版右键，非法生命值静默拒绝。Forge 多部件实体会先解析到父实体。
+  *Contracts now check health before accepting a target, using `Enemy > NeutralMob > other` classification: Enemy defaults to 30% or 4 HP, neutral mobs to 50% or 8 HP, and other species are unlimited by default. Initiation and confirmation share the same server-authoritative check; a too-healthy target gets a localized threshold message and cancels the vanilla interaction, while invalid health fails silently. Forge multipart entities resolve to their parent first.*
 
 - **真正远距召唤 / True remote summon** —— 已召唤绒亲所在区块未加载时，按档案记录的最后已知维度与位置添加有界临时 chunk ticket，在后台加载完成后按 canonical UUID 重新定位并传送同一实体；加载失败、超时、重复实体或状态变化只安全失败，不重建、不复制档案、不清定位。默认半径 1（3x3）、超时 600 tick，并按玩家/全服限制并发。
   *When a summoned companion's chunk is unloaded, Furkin now adds a bounded temporary chunk ticket at the recorded dimension/position, re-resolves the same entity by its canonical UUID after the chunks load, and teleports it. Load failure, timeout, duplicate entities, or state changes fail safely without rebuilding, copying the archive, or clearing the recorded location.*
@@ -59,8 +62,15 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 
 ### API / API Changes
 
-- 无破坏性 API 变更；网络包结构与 `PROTOCOL_VERSION`（`"2"`）保持不变。
+- 无破坏性 API 变更；公开 API 与网络包结构未变化，`PROTOCOL_VERSION`（`"2"`）保持不变。
   *No breaking API changes; packet structure and `PROTOCOL_VERSION` (`"2"`) are unchanged.*
+
+### Validation / 验证
+
+- 一次性服务端夹具在 1.19.2 / Forge 43.2.0 下覆盖 33 个场景，`pass=33 fail=0`；原版 EnderDragon 多部件事件目标解析、契约、喂食、面板与收回路径均通过。
+  *A one-off server fixture covered 33 scenarios with `pass=33 fail=0`; vanilla EnderDragon multipart event targets passed parent resolution, contract, feeding, panel, and recall paths under 1.19.2 / Forge 43.2.0.*
+- `clean build` 成功；无夹具 `runServer` 到达 `Done`，无夹具 `runClient` 完成资源加载并启动；最终 JAR 不含 `internal.debug` / fixture。
+  *`clean build` succeeded; a clean `runServer` reached `Done`, a clean `runClient` loaded resources and started, and the final JAR contains no `internal.debug` / fixture classes.*
 
 ## [1.19.2-0.0.2.0] - 2026-09-25
 
