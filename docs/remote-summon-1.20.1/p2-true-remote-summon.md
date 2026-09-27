@@ -403,7 +403,7 @@ furkin.command.summon.failed               // INVALID_STATE / REBUILD_FAILED（�
 
 ## 10. 实施状态（2026-09-28）
 
-- 基线 `a9870714` 已推送；当前增量（P0-06 口径修正、`ServerStoppingEvent` 接线、`TRAVEL_POUCH` 空值防御 + 文档）未提交。
+- 基线 `a9870714` 已推送；本次增量（P0-06 口径修正、`ServerStoppingEvent` 接线、`TRAVEL_POUCH` 空值防御 + 文档）由 `39633b8` 与 changelog 提交 `c22b036` 收口，并推送至 `origin/mc1.20.1`；工作树干净。
 - 已完成：位置字段与 v1 -> v2 迁移、公共传送路径、异步 service、ticket / pending / timeout / 取消、命令与绒亲录接入、6 项配置、双语文案。
 - 已执行：2026-09-28 一次性夹具 11 个模式全部 0 失败（prepare 65 / nbt 16 / repair 34 / cold 45 / reload 13 / orphan 20 / safety 18 / commands 21 / stop-pending 3 / restart 9 / perf 59）；`build` 成功，去夹具 `runServer` 到达 `Done (2.592s)`，日志无 Furkin 专属 ERROR / FATAL / 异常栈。详细证据见 [verification-matrix.md](verification-matrix.md)。
 - 未完成：真实客户端绒亲录在途态 / 按钮禁用解锁 / 刷新交互（P2-25 / P2-26 / P2-39）；服务端侧冷区跨维度、timeout / chunk 失败、生命周期取消、重启 pending 收敛、故障注入与热区 / 冷区 / 串行 20 次 / 并发 4 性能记录已全部取证。性能侧遗留两项：并发 4 的 178.5ms 单 tick 尖峰（优化项），以及客户端负荷零测量。

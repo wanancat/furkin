@@ -169,7 +169,7 @@ clearCompanion(UUID companionId)
 
 ## 10. 实施记录
 
-- 工作树：`mc1.20.1` / `a9870714` 基线，当前增量未提交。
+- 提交：`mc1.20.1` / `a9870714` 基线；本次 0.0.3.0 增量提交为 `39633b8`，changelog 提交为 `c22b036`，均已推送至 `origin/mc1.20.1`，工作树干净。
 - 已落地：`FurkinDuplicateRegistry`、`FurkinDuplicateRepair`、`FurkinEntityLocator.findAllLoaded`、`FurkinData.copyCoreFrom`、入世 / 离场 / 停服清理、`repair list|choose [confirm]` 命令与中英键。
 - 代码口径：`repair choose` 默认只调用 `plan(...)`；只有带 `confirm` 才调用 `choose(...)`。keeper AI 使用 `setTarget(null)` + `combatMode.applyTo(...)`。
 - 已通过夹具：p0p1 覆盖 duplicate registry、preview/confirm、删除 canonical / 保留 keeper、档案重定向、核心字段复制、普通路径物品精确守恒。

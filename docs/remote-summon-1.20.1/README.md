@@ -186,7 +186,7 @@ P0、P1、P2 全部满足各自验收项，并且：
 
 ## 10. 实施状态（2026-09-28）
 
-- 基线提交 `a9870714` 已推送；工作树在其上叠加 P0-06 口径修正、`ServerStoppingEvent` 停服接线与 `TRAVEL_POUCH` 空值防御，尚未提交。
+- 基线提交 `a9870714` 已推送。本次 0.0.3.0 增量已由修复提交 `39633b8` 与 changelog 提交 `c22b036` 收口，并推送至 `origin/mc1.20.1`；工作树干净。
 - 已完成：P0 安全失败、P1 canonical 守卫与显式 repair、P2.1 位置字段 / v1→v2 迁移、P2.2 公共传送路径、P2.3 异步 service、P2.4 命令与绒亲录接入、P2.5 六项配置与中英文文案。
 - 已执行证据：`compileJava`、`build` 通过（产物 `furkin-1.20.1-0.0.3.0.jar`）；去夹具 `runServer` 到达 `Done (2.592s)` 且 `run/logs/latest.log` 无 Furkin 专属 `ERROR` / `FATAL` / 异常栈；`runClient` 启动到客户端渲染初始化；专用服配置路径为 `run/world/serverconfig/furkin-server.toml`；中英文 lang 均 201 键且键集合一致；最终 jar 未含 fixture / debug 类。
 - 一次性夹具 11 个模式全部 0 失败：`prepare` 65、`nbt` 16、`repair` 34、`cold` 45、`reload` 13、`orphan` 20、`safety` 18、`commands` 21、`stop-pending` 3、`restart` 9、`perf` 59。夹具源码、临时世界与临时 `patches/` 均已清理。
@@ -195,3 +195,4 @@ P0、P1、P2 全部满足各自验收项，并且：
 - 已完成的静态审计：无永久 `FORCED` / `setChunkForced`，无主线程 `managedBlock`，无 `LivingTickEvent`，`findAllLoaded` 只出现在 repair 路径。
 - 待验证：真实客户端绒亲录在途态 / 交互（P2-25 / P2-26 / P2-39）、v0 分维度旧档迁移（P2-06）、同 UUID 跨维度入世（P1-02）、`clearEntityLocation` 三项同 null（P2-02）、契约 / 复活 / 离场逐条位置刷新（P2-09）。统一状态见 [验证矩阵](verification-matrix.md)。
 - owner 换维度自动随行（随行 / 携带）明确不在本包范围；需要时另立 `owner-dimension-follow` 功能包。
+- 发布准备（2026-09-28）：`mod_version=1.20.1-0.0.3.0`，`build` 成功；产物 `build/libs/furkin-1.20.1-0.0.3.0.jar`，大小 `394949` 字节，SHA-256 `7F30346C7CA3602FC601AA7A7D2814C89EFCC09ACAA39C2DB5FC23B2974B856C`。发布 tag、GitHub Release 与 CurseForge 文件尚未创建或上传。

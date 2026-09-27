@@ -280,7 +280,7 @@ rg -n "summon_entity_unresolved|summon_dimension_change_failed|command.summon.en
 
 ## 9. 实施记录
 
-- 工作树：`mc1.20.1` / `a9870714` 基线，当前增量未提交。
+- 提交：`mc1.20.1` / `a9870714` 基线；本次 0.0.3.0 增量提交为 `39633b8`，changelog 提交为 `c22b036`，均已推送至 `origin/mc1.20.1`，工作树干净。
 - 代码文件：`FurkinCompanionManager`、`FurkinEntityLocator`、`FurkinDuplicateRegistry`、`CommonEvents`、`RequestSummonPacket`、`FurkinCommand`、两份 lang。
 - 编译 / 构建证据：2026-09-28 `build` 成功（`furkin-1.20.1-0.0.3.0.jar`）；去夹具 `runServer` 到达 `Done (2.592s)`，详细状态见本目录 `verification-matrix.md`。
 - 已通过夹具（2026-09-28 全部 0 失败）：`reload` 13 项（未解析只读失败、两次失败无实体、档案 NBT 不变）、`nbt` 16 项（serializeNBT 前后逐字节一致、缺/坏 `entity_pos`）、`orphan` 20 项（`dismiss` 清 UUID、重复冲突拒绝、按快照重建）、`commands` 21 项（命令与绒亲录同语义、各自键）、`cold` 45 项、`restart` 9 项。
