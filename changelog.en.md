@@ -29,7 +29,7 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 
 ---
 
-## [1.20.1-0.0.3.0] - 2026-09-27
+## [1.20.1-0.0.3.0] - 2026-09-28
 
 **Added**
 
@@ -39,11 +39,15 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 - **Configurable contract health gates** —— Registered species now use `Enemy > NeutralMob > other` classification, with configurable percentage and absolute health gates. Either branch may pass: Enemy defaults to `30%` or `4` health and NeutralMob to `50%` or `8` health, letting a full-health vanilla wolf pass; other targets default to `100%` with the absolute branch disabled. The six values live in the server `furkin-server.toml`. Both the naming request and confirmation revalidate the gate, so regenerating above it before confirmation is rejected.
 - **Multipart entity interaction compatibility** —— When an entity interaction targets a Forge `PartEntity`, Furkin resolves the public `getParent()` entity. Multipart creatures such as the Twilight Forest Hydra, whose main entity is not directly pickable, can now pass the health gate and complete contract, dismiss and resummon flows.
 
+**Fixed**
+
+- **Remote-summon tickets leaked on shutdown** —— Cancelling pending summons and releasing their temporary chunk tickets now happens on `ServerStoppingEvent` (before the chunk scheduler shuts down) instead of `ServerStoppedEvent`. An in-flight summon resolves cleanly to `CANCELLED` on shutdown without leaving stale tickets or forced chunks behind. The duplicate-repair pouch-capacity calculation also tolerates a missing `travel_pouch` level.
+
 **Notes**
 
 - The Furkin Record and `/furkin summon` share the server-side state machine; pending requests disable the record button, and every non-pending terminal result refreshes the list with an explicit failure reason instead of a false success.
 - No public API was added and `PROTOCOL_VERSION` remains `2`; the archive data version advances to `2`, and `entity_pos` is read as `null` when absent from legacy saves. The release version is `1.20.1-0.0.3.0`.
-- Full in-game interaction, fault-injection and 1.20.1 performance evidence are still pending; automatic companion following when the owner changes dimension is explicitly out of scope.
+- 1.20.1 performance has been recorded (a deterministic ceiling plus two measured tiers; single machine, single run, no pre-change baseline, so it is a local magnitude reference only and **not** a no-regression claim); the single-tick spike when four requests settle together is logged as a follow-up optimisation. Full in-game interaction evidence is still pending; automatic companion following when the owner changes dimension is explicitly out of scope.
 - Only `HEALTH_TOO_HIGH` shows the health message and cancels the vanilla interaction; existing failures such as unregistered species, wrong ownership or being out of reach are not newly cancelled.
 - Non-`TamableAnimal` enemies currently guarantee archive, dismiss and resummon flows only; following, ceasefire, owner defence and aggressive targeting are not yet guaranteed.
 - No public API changes were made, `MAJORAPI` remains `0`, and the network protocol remains `2`.

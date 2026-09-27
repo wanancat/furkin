@@ -37,7 +37,7 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 
 ---
 
-## [1.20.1-0.0.3.0] - 2026-09-27
+## [1.20.1-0.0.3.0] - 2026-09-28
 
 **新增 / Added**
 
@@ -52,14 +52,19 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 - **多部件实体契约兼容 / Multipart entity interaction compatibility** —— 实体交互目标为 Forge `PartEntity` 时，会通过公开 `getParent()` 解析到父实体。Twilight Forest Hydra 这类主实体不可拾取、只能点击部件的生物现在可以正常判断门槛、契约、收回和重新召唤。
   *When an entity interaction targets a Forge `PartEntity`, Furkin resolves the public `getParent()` entity. Multipart creatures such as the Twilight Forest Hydra, whose main entity is not directly pickable, can now pass the health gate and complete contract, dismiss and resummon flows.*
 
+**修复 / Fixed**
+
+- **停服残留远召 ticket / Remote-summon tickets on shutdown** —— 取消 pending 与释放临时 chunk ticket 现在发生在 `ServerStoppingEvent`（区块调度器关闭之前），不再等到 `ServerStoppedEvent`。停服时正在加载的远召会干净收敛为 `CANCELLED`，不再留下失效 ticket 或残留强加载；同时对重复体修复的行囊容量计算补了缺失 `travel_pouch` 等级的防御。
+  *Pending remote summons and their temporary chunk tickets are now cancelled and released at `ServerStoppingEvent` (before the chunk scheduler shuts down) instead of `ServerStoppedEvent`; an in-flight summon resolves cleanly to `CANCELLED` on shutdown without leaving stale tickets or forced chunks behind. The duplicate-repair pouch-capacity calculation also tolerates a missing `travel_pouch` level.*
+
 **说明 / Notes**
 
 - 绒亲录与 `/furkin summon` 共用服务端远召状态机；`PENDING` 显示“召唤中”并禁用按钮，非 pending 终态会刷新列表并给出失败原因，不再误报成功。
   *The Furkin Record and `/furkin summon` share the server-side state machine; pending requests disable the record button and every terminal result refreshes the list with an explicit result.*
 - 不新增公开 API，`PROTOCOL_VERSION` 仍为 `2`；archive 数据版本推进到 `2`，旧档缺少 `entity_pos` 时读作 `null`。版本号为 `1.20.1-0.0.3.0`。
   *No public API was added and `PROTOCOL_VERSION` remains `2`; the archive data version advances to `2`, and `entity_pos` is read as `null` when absent from legacy saves. The release version is `1.20.1-0.0.3.0`.*
-- 完整游戏内交互、故障注入和 1.20.1 性能矩阵仍待补证据；owner 换维度自动随行明确不在本功能包内。
-  *Full in-game interaction, fault-injection and 1.20.1 performance evidence are still pending; automatic companion following when the owner changes dimension is explicitly out of scope.*
+- 1.20.1 性能已记录（确定性上限 + 实测两档，单机单次、无改动前基线，仅作本机量级参考，**不构成无回归结论**）；并发 4 收口的单 tick 尖峰列为后续优化项。完整游戏内交互仍待补证据；owner 换维度自动随行明确不在本功能包内。
+  *1.20.1 performance has been recorded (a deterministic ceiling plus two measured tiers; single machine, single run, no pre-change baseline, so it is a local magnitude reference only and **not** a no-regression claim); the single-tick spike when four requests settle together is logged as a follow-up optimisation. Full in-game interaction evidence is still pending; automatic companion following when the owner changes dimension is explicitly out of scope.*
 - 只有 `HEALTH_TOO_HIGH` 会显示生命值提示并取消原版右键；未注册、错误归属、超距等既有失败不扩大取消范围。
   *Only `HEALTH_TOO_HIGH` shows the health message and cancels the vanilla interaction; existing failures such as unregistered species, wrong ownership or being out of reach are not newly cancelled.*
 - 非 `TamableAnimal` Enemy 目前仅保证建档、收回和重新召唤，不保证跟随、停战、护主或主动索敌。
