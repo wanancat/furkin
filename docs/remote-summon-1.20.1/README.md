@@ -195,4 +195,4 @@ P0、P1、P2 全部满足各自验收项，并且：
 - 已完成的静态审计：无永久 `FORCED` / `setChunkForced`，无主线程 `managedBlock`，无 `LivingTickEvent`，`findAllLoaded` 只出现在 repair 路径。
 - 待验证：真实客户端绒亲录在途态 / 交互（P2-25 / P2-26 / P2-39）、v0 分维度旧档迁移（P2-06）、同 UUID 跨维度入世（P1-02）、`clearEntityLocation` 三项同 null（P2-02）、契约 / 复活 / 离场逐条位置刷新（P2-09）。统一状态见 [验证矩阵](verification-matrix.md)。
 - owner 换维度自动随行（随行 / 携带）明确不在本包范围；需要时另立 `owner-dimension-follow` 功能包。
-- 发布准备（2026-09-28）：`mod_version=1.20.1-0.0.3.0`，`build --rerun-tasks` 成功；产物 `build/libs/furkin-1.20.1-0.0.3.0.jar`，大小 `394950` 字节，SHA-256 `3022B4657375C9F5B15236E68BF8C2F66B377EA88DD1BDD575410155F51AF613`。发布 tag、GitHub Release 与 CurseForge 文件尚未创建或上传。
+- 发布记录（2026-09-28）：`build --rerun-tasks` 产物 `build/libs/furkin-1.20.1-0.0.3.0.jar`（`394950` 字节，SHA-256 `3022B4657375C9F5B15236E68BF8C2F66B377EA88DD1BDD575410155F51AF613`）已作为 GitHub Release `Furkin 1.20.1-0.0.3.0` 的资产发布并设为 Latest；回下载校验大小与 SHA-256 一致。CurseForge 不纳入本次发布。

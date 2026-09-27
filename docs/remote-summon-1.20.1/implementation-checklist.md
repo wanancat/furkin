@@ -4,7 +4,7 @@
 - 用途：把 P0 / P1 / P2 拆成可逐项勾选、可验证、可回滚的实施步骤
 - 口径来源：[决策记录](decision-log.md)（D-23 起为本次独立复查补正）、各阶段执行契约
 - 使用方式：每完成一项勾选并附证据路径；未执行不得勾选，也不得把计划写成结果
-- 当前结论（2026-09-28）：代码项已落地；一次性夹具 11 个模式（prepare / nbt / repair / cold / reload / orphan / safety / commands / stop-pending / restart / perf）全部 0 失败，最终 build 与去夹具 runServer 烟测通过；热区 / 冷区 / 串行 20 次 / 并发 4 性能已记录（确定性上限 + 实测两档，单机单次、无改动前基线，不能作为无回归结论），异步收口线程已现场取证；仍待补真实客户端绒亲录交互、v0 分维度旧档迁移、同 UUID 跨维度入世；修复提交 `39633b8` 与 changelog 提交 `c22b036` 已推送，工作树干净；发布 tag / Release 尚未创建
+- 当前结论（2026-09-28）：代码项已落地；一次性夹具 11 个模式（prepare / nbt / repair / cold / reload / orphan / safety / commands / stop-pending / restart / perf）全部 0 失败，最终 build 与去夹具 runServer 烟测通过；热区 / 冷区 / 串行 20 次 / 并发 4 性能已记录（确定性上限 + 实测两档，单机单次、无改动前基线，不能作为无回归结论），异步收口线程已现场取证；仍待补真实客户端绒亲录交互、v0 分维度旧档迁移、同 UUID 跨维度入世；修复提交 `39633b8` 与 changelog 提交 `c22b036` 已推送；`v1.20.1-0.0.3.0` tag 与 GitHub Release 已发布，资产回下载校验通过；CurseForge 不纳入本次发布
 
 ## 0. 通用前置
 
@@ -149,7 +149,8 @@
 - [x] 生命周期取消：夹具 `cold` 覆盖登出 / 死亡 / 收回 / 解绑四路取消，夹具 `stop-pending` 覆盖停服取消（`reason=SERVER_STOPPING ticketReleased=true`）
 - [x] 最终 jar 不含 fixture / debug 类 / 临时世界
 - [x] 发布构建：`build --rerun-tasks` 成功，产物 `build/libs/furkin-1.20.1-0.0.3.0.jar`，大小 `394950` 字节，SHA-256 `3022B4657375C9F5B15236E68BF8C2F66B377EA88DD1BDD575410155F51AF613`
-- [ ] 创建 / 推送发布 tag 并上传 GitHub Release / CurseForge（等待乌狸确认）
+- [x] 创建并推送发布 tag `v1.20.1-0.0.3.0`（指向 `064e3cb`）
+- [x] 发布 GitHub Release `Furkin 1.20.1-0.0.3.0`（Latest），资产回下载校验大小与 SHA-256 一致
 - [x] 验证矩阵 P0 / P1 / P2 全部清空或显式标注未覆盖边界；未闭环项集中在验证矩阵第 7 节“仍未闭环”
 - [x] `git status` 无 `build/` / `run/` / 日志 / IDE / 临时文件
 
