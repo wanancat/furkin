@@ -1,6 +1,6 @@
 # P0：未解析实体安全失败（1.20.1）
 
-- 状态：代码已落地当前工作树；p0p1 夹具已通过未解析只读失败核心路径，真实生命周期、NBT 落盘、客户端交互和性能矩阵仍待验证
+- 状态：代码已落地（工作树叠加在 `a9870714` 之上）；2026-09-28 已由 `reload` / `nbt` / `orphan` / `commands` / `cold` / `restart` 六组夹具覆盖 P0-01 ~ P0-09 的核心路径，全部 0 失败；仅“同一实例内卸载→失败→回载”串联与真实客户端交互仍待补
 - 依赖：无；必须先于 P1/P2 完成
 - 优先级：最高；阻断复制实体与实时物品丢失
 - 参考：`D:\frukin_dev\frukin_1_19_2\docs\remote-summon-1.19.2\p0-safe-failure.md`
@@ -267,8 +267,8 @@ rg -n "summon_entity_unresolved|summon_dimension_change_failed|command.summon.en
 - [x] 未加载实体不会触发 `summoned=false`（代码路径 + 静态审计）。
 - [x] 未加载实体不会触发 `clearEntityLocation()`（代码路径 + 静态审计）。
 - [x] 第二次点击不会产生新实体（代码路径 + 静态审计）。
-- [ ] 原实体回载后装备和行囊保持，UUID 不变（实机场景待验证）。
-- [ ] 正常 `dismiss -> summon` 仍能按档案快照恢复（实机场景待验证）。
+- [x] 原实体回载后装备和行囊保持，UUID 不变（夹具 `cold`：`keeps archive uuid` / `keeps equipment count` / `keeps pouch item count`；夹具 `restart`：`loads repaired keeper`）。
+- [x] 正常 `dismiss -> summon` 仍能按档案快照恢复（夹具 `orphan`：`dismiss-ok summon rebuilds` / `creates entity` / `preserves snapshot entity uuid` / `keeps equipment count`；按快照恢复实体 UUID 是 D-37 的预期口径）。
 - [x] `summoned=false` 但同 UUID 实体已加载时不会重建第二只实体（代码路径 + 静态审计）。
 - [x] `summoned=false` 但同身份其它实体已加载时返回 `DUPLICATE_CONFLICT`（P1 代码已接入）。
 - [x] 跨维度失败返回 `DIMENSION_CHANGE_FAILED` 且档案不变（代码路径 + 静态审计）。
@@ -276,12 +276,12 @@ rg -n "summon_entity_unresolved|summon_dimension_change_failed|command.summon.en
 - [x] `RequestSummonPacket` 线格式未改变，`PROTOCOL_VERSION` 仍为 `2`。
 - [x] 4 个 P0 语言键在中英文两侧齐全，且旧过渡键不存在。
 - [x] `compileJava`、`build`、`runServer` 通过；最终去夹具 `runServer` 到达 `Done`，日志无 Furkin 专属 ERROR / FATAL。
-- [ ] 必要客户端场景与完整实机生命周期仍未验证。
+- [ ] 真实客户端绒亲录在途态与交互仍未验证（P2-25 / P2-26 / P2-39）；服务端生命周期取消已由 `cold` / `stop-pending` 覆盖。
 
 ## 9. 实施记录
 
-- 工作树：`mc1.20.1` / `5ad0924` 基线，当前未提交。
+- 工作树：`mc1.20.1` / `a9870714` 基线，当前增量未提交。
 - 代码文件：`FurkinCompanionManager`、`FurkinEntityLocator`、`FurkinDuplicateRegistry`、`CommonEvents`、`RequestSummonPacket`、`FurkinCommand`、两份 lang。
-- 编译 / 构建证据：2026-09-27 最终 `clean build` 成功；去夹具 `runServer` 到达 `Done (2.574s)`，详细状态见本目录 `verification-matrix.md`。
-- 已通过夹具：p0p1 共 32 项、0 失败，覆盖未解析返回 `ENTITY_UNRESOLVED`、内存档案状态不变、合法重建、直接传送失败只读和 `loaded-index-miss` 日志。
-- 未覆盖边界：真实卸载/回载 UUID 与物品、落盘 NBT diff、真实 `dismiss` 生命周期、命令 / 绒亲录同场景、客户端交互和故障注入仍未验证。
+- 编译 / 构建证据：2026-09-28 `build` 成功（`furkin-1.20.1-0.0.3.0.jar`）；去夹具 `runServer` 到达 `Done (2.592s)`，详细状态见本目录 `verification-matrix.md`。
+- 已通过夹具（2026-09-28 全部 0 失败）：`reload` 13 项（未解析只读失败、两次失败无实体、档案 NBT 不变）、`nbt` 16 项（serializeNBT 前后逐字节一致、缺/坏 `entity_pos`）、`orphan` 20 项（`dismiss` 清 UUID、重复冲突拒绝、按快照重建）、`commands` 21 项（命令与绒亲录同语义、各自键）、`cold` 45 项、`restart` 9 项。
+- 未覆盖边界：同一实例内“卸载 → 失败两次 → 回载原区块”串联（现由 `reload` / `cold` / `restart` 分段覆盖）、真实客户端绒亲录交互。落盘 NBT diff、真实 `dismiss` 生命周期、命令 / 绒亲录同场景、服务端故障注入已补齐。

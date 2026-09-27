@@ -1,10 +1,10 @@
 # 远距召唤 1.20.1 实施清单
 
-- 日期：2026-09-27
+- 日期：2026-09-28
 - 用途：把 P0 / P1 / P2 拆成可逐项勾选、可验证、可回滚的实施步骤
 - 口径来源：[决策记录](decision-log.md)（D-23 起为本次独立复查补正）、各阶段执行契约
 - 使用方式：每完成一项勾选并附证据路径；未执行不得勾选，也不得把计划写成结果
-- 当前结论（2026-09-27）：代码项已落地；p0p1、prepare_p2→重启→verify_p2、cross_dimension 三组一次性夹具已通过，最终 clean build 与去夹具 runServer 烟测通过；完整客户端交互、故障注入、生命周期取消和性能矩阵仍待补证据；提交/推送等待乌狸确认
+- 当前结论（2026-09-28）：代码项已落地；一次性夹具 11 个模式（prepare / nbt / repair / cold / reload / orphan / safety / commands / stop-pending / restart / perf）全部 0 失败，最终 build 与去夹具 runServer 烟测通过；热区 / 冷区 / 串行 20 次 / 并发 4 性能已记录（确定性上限 + 实测两档，单机单次、无改动前基线，不能作为无回归结论），异步收口线程已现场取证；仍待补真实客户端绒亲录交互、v0 分维度旧档迁移、同 UUID 跨维度入世；提交/推送等待乌狸确认
 
 ## 0. 通用前置
 
@@ -13,7 +13,7 @@
 - [x] 发布版本已按乌狸确认收口为 `1.20.1-0.0.3.0`；`gradle.properties` 已处于该版本
 - [x] 发布版本已决定为 `1.20.1-0.0.3.0`；`gradle.properties`、changelog 版本节和构建产物名称一致。
 - [x] 设置 JDK 17：`$env:JAVA_HOME='C:\Program Files\Java\jdk-17.0.2'`，`$env:Path="$env:JAVA_HOME\bin;$env:Path"`
-- [x] 记录基线提交：`git rev-parse HEAD` = `5ad0924`
+- [x] 记录基线提交：`git rev-parse HEAD` = `a9870714`（当前工作树在其上叠加 P0-06 口径修正、`ServerStoppingEvent` 停服接线与 `TRAVEL_POUCH` 空值防御）
 - [x] 确认 mapped jar 可读：`C:\Users\wanancat\.gradle\caches\forge_gradle\minecraft_user_repo\net\minecraftforge\forge\1.20.1-47.2.0_mapped_official_1.20.1\forge-1.20.1-47.2.0_mapped_official_1.20.1.jar`
 - [x] 确认 1.19.2 参考源码可读；未合并 1.19.2 分支，未做全局文本替换
 - [x] 阅读 [口径冻结索引](README.md)（README 第 5.1 节），并按 D-33 与终态键口径修订
@@ -41,8 +41,8 @@
 - [x] `.\gradlew.bat compileJava --console=plain`
 - [x] `.\gradlew.bat build --console=plain`
 - [x] `rg -n "setSummoned\(false\)" src/main/java`，结果只剩 `dismiss` 与死亡侧写
-- [x] 运行 [验证矩阵 P0 项](verification-matrix.md)：p0p1 夹具覆盖 P0-01/P0-02/P0-03/P0-04/P0-07 的核心路径；P0-05/P0-06/P0-09 仍未覆盖
-- [ ] 保存档案前后 NBT 快照与同身份实体计数（p0p1 仅核对内存档案对象，未做落盘 NBT diff）
+- [x] 运行 [验证矩阵 P0 项](verification-matrix.md)：P0-01 / P0-02 / P0-03 / P0-04 / P0-06 / P0-07 / P0-09 均已有夹具证据；P0-05 为分段覆盖（`reload` / `cold` / `restart`），同实例串联未跑
+- [x] 档案 NBT 快照：夹具 `nbt` 的 `P0 unresolved NBT byte-for-byte unchanged` 做 serializeNBT 前后逐字节比对；`reload` 的 `reload failures keep archive NBT unchanged` 复核同一口径。同身份实体计数由 `reload failures create no entity` + `orphan duplicate registry sees one entity` 覆盖
 - [x] `runServer` 日志出现 `Furkin remote resolve failed ... reason=loaded-index-miss`；夹具归档日志未发现新增 Furkin ERROR / FATAL
 - [ ] 作为独立切片提交，不与 P1 / P2 混合
 
@@ -94,7 +94,7 @@
 - [x] `FurkinArchiveData.migrate(server)` 拆成 v0 → v1 → v2
 - [x] v1 → v2 空迁移，不动任何 entry；版本实际变化才 `setDirty()`
 - [x] 检查契约 / 召唤 / 复活 / 传送 / 入世 / 离场 / 终态全部刷新位置
-- [x] prepare_p2 → 重启 verify_p2 覆盖位置持久化和冷区重载；P2-03/P2-04/P2-06/P2-07 的边界 NBT 夹具仍未覆盖
+- [x] 夹具 `nbt` 覆盖 P2-03 / P2-04 / P2-05 / P2-07 / P2-08；夹具 `cold` + `restart` 覆盖位置持久化和冷区重载；P2-02 / P2-06 仍未覆盖
 
 ## 4. P2.2：传送公共路径
 
@@ -116,7 +116,7 @@
 - [x] `notifyFeedback` 跳过 `PLAYER_LOGOUT` / `SERVER_STOPPING`，回调异常只 WARN
 - [x] `recordsCooldown` 排除 9 个不计冷却结果
 - [x] 取消接线：登出 / 死亡 / 收回 / 解绑 / canonical 改变 / 停服 / tick
-- [x] `CommonEvents` 加 `ServerStoppedEvent` 生命周期监听
+- [x] `CommonEvents` 加 `ServerStoppingEvent` 监听取消 pending（`onServerStopping`），`ServerStoppedEvent` 只清 `FurkinDuplicateRegistry`；依据 `MinecraftServer.stopServer()` 先 `removeTicketsOnClosing()` 再发 `ServerStoppedEvent`
 - [x] `CommonEvents.onServerTick` 加 `tickIfPresent(server)`
 
 ## 6. P2.4：入口、反馈与文案
@@ -145,10 +145,10 @@
 - [x] `.\gradlew.bat runClient --console=plain` 启动到客户端渲染初始化；完整绒亲录在途态场景仍待实机验证
 - [x] `run/logs/latest.log` 无 Furkin 专属 ERROR / FATAL / 异常栈 / 资源缺失
 - [x] 静态审计：无永久 `FORCED`、无主线程 `managedBlock`、无全体 LivingEntity 逐 tick
-- [x] 冷区 4 次 + 2 并发 + average tick 断言已有 verify_p2 证据
-- [ ] 完整热区 / 串行 20 次 / 性能矩阵仍待补
+- [x] 性能记录：确定性上限（默认 ≤36 区块 / ≤30s / 稳态 0）+ 实测两档（热区 ~14ms；冷区 ~511ms 已生成 / ~1897ms 需生成，单次最差 3500ms）；并发 4 单 tick 峰值 178.5ms 已记为后续优化项。见验证矩阵「性能记录」
+- [x] 生命周期取消：夹具 `cold` 覆盖登出 / 死亡 / 收回 / 解绑四路取消，夹具 `stop-pending` 覆盖停服取消（`reason=SERVER_STOPPING ticketReleased=true`）
 - [x] 最终 jar 不含 fixture / debug 类 / 临时世界
-- [x] 验证矩阵 P0 / P1 / P2 全部清空或显式标注未覆盖边界
+- [x] 验证矩阵 P0 / P1 / P2 全部清空或显式标注未覆盖边界；未闭环项集中在验证矩阵第 7 节“仍未闭环”
 - [x] `git status` 无 `build/` / `run/` / 日志 / IDE / 临时文件
 
 ## 9. 提交切片建议

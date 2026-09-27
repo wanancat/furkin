@@ -49,6 +49,7 @@ import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.entity.PartEntity;
 import net.minecraftforge.event.server.ServerStoppedEvent;
+import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.network.PacketDistributor;
@@ -169,10 +170,15 @@ public final class CommonEvents {
         FurkinDuplicateRegistry.onEntityLeave(living);
     }
 
-    /** 服务端停止时取消 pending 远召并清空只存在于内存的诊断注册表。 */
+    /** 停止流程开始时取消 pending 远召，必须在区块调度器关闭前释放 ticket。 */
+    @SubscribeEvent
+    public static void onServerStopping(ServerStoppingEvent event) {
+        RemoteSummonService.stop(event.getServer());
+    }
+
+    /** 服务端已完全停止后清空只存在于内存的诊断注册表。 */
     @SubscribeEvent
     public static void onServerStopped(ServerStoppedEvent event) {
-        RemoteSummonService.stop(event.getServer());
         FurkinDuplicateRegistry.clear(event.getServer());
     }
 

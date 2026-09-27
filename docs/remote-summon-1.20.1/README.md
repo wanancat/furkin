@@ -1,12 +1,12 @@
 # Furkin 1.20.1 远距召唤移植工作包
 
-- 日期：2026-09-27
+- 日期：2026-09-28
 - 分支：`mc1.20.1`
-- 记录基线：`5ad092473a48b411782c16ebdbd81893d7674c11`
+- 记录基线：`a98707140e84cb20c14f652eb2ebcca22c53cb49`（`release: 准备 1.20.1-0.0.3.0 远距传送`）
 - 参考实现：`mc1.19.2` / `206a92732c843a7f0aeea72fa7a3a6287b01356d`（远距传送功能包完成提交）
 - 1.19.2 当前 HEAD：`3d3c8b2`（仅额外包含契约血量前置条件，不在本包范围；文档以 `206a927` 为行为冻结点）
 - 参考工作文档：`D:\frukin_dev\frukin_1_19_2\docs\remote-summon-1.19.2\`
-- 状态：实现已落在当前工作树；2026-09-27 完成独立复查、代码移植、P0/P1 核心夹具、P2 冷区重启夹具、已加载跨维度夹具和最终 `clean build` / 去夹具 `runServer` 烟测。完整客户端交互、故障注入、生命周期取消和性能矩阵仍待补证据；提交与推送前需乌狸确认。
+- 状态：实现已提交至 `a9870714` 并有增量修复落在工作树；2026-09-28 完成 11 个夹具模式（全部 0 失败）、热区 / 冷区 / 串行 20 次 / 并发 4 性能记录（确定性上限 + 实测两档；单机单次、无改动前基线，**不足以断言无回归**）、异步收口线程现场取证、停服 pending 收敛取证，以及最终 `build` / 去夹具 `runServer` 烟测。仍待补真实客户端绒亲录交互、v0 分维度旧档迁移、同 UUID 跨维度入世；提交与推送前需乌狸确认。
 - 目标版本：`1.20.1-0.0.3.0`；`gradle.properties`、CHANGELOG 和构建产物名称保持一致
 - 适用环境：Minecraft 1.20.1 / Forge 47.2.0 / Java 17 / official 1.20.1 mappings
 
@@ -184,12 +184,14 @@ P0、P1、P2 全部满足各自验收项，并且：
 - `REMOTE_SUMMON_TICKET` 的 owner 是 `ChunkPos`，不存在按 `requestId` 区分 ticket 的实现。
 - CHANGELOG 只记录玩家可感知变更，不把工作文档当成发布说明。
 
-## 10. 实施状态（2026-09-27）
+## 10. 实施状态（2026-09-28）
 
-- 代码已落在当前工作树，未提交、未推送。
+- 基线提交 `a9870714` 已推送；工作树在其上叠加 P0-06 口径修正、`ServerStoppingEvent` 停服接线与 `TRAVEL_POUCH` 空值防御，尚未提交。
 - 已完成：P0 安全失败、P1 canonical 守卫与显式 repair、P2.1 位置字段 / v1→v2 迁移、P2.2 公共传送路径、P2.3 异步 service、P2.4 命令与绒亲录接入、P2.5 六项配置与中英文文案。
-- 已执行证据：`compileJava`、`build` 通过；`runServer` 到达 `Done (2.685s)` 且 `run/logs/latest.log` 无 Furkin 专属 `ERROR` / `FATAL` / 异常栈；`runClient` 启动到客户端渲染初始化；专用服实测配置路径为 `run/world/serverconfig/furkin-server.toml`；中英文 lang 均 201 键且键集合一致；最终 jar 未含 fixture / debug 类。
+- 已执行证据：`compileJava`、`build` 通过（产物 `furkin-1.20.1-0.0.3.0.jar`）；去夹具 `runServer` 到达 `Done (2.592s)` 且 `run/logs/latest.log` 无 Furkin 专属 `ERROR` / `FATAL` / 异常栈；`runClient` 启动到客户端渲染初始化；专用服配置路径为 `run/world/serverconfig/furkin-server.toml`；中英文 lang 均 201 键且键集合一致；最终 jar 未含 fixture / debug 类。
+- 一次性夹具 11 个模式全部 0 失败：`prepare` 65、`nbt` 16、`repair` 34、`cold` 45、`reload` 13、`orphan` 20、`safety` 18、`commands` 21、`stop-pending` 3、`restart` 9、`perf` 59。夹具源码、临时世界与临时 `patches/` 均已清理。
+- 性能记录（开发机单机单次，无改动前基线，仅能给绝对量级与上界）：确定性上限默认 ≤36 区块 / ≤30s / 稳态 0；实测热区 ~14ms、冷区 ~511ms（区块已生成）~1897ms（需生成）、单次最差 3500ms；并发 4 单 tick 峰值 178.5ms（非默认配置）。详见 [验证矩阵](verification-matrix.md)「性能记录」。
+- 运行期线程取证：`remote summon collect futures thread=Worker-Main-*`（13+ 采样，无一在 `Server thread`）。
 - 已完成的静态审计：无永久 `FORCED` / `setChunkForced`，无主线程 `managedBlock`，无 `LivingTickEvent`，`findAllLoaded` 只出现在 repair 路径。
-- 待验证：P0/P1/P2 游戏内交互、旧档 NBT 夹具、故障注入、物品守恒、重启收敛、冷热区与并发性能。统一状态见 [验证矩阵](verification-matrix.md)。
-- 发布版本已按乌狸确认收口为 `1.20.1-0.0.3.0`；当前构建为 `furkin-1.20.1-0.0.3.0.jar`，与 `gradle.properties` 和 changelog 版本节一致。
-- owner 换维度自动随行明确不在本包；需要时另立 `owner-dimension-follow` 功能包。
+- 待验证：真实客户端绒亲录在途态 / 交互（P2-25 / P2-26 / P2-39）、v0 分维度旧档迁移（P2-06）、同 UUID 跨维度入世（P1-02）、`clearEntityLocation` 三项同 null（P2-02）、契约 / 复活 / 离场逐条位置刷新（P2-09）。统一状态见 [验证矩阵](verification-matrix.md)。
+- owner 换维度自动随行（随行 / 携带）明确不在本包范围；需要时另立 `owner-dimension-follow` 功能包。

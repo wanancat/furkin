@@ -371,8 +371,9 @@ public final class FurkinDuplicateRepair {
     }
 
     private static int countPouchOverflow(FurkinData keeperData, FurkinData canonicalData) {
-        int targetSize = Math.max(0, canonicalData.getSkillLevels()
-                .getOrDefault(TRAVEL_POUCH, 0)) * FurkinServerConfig.POUCH_SLOTS_PER_LEVEL.get();
+        Integer canonicalPouchLevel = canonicalData.getSkillLevels().get(TRAVEL_POUCH);
+        int targetSize = Math.max(0, canonicalPouchLevel == null ? 0 : canonicalPouchLevel)
+                * FurkinServerConfig.POUCH_SLOTS_PER_LEVEL.get();
         int currentSize = keeperData.getPouch().getContainerSize();
         if (targetSize >= currentSize) {
             return 0;

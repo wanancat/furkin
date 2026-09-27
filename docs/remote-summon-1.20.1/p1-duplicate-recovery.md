@@ -1,6 +1,6 @@
 # P1：重复实体恢复与 canonical 守卫（1.20.1）
 
-- 状态：代码已落地当前工作树；p0p1 夹具已通过普通重复修复与核心字段搬运，故障注入和两阶段重启仍待验证
+- 状态：代码已落地（工作树叠加在 `a9870714` 之上）；2026-09-28 已由 `repair`（34 项）、`commands`（21 项）、`orphan`（20 项）、`restart`（9 项）夹具覆盖普通修复、装备 / 行囊 / 技能故障注入与重试、幂等、未加载 canonical 拒绝、两阶段重启，全部 0 失败
 - 依赖：P0 完成
 - 风险：高；涉及实体删除、物品搬运和核心运行时数据复制，操作前必须备份世界
 - 参考：`D:\frukin_dev\frukin_1_19_2\docs\remote-summon-1.19.2\p1-duplicate-recovery.md`
@@ -159,18 +159,18 @@ clearCompanion(UUID companionId)
 - [x] 预演与执行复用同一段前置校验与计划构建，`PREVIEWED` 不等于 `OK`（代码路径）。
 - [x] `repair choose` 在核心数据和物品搬运成功后才删除重复实体（代码路径）。
 - [x] keeper 与 canonical 不同时，keeper 获得 canonical 的等级、经验、技能、战斗模式、冷却等核心数据（代码路径）。
-- [ ] 装备 / 行囊搬运失败时不丢失物品，原 canonical 和重复实体保留，重试可收敛（故障注入待验证）。
+- [x] 装备 / 行囊搬运失败时不丢失物品，原 canonical 和重复实体保留，重试可收敛（夹具 `repair`：`pouch failure returns CLEANUP_FAILED` / `keeps source item count` / `restores keeper item count` / `keeps archive canonical` / `retry succeeds` / `retry preserves total item count`）。
 - [x] keeper 槽位已有装备时，不覆盖已有物品；重复体装备掉落（代码路径）。
 - [x] 修复后当前已加载世界只剩 keeper，档案 `entity_uuid` 指向 keeper（p0p1 夹具）。
-- [ ] 服务端重启后档案仍指向正确 UUID，重复实体不会再次抢绑（实机场景待验证）。
+- [x] 服务端重启后档案仍指向正确 UUID，重复实体不会再次抢绑（夹具 `restart`：`retains archive pointer for repaired companion`（keeper=`id(5013)`）/ `loads repaired keeper` / `does not load removed canonical`（canonical=`id(4013)`）；keeper 随出生区块加载属正常行为）。
 - [x] `repair` 不修改 keeper / 档案的名字字段（代码路径）。
 - [x] keeper 的 AI 通过 `combatMode.applyTo(tamable)` 重建，没有使用 `clearCombatAiState()`（代码路径 + 静态审计）。
 - [x] `compileJava`、`build`、`runServer` 通过；夹具日志无新增 Furkin `ERROR` / `FATAL`。
 
 ## 10. 实施记录
 
-- 工作树：`mc1.20.1` / `5ad0924` 基线，当前未提交。
+- 工作树：`mc1.20.1` / `a9870714` 基线，当前增量未提交。
 - 已落地：`FurkinDuplicateRegistry`、`FurkinDuplicateRepair`、`FurkinEntityLocator.findAllLoaded`、`FurkinData.copyCoreFrom`、入世 / 离场 / 停服清理、`repair list|choose [confirm]` 命令与中英键。
 - 代码口径：`repair choose` 默认只调用 `plan(...)`；只有带 `confirm` 才调用 `choose(...)`。keeper AI 使用 `setTarget(null)` + `combatMode.applyTo(...)`。
 - 已通过夹具：p0p1 覆盖 duplicate registry、preview/confirm、删除 canonical / 保留 keeper、档案重定向、核心字段复制、普通路径物品精确守恒。
-- 未覆盖边界：装备同槽冲突掉落、装备 / 行囊故障注入、overflow 失败回滚、`CLEANUP_FAILED` 阶段注入、两阶段重启和完整命令输出仍未验证。
+- 未覆盖边界：装备同槽冲突已由 `repair equipment conflict keeps keeper item` + `drops displaced item without loss` 覆盖；技能重建 `CLEANUP_FAILED` 注入由 `skill rebuild failure returns CLEANUP_FAILED` + `keeps both entities` + `retry succeeds` 覆盖。仍未逐字段 diff 等级 / 经验 / 技能 / 战斗模式 / 冷却，也未跑真实客户端命令输出（P1-08 / P2-27）。

@@ -1,7 +1,7 @@
 # 远距召唤 1.20.1 移植决策记录
 
-- 日期：2026-09-27
-- 状态：口径冻结并经 2026-09-27 独立复查补正（D-23 起）；代码已落地，p0p1 / verify_p2 / cross_dimension 核心夹具已通过；完整客户端交互、故障注入、生命周期取消与性能矩阵仍待验证，提交 / 推送前等待乌狸确认
+- 日期：2026-09-28
+- 状态：口径冻结并经 2026-09-27 独立复查补正（D-23 起），2026-09-28 按取证结论补 D-35 ~ D-37；代码已落地，11 个一次性夹具模式全部 0 失败，异步收口线程与停服收敛已现场取证；性能已记录确定性上限与实测两档，但为单机单次、无改动前基线，**不能据此声称无回归**（并发 4 的 178.5ms 单 tick 尖峰列为优化项）；仅真实客户端绒亲录交互、v0 分维度旧档迁移、同 UUID 跨维度入世待补；提交 / 推送前等待乌狸确认
 - 参考：`D:\frukin_dev\frukin_1_19_2\docs\remote-summon-1.19.2\decision-log.md`
 - 用途：把 P0/P1/P2 中影响实现、协议、存档兼容、权限和服务器负载的口径固定下来，避免 1.20.1 编码时重复猜测
 
@@ -42,11 +42,11 @@
 | V-02 | 现有档案版本 | 1.20.1 当前 `CURRENT_DATA_VERSION=1`，已有 v0 旧维度合并 | 目标 `CURRENT_DATA_VERSION=2`；拆成 `v0 -> v1 -> v2` 分步迁移 |
 | V-03 | 位置 NBT | 使用 `NbtUtils.writeBlockPos/readBlockPos`，`entity_pos` 缺失读为 `null` | `entity_uuid`、`entity_dimension`、`entity_pos` 必须同步存在或缺失；不得默认 `(0,0,0)` |
 | V-04 | 维度 API | 当前 1.20.1 使用 `Registries.DIMENSION` | 保留现有写法；不要引入 1.19.2 的 `Registry.DIMENSION_REGISTRY` |
-| V-05 | 事件生命周期 | 使用当前 Forge 47 的 `EntityJoinLevelEvent`、`EntityLeaveLevelEvent`、`TickEvent.ServerTickEvent`、`ServerStoppedEvent`；不依赖 `ServerStoppingEvent` | 事件接线以 `CommonEvents` 当前 `@SubscribeEvent` 编译结果为准；实现使用 `ServerStoppedEvent` |
+| V-05 | 事件生命周期 | 使用当前 Forge 47 的 `EntityJoinLevelEvent`、`EntityLeaveLevelEvent`、`TickEvent.ServerTickEvent`；停服取消 pending 用 `ServerStoppingEvent`，清诊断注册表用 `ServerStoppedEvent` | 依据 1.20.1 `MinecraftServer.stopServer()`：先 `removeTicketsOnClosing()` 再发 `ServerStoppedEvent`，只在 `ServerStoppedEvent` 释放 ticket 会留残留；见 D-35 |
 | V-06 | 区块 ticket level | 用 `ChunkLevel.byStatus(FullChunkStatus.ENTITY_TICKING)` 计算目标 level；1.20.1 当前值为 31 | 不继续复制 1.19.2 的裸数字注释；每个目标区块逐张 add/remove，保证可精确释放 |
 | V-07 | 客户端适配 | 1.20.1 使用 `GuiGraphics`、`Button.builder(...)` | 只移植在途状态机，不复制 1.19.2 的 `PoseStack` / `GuiComponent` 代码 |
 | V-08 | 协议与 API | 默认不改 `com.wanancat.furkin.api`，不新增网络包，`PROTOCOL_VERSION` 保持 `2` | 若改变包字段、方向、顺序或处理器语义，按协议治理规则先升版本 |
-| V-09 | 配置默认沿用与复核 | 先沿用 1.19.2 已验证默认；1.20.1 必须在 P2.6 重测冷区、串行和并发 | 未获得 1.20.1 性能证据前不得声称性能已收口 |
+| V-09 | 配置默认沿用与复核 | 沿用 1.19.2 已验证默认；1.20.1 已在 P2.6 重测热区 / 冷区 / 串行 20 次 / 并发 4，指标与口径限制见验证矩阵「性能记录」 | 已获得 1.20.1 性能证据；但为单机单次、无改动前基线，只能给绝对量级与上界，不能给相对改动前的成本变化；1.19.2 的 434 tick / 3.69ms / 4 并发仍只作对照 |
 | V-10 | 版本号 | 本功能包发布版本为 `1.20.1-0.0.3.0` | `gradle.properties`、CHANGELOG 版本节和构建产物名称必须一致 |
 
 ## 3. 1.20.1 实施粒度冻结（独立复查补正）
@@ -67,6 +67,9 @@
 | D-32 | `feedbackArmed` 字段 | `RemoteSummonRequest` 必须含 `feedbackArmed`；只有 `startRemoteRequest` 成功添加 ticket、提交后台 future 并即将返回 `PENDING` 前才置 `true`。同步返回的即时错误不触发入口终态回调 | 1.19.2 实际实现；否则同步失败会再触发一次终态反馈，造成重复消息 |
 | D-33 | `repair choose` 二次确认 | 默认形式 `/furkin repair choose <companion_id> <keep_entity_uuid>` 只做**预演**（只读，输出计划，不搬运、不删除、不改档案），返回新增结果 `PREVIEWED`；真正执行必须追加字面量 `confirm`：`/furkin repair choose <companion_id> <keep_entity_uuid> confirm`。预演与执行复用同一段前置校验与计划构建，禁止出现两套规则 | 2026-09-27 乌狸拍板（2B）：删除实体属高风险 OP 操作；1.19.2 无此保护，1.20.1 主动增加 |
 | D-34 | 重复登记覆盖范围 | 所有已契约 `LivingEntity` 在入世时都按 `companionId` 登记，并可按 canonical UUID 刷新位置；只有 `TamableAnimal` 进入战斗 AI 重建。非 `TamableAnimal` 已支持契约 / 收回 / 重建，不能漏出重复体检测。 | 2026-09-27 独立复查：1.19.2 与原始 1.20.1 计划把登记放在 `TamableAnimal` 分支后，会漏掉该版本已支持的非可驯服物种；本工作树已修正。 |
+| D-35 | 停服 pending 收敛接线点 | 取消 pending 与释放 ticket 必须挂在 `ServerStoppingEvent`；`ServerStoppedEvent` 只清 `FurkinDuplicateRegistry`。`RemoteSummonService.stop(server)` 在 `ServerStoppingEvent` 内执行 | 1.20.1 `MinecraftServer.stopServer()` 先 `removeTicketsOnClosing()` 关闭区块调度器，之后才发 `ServerStoppedEvent`；在 `ServerStoppedEvent` 释放会打空并留残留。取证：`reason=SERVER_STOPPING ticketReleased=true` 后紧接 `All dimensions are saved` |
+| D-36 | P0-06 拒绝重建的两条分支 | ① `summoned=false` 且档案记录的 canonical UUID 仍加载 → `ENTITY_UNRESOLVED`（reason `loaded-but-not-summoned`）；② `summoned=false`、记录的 canonical 不存在但存在其它同身份已加载实体 → `DUPLICATE_CONFLICT`（reason `loaded-duplicate`）。不得把两者统一写成 `ENTITY_UNRESOLVED` | 两条分支的守卫顺序固定为 canonical UUID 守卫在前、同身份守卫在后；两条都必须拒绝重建且不产生第二只实体 |
+| D-37 | dismiss 后再 summon 的实体 UUID | 当前实现按档案快照重建并恢复快照中的实体 UUID；本包不要求实体 UUID 必须变化，也不要求必须生成新 UUID | 夹具断言 `dismiss-ok rebuild preserves snapshot entity uuid` 即该口径的直接证据；把它当成回归去改成新 UUID 会破坏 P0/P1 的 UUID 一致性口径 |
 
 ### 3.1 与 1.19.2 源码不一致的文档旧表述
 
@@ -78,6 +81,9 @@
 - P1 阶段名 `VALIDATION / CORE_DATA / SKILLS / ARCHIVE` → 见 D-27。
 - “重复登记只覆盖 `TamableAnimal`” → 见 D-34。
 - `repair list` 先 `alive` 再 `summoned` → 见 D-28。
+- 把 `dismiss` 后拒绝重建统一写成 `ENTITY_UNRESOLVED` → 见 D-36（canonical 仍加载才是 `ENTITY_UNRESOLVED`；canonical 不在、另有同身份实体才是 `DUPLICATE_CONFLICT`）。
+- 只在 `ServerStoppedEvent` 释放远召 ticket → 见 D-35。
+- `dismiss -> summon` 必须换新实体 UUID → 见 D-37（按快照恢复 UUID 才是预期）。
 ## 3. 配置默认值
 
 | 键 | 默认 | 范围 | 说明 |

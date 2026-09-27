@@ -1,6 +1,6 @@
 # P2：真正的远距召唤（1.20.1）
 
-- 状态：代码已落地当前工作树；冷区重启、已加载跨维度和核心 pending 路径已通过一次性夹具，故障注入、冷区跨维度、生命周期取消、完整客户端交互和性能矩阵仍待验证
+- 状态：代码已落地（工作树叠加在 `a9870714` 之上）；2026-09-28 已由 `cold`（45）、`safety`（18）、`stop-pending`（3）、`restart`（9）、`perf`（59）、`commands`（21）六组夹具覆盖冷区跨维度、超时 / 区块失败注入、登出 / 死亡 / 收回 / 解绑 / 停服取消、重启收敛与热区 / 冷区 / 串行 20 次 / 并发 4 性能，全部 0 失败；仅真实客户端绒亲录在途态与交互仍待验证
 - 依赖：P0、P1 完成
 - 参考：`D:\frukin_dev\frukin_1_19_2\docs\remote-summon-1.19.2\p2-true-remote-summon.md`
 - 主要目标：目标已召唤但区块未加载时，按最后已知位置临时加载目标区块，重新定位同一个 canonical 实体并传送
@@ -379,13 +379,13 @@ furkin.command.summon.failed               // INVALID_STATE / REBUILD_FAILED（�
 
 - [x] 已加载同维度和跨维度传送不回归（代码路径复用公共传送方法；实机回归待验证）。
 - [x] 未加载同维度可临时加载、按 UUID 定位并传送同一实体（`verify_p2` 4 只冷区绒亲）。
-- [ ] 未加载跨维度可临时加载并按 UUID 定位传送（尚未覆盖）。
-- [x] 无位置、加载失败、超时、重复体冲突均安全失败，不改档案（代码路径）。
+- [x] 未加载跨维度可临时加载并按 UUID 定位传送（夹具 `cold`：`cold cross-dimension` 系列，档案维度刷新、终态落在 owner 当前 Level）。
+- [x] 无位置、加载失败、超时、重复体冲突均安全失败，不改档案（夹具 `cold` NO_POSITION / DIMENSION_MISSING、`safety` TIMEOUT / CHUNK_LOAD_FAILED / duplicate conflict、`reload` NBT 不变）。
 - [x] 重复请求不创建第二个 pending / ticket，pending 上限生效（代码路径）。
-- [x] 玩家换维度期间 pending 不误取消，终态使用当前 Level（代码路径）。
-- [x] 登出、死亡、收回、解绑、停服均接线释放 ticket（代码路径 + 静态审计）。
+- [x] 玩家换维度期间 pending 不误取消，终态使用当前 Level（夹具 `safety`：`pending dimension change uses current owner level`）。
+- [x] 登出、死亡、收回、解绑、停服均接线释放 ticket（夹具 `cold` 四路取消 + 夹具 `stop-pending`：`reason=SERVER_STOPPING ticketReleased=true`）。
 - [x] 无永久 `FORCED` ticket；默认路径没有全体 LivingEntity 逐 tick 记录（静态审计）。
-- [x] 位置字段旧档兼容，迁移不修改实体状态（代码路径；NBT 夹具待验证）。
+- [x] 位置字段旧档兼容，迁移不修改实体状态（夹具 `nbt`：`v1 archive migrates to v2`、`v1 migration leaves entries empty`、缺/坏 `entity_pos` 读 null）。
 - [x] `REMOTE_SUMMON_TICKET` 的 owner 是 `ChunkPos`，没有按 `requestId` 区分 ticket（源码审计）。
 - [x] 同 `ChunkPos` 并发 ticket 的行为符合 D-24，且失败均为安全失败（源码审计 + 继承口径）。
 - [x] `feedbackArmed` 只在成功返回 `PENDING` 前才置 `true`（源码审计）。
@@ -398,12 +398,12 @@ furkin.command.summon.failed               // INVALID_STATE / REBUILD_FAILED（�
 
 - 单请求默认关注 9 个区块；全局 4 pending 时最多约 36 个区块 future。
 - 区块生成、I/O 和实体初始化可能造成 tick spike；有界加载不等于免费。
-- 1.19.2 的性能数据不能直接作为 1.20.1 的完成证据；P2.6 必须重新测量。
+- 1.19.2 的性能数据不能直接作为 1.20.1 的完成证据；P2.6 已重新测量，详见 [verification-matrix.md](verification-matrix.md)「性能记录」：确定性上限默认 ≤36 区块 / ≤30s / 稳态 0；实测热区 ~14ms、冷区 ~511ms（区块已生成）~1897ms（需生成）、单次最差 3500ms；并发 4 单 tick 峰值 178.5ms（非默认配置，默认 `perPlayer=1` 发不出 4 路）。
 - 紧急回滚：设置 `remoteSummonEnabled=false`，保留 P0/P1；不得改成永久强加载。
 
-## 10. 实施状态（2026-09-27）
+## 10. 实施状态（2026-09-28）
 
-- 代码已落在当前工作树，未提交、未推送。
+- 基线 `a9870714` 已推送；当前增量（P0-06 口径修正、`ServerStoppingEvent` 接线、`TRAVEL_POUCH` 空值防御 + 文档）未提交。
 - 已完成：位置字段与 v1 -> v2 迁移、公共传送路径、异步 service、ticket / pending / timeout / 取消、命令与绒亲录接入、6 项配置、双语文案。
-- 已执行：2026-09-27 `p0p1` 32/0、`prepare_p2` → 重启 `verify_p2` 32/0、`cross_dimension` 5/0；最终去夹具 `clean build` 成功，`runServer` 到达 `Done (2.574s)`，日志无 Furkin 专属 ERROR / FATAL / 异常栈。详细证据见 [verification-matrix.md](verification-matrix.md)。
-- 未完成：P2 冷区跨维度、timeout / chunk 失败 / 生命周期取消与重启 pending 收敛、命令和绒亲录完整实机交互、故障注入及完整冷热区性能矩阵。
+- 已执行：2026-09-28 一次性夹具 11 个模式全部 0 失败（prepare 65 / nbt 16 / repair 34 / cold 45 / reload 13 / orphan 20 / safety 18 / commands 21 / stop-pending 3 / restart 9 / perf 59）；`build` 成功，去夹具 `runServer` 到达 `Done (2.592s)`，日志无 Furkin 专属 ERROR / FATAL / 异常栈。详细证据见 [verification-matrix.md](verification-matrix.md)。
+- 未完成：真实客户端绒亲录在途态 / 按钮禁用解锁 / 刷新交互（P2-25 / P2-26 / P2-39）；服务端侧冷区跨维度、timeout / chunk 失败、生命周期取消、重启 pending 收敛、故障注入与热区 / 冷区 / 串行 20 次 / 并发 4 性能记录已全部取证。性能侧遗留两项：并发 4 的 178.5ms 单 tick 尖峰（优化项），以及客户端负荷零测量。
