@@ -16,6 +16,7 @@ import com.wanancat.furkin.internal.skill.SkillRegistry;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
@@ -65,6 +66,12 @@ public final class FurkinCompanionManager {
         NOT_ALIVE,
         /** 活跃上限已满（仅召唤分支会命中，传送分支不占新名额）。 */
         ACTIVE_LIMIT,
+        /** 档案认为实体在场，但当前已加载实体索引无法解析出规范实体。 */
+        ENTITY_UNRESOLVED,
+        /** 同 companionId 的其它实体仍已加载，拒绝重建 / 传送并等待显式修复。 */
+        DUPLICATE_CONFLICT,
+        /** 已加载规范实体跨维度传送失败。 */
+        DIMENSION_CHANGE_FAILED,
         /** 重建实体失败（物种缺失 / 能力不可用等内部错误）。 */
         REBUILD_FAILED;
 
@@ -72,6 +79,16 @@ public final class FurkinCompanionManager {
         public boolean ok() {
             return this == SUMMONED || this == TELEPORTED;
         }
+    }
+
+    /** 已加载实体传送结果；失败原因必须保留到命令与界面层，不能压成 boolean。 */
+    public enum TeleportResult {
+        /** 实体已成功传送到主人身边。 */
+        TELEPORTED,
+        /** 档案有 UUID，但当前已加载实体索引无法解析出规范实体。 */
+        ENTITY_UNRESOLVED,
+        /** 实体已解析，但跨维度传送没有返回可用生物实体。 */
+        DIMENSION_CHANGE_FAILED
     }
 
     /**
@@ -104,10 +121,24 @@ public final class FurkinCompanionManager {
 
         // 分流：已召唤 → 传送（不占新名额、不校验上限）；未召唤 → 召唤。
         if (entry.isSummoned()) {
-            boolean teleported = teleportToOwner(player, companionId);
-            // 传送失败通常是「档案标了在场但实体其实丢了」——teleportToOwner 内部已自愈
-            // （把 summoned 改回 false），此处如实报失败即可。
-            return teleported ? SummonResult.TELEPORTED : SummonResult.REBUILD_FAILED;
+            TeleportResult teleportResult = teleportToOwner(player, companionId);
+            return switch (teleportResult) {
+                case TELEPORTED -> SummonResult.TELEPORTED;
+                case ENTITY_UNRESOLVED -> SummonResult.ENTITY_UNRESOLVED;
+                case DIMENSION_CHANGE_FAILED -> SummonResult.DIMENSION_CHANGE_FAILED;
+            };
+        }
+
+        // 防御生产重复实体：档案虽标未召唤，但同 UUID 实体仍在已加载索引中；
+        // 或档案没有 canonical 时已有同 companionId 孤儿实体。两道查询都只查运行时
+        // 索引、不加载区块；命中时安全失败，等待显式修复（P1）。
+        if (FurkinEntityLocator.findLoadedByRecordedUuid(player.getServer(), entry) != null) {
+            logLoadedButNotSummoned(player, entry);
+            return SummonResult.ENTITY_UNRESOLVED;
+        }
+        if (FurkinDuplicateRegistry.hasLoadedDuplicate(player.getServer(), entry)) {
+            logLoadedDuplicate(player, entry);
+            return SummonResult.DUPLICATE_CONFLICT;
         }
 
         // 未召唤分支：活跃上限只在真正新增实体时校验。
@@ -193,8 +224,11 @@ public final class FurkinCompanionManager {
         entry.setSummoned(false); // 收回：实体不在场。
         entry.clearEntityLocation(); // WP-02B：实体已 discard，定位字段不得继续指向失效 UUID。
         archive.putEntry(entry);
+        RemoteSummonService.cancelIfPresent(player.getServer(), companionId,
+                RemoteSummonService.CancelReason.DISMISSED);
 
         // 移除实体（discard 不触发死亡掉落 / 不广播死亡）。
+        FurkinDuplicateRegistry.onCompanionCleared(companionId, target.getUUID());
         target.discard();
 
         // health 一并记下：与 summon 那行「restored to x」互为独立来源的两个读数，
@@ -329,6 +363,17 @@ public final class FurkinCompanionManager {
                                             float yRot, float xRot, String actionLog) {
         ServerLevel serverLevel = (ServerLevel) player.level();
         UUID companionId = entry.getCompanionId();
+
+        // 所有重建入口的最后一道守卫：canonical 或同 companionId 的任一已加载实体存在时，
+        // 绝不再创建同身份实体。
+        if (FurkinEntityLocator.findLoadedByRecordedUuid(serverLevel.getServer(), entry) != null) {
+            logLoadedButNotSummoned(player, entry);
+            return false;
+        }
+        if (FurkinDuplicateRegistry.hasLoadedDuplicate(serverLevel.getServer(), entry)) {
+            logLoadedDuplicate(player, entry);
+            return false;
+        }
 
         // 重建实体：从档案读物种。
         EntityType<?> species = entry.getSpecies();
@@ -488,47 +533,65 @@ public final class FurkinCompanionManager {
     /**
      * 传送一只「已召唤（实体在场）」的绒亲到主人身边，并唤醒跟随。
      *
-     * <p>与 {@link #summon} 的区别：不新增活跃数、不重建实体，仅对在场实体做位置挪移。
+     * <p>与 {@link #summon} 的区别：不新增活跃数、不重建实体，仅对在场实体做位置挪移，
      * 故<b>不查活跃上限</b>。语义对应绒亲录里「已召唤条目点召唤 = 传送到身边」。</p>
+     *
+     * <p>P0：档案标已召唤但索引未命中时只返回 {@link TeleportResult#ENTITY_UNRESOLVED}，
+     * 不再把失败写回 {@code summoned=false}。定位不到不等于“已收回”。</p>
      *
      * @param player      主人
      * @param companionId 宠物身份 UUID
-     * @return 是否成功传送
+     * @return 具体传送结果
      */
-    public static boolean teleportToOwner(ServerPlayer player, UUID companionId) {
-        if (!(player.level() instanceof ServerLevel serverLevel)) {
-            return false;
+    public static TeleportResult teleportToOwner(ServerPlayer player, UUID companionId) {
+        MinecraftServer server = player.getServer();
+        if (server == null) {
+            return TeleportResult.ENTITY_UNRESOLVED;
         }
+        ServerLevel serverLevel = player.serverLevel();
 
         // 从档案确认主人与生命状态。
         FurkinArchiveData archive = FurkinArchiveData.get(serverLevel);
         FurkinArchiveEntry entry = archive.getEntry(companionId);
         if (entry == null) {
-            return false;
+            return TeleportResult.ENTITY_UNRESOLVED;
         }
         if (entry.getOwnerUuid() == null || !entry.getOwnerUuid().equals(player.getUUID())) {
-            return false;
+            return TeleportResult.ENTITY_UNRESOLVED;
         }
         if (!entry.isAlive()) {
-            return false;
+            return TeleportResult.ENTITY_UNRESOLVED;
         }
         if (!entry.isSummoned()) {
             // 未召唤（不在场）→ 走 summon，不在此处理。
-            return false;
+            return TeleportResult.ENTITY_UNRESOLVED;
         }
 
         // 按档案中的 UUID + 维度定位；此前只扫当前维度，跨维度传送会把
         // 主世界宠物误判为“丢失”并错误地改回未召唤。
-        LivingEntity target = FurkinEntityLocator.locate(player.getServer(), entry);
+        LivingEntity target = FurkinEntityLocator.locate(server, entry);
         if (target == null) {
-            // 档案标记已召唤但实体不在场（数据不一致）→ 自愈：改回未召唤。
-            entry.setSummoned(false);
-            entry.clearEntityLocation();
-            archive.putEntry(entry);
-            FurkinMod.LOGGER.warn("Furkin teleport: entity missing for id={}, marked dismissed",
-                    companionId);
-            return false;
+            // P0：未加载 / 未解析不是“已收回”。失败只读，保留 canonical UUID 与状态。
+            FurkinMod.LOGGER.warn(
+                    "Furkin remote resolve failed: id={}, entity={}, dimension={}, reason={}",
+                    companionId, entry.getEntityUuid(), entry.getEntityDimension(),
+                    resolveFailureReason(server, entry));
+            return TeleportResult.ENTITY_UNRESOLVED;
         }
+
+        return teleportLoadedEntity(player, entry, target);
+    }
+
+    /**
+     * 将已经解析到 canonical 实体的绒亲传送到主人身边，并完成落点与客户端数据刷新。
+     *
+     * <p>立即传送与 P2 异步远召共用此方法。调用者负责档案归属、存活、召唤状态和
+     * canonical UUID 校验；本方法只处理已解析实体，不重新查询区块。</p>
+     */
+    public static TeleportResult teleportLoadedEntity(ServerPlayer player, FurkinArchiveEntry entry,
+                                                     LivingEntity target) {
+        ServerLevel serverLevel = player.serverLevel();
+        UUID companionId = entry.getCompanionId();
 
         // 传送：绕到玩家朝向正前方一格（避免与玩家重叠）。
         double dx = -Math.sin(Math.toRadians(player.getYRot())) * 1.5;
@@ -544,9 +607,10 @@ public final class FurkinCompanionManager {
                     new FixedTeleporter(targetX, targetY, targetZ,
                             player.getYRot(), player.getXRot()));
             if (!(changed instanceof LivingEntity living)) {
-                FurkinMod.LOGGER.warn("Furkin teleport failed: dimension change returned no living entity for id={}",
+                FurkinMod.LOGGER.warn(
+                        "Furkin teleport failed: dimension change returned no living entity for id={}",
                         companionId);
-                return false;
+                return TeleportResult.DIMENSION_CHANGE_FAILED;
             }
             relocated = living;
         } else {
@@ -554,7 +618,7 @@ public final class FurkinCompanionManager {
         }
         // WP-02B：传送成功后刷新一次定位，覆盖同维度移动与后续扩展路径。
         entry.setEntityLocation(relocated);
-        archive.putEntry(entry);
+        FurkinArchiveData.get(serverLevel).putEntry(entry);
 
         // 唤醒跟随：清坐定 + 坐姿，保证传送后立即跟随且不残留坐姿。
         if (relocated instanceof TamableAnimal tamable) {
@@ -571,9 +635,38 @@ public final class FurkinCompanionManager {
 
         FurkinMod.LOGGER.info("Furkin teleported: id={} to {}",
                 companionId, player.getName().getString());
-        return true;
+        return TeleportResult.TELEPORTED;
     }
 
+    /** 将实体解析失败拆成可检索原因，不改变任何档案状态。 */
+    private static String resolveFailureReason(MinecraftServer server, FurkinArchiveEntry entry) {
+        if (entry.getEntityUuid() == null) {
+            return "missing-entity-uuid";
+        }
+        if (entry.getEntityDimension() == null) {
+            return "missing-entity-dimension";
+        }
+        if (server == null || server.getLevel(entry.getEntityDimension()) == null) {
+            return "dimension-unavailable";
+        }
+        return "loaded-index-miss";
+    }
+
+    /** 已加载但档案标为未召唤时，输出可检索诊断日志。 */
+    private static void logLoadedButNotSummoned(ServerPlayer player, FurkinArchiveEntry entry) {
+        FurkinMod.LOGGER.warn(
+                "Furkin remote resolve failed: id={}, entity={}, dimension={}, reason=loaded-but-not-summoned, player={}",
+                entry.getCompanionId(), entry.getEntityUuid(), entry.getEntityDimension(),
+                player.getUUID());
+    }
+
+    /** 同 companionId 的其它已加载实体阻塞重建时，输出可检索诊断日志。 */
+    private static void logLoadedDuplicate(ServerPlayer player, FurkinArchiveEntry entry) {
+        FurkinMod.LOGGER.warn(
+                "Furkin remote resolve failed: id={}, canonical={}, dimension={}, reason=loaded-duplicate, player={}",
+                entry.getCompanionId(), entry.getEntityUuid(), entry.getEntityDimension(),
+                player.getUUID());
+    }
     /** 按服务器级档案的 UUID / 维度定向查找在场绒亲实体。 */
     public static LivingEntity findLivingByCompanionId(ServerLevel level, UUID companionId) {
         FurkinArchiveEntry entry = FurkinArchiveData.get(level).getEntry(companionId);

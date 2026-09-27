@@ -22,6 +22,7 @@ included (because they're rather fluff~y~).
 - **Equipment** — companions wear vanilla armor (all 4 slots), third-party armor works with zero config.
 - **Travel pouch** — a carry-along inventory that grows with the `travel_pouch` skill level, with shrinking, reclaiming and death-drop handling built in. Finally, someone else carries the cobblestone.
 - **Revival** — a soulstone-based revive system that preserves all growth.
+- **Remote summon** — calling a summoned companion teleports it when loaded; when its chunk is unloaded, Furkin uses the recorded dimension and position to load a bounded area temporarily, then resolves the same canonical UUID. Failures stay read-only and never create a second entity.
 
 ## Contract Health Gates
 
@@ -41,6 +42,15 @@ to `100` disables the percentage limit for that class.
 
 Only species registered with Furkin can enter this check. Non-`TamableAnimal` enemies are currently
 supported for archive, dismiss and resummon flows, but not for full follow/ceasefire/aggressive AI.
+
+## Remote Summon and Duplicate Repair
+
+- Calling a summoned companion from the Furkin Record or `/furkin summon` teleports the same entity when it is already loaded. If it is not loaded, Furkin adds a bounded temporary chunk ticket around the last recorded dimension and position, waits asynchronously, resolves by the canonical UUID, and then teleports it.
+- Disabling `remoteSummonEnabled` only rejects that unloaded-chunk path; loaded-entity teleport and legal rebuild from a recalled/dead record keep working.
+- If duplicate loaded entities share one `companionId`, hot paths fail safely with `DUPLICATE_CONFLICT`. Use `/furkin repair list <companion_id>` to inspect candidates, then run `/furkin repair choose <companion_id> <keep_entity_uuid>` to preview. Add `confirm` to execute the repair after checking the plan.
+- Server config keys: `remoteSummonEnabled` (`true`), `remoteSummonTicketRadius` (`1`, 3x3), `remoteSummonTimeoutTicks` (`600`), `remoteSummonMaxPendingPerPlayer` (`1`), `remoteSummonMaxPendingGlobal` (`4`) and `remoteSummonCooldownTicks` (`20`).
+- This feature package does not automatically move companions when their owner changes dimension. Summon them explicitly if needed.
+
 ## Dependencies
 
 | Requirement     | Version |

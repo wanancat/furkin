@@ -21,6 +21,7 @@
 - **装备** — 对齐原版 4 槽，第三方盔甲零配置直接可穿。
 - **随身行囊** — 随绒亲同行的背包，格数随 `travel_pouch` 技能等级派生，含缩容 / 回收 / 死亡掉落处理。终于有人替你搬圆石了。
 - **复活** — 魂石制复活，成长不丢失。
+- **远距召唤** — 召唤已加载绒亲时直接传送同一实体；所在区块未加载时，按最后已知维度与位置临时加载有界区块，再按 canonical UUID 定位。失败只安全返回，不会误建第二只。
 
 ## 契约生命值门槛
 
@@ -39,6 +40,15 @@
 
 只有通过 Furkin 注册的物种才会进入此门槛。非 `TamableAnimal` 的敌对生物目前只保证建档、收回和
 重新召唤，不保证完整跟随、停战或主动索敌。
+
+## 远距召唤与重复修复
+
+- 从绒亲录或 `/furkin summon` 召唤已召唤绒亲时：实体已加载则直接传送；区块未加载时，Furkin 会在最后已知维度与位置周围添加有界临时 chunk ticket，异步等待加载完成后按 canonical UUID 重新定位并传送同一实体。
+- `remoteSummonEnabled=false` 只关闭“已召唤但未加载”的临时加载路径；已加载传送、收回后合法重建仍保持可用。
+- 若同一 `companionId` 出现多个已加载实体，热路径会安全返回 `DUPLICATE_CONFLICT`。用 `/furkin repair list <companion_id>` 查看候选，再用 `/furkin repair choose <companion_id> <keep_entity_uuid>` 预演；核对计划后追加 `confirm` 才执行修复。
+- 服务端配置：`remoteSummonEnabled`（`true`）、`remoteSummonTicketRadius`（`1`，3x3）、`remoteSummonTimeoutTicks`（`600`）、`remoteSummonMaxPendingPerPlayer`（`1`）、`remoteSummonMaxPendingGlobal`（`4`）、`remoteSummonCooldownTicks`（`20`）。
+- 本功能包不包含主人换维度时自动随行；需要时请显式召唤，后续可另立功能包。
+
 ## 依赖
 
 | 需求             | 版本   |

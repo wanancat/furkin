@@ -7,7 +7,9 @@ import com.wanancat.furkin.internal.capability.FurkinData;
 import com.wanancat.furkin.internal.config.FurkinServerConfig;
 import com.wanancat.furkin.internal.contract.FurkinCompanionManager;
 import com.wanancat.furkin.internal.contract.FurkinContractHandler;
+import com.wanancat.furkin.internal.contract.FurkinDuplicateRegistry;
 import com.wanancat.furkin.internal.contract.FurkinRecordActionHandler;
+import com.wanancat.furkin.internal.contract.RemoteSummonService;
 import com.wanancat.furkin.internal.contract.FurkinUnbindCleanup;
 import com.wanancat.furkin.internal.equipment.EquipmentSlots;
 import com.wanancat.furkin.internal.growth.CombatParticipationTracker;
@@ -39,12 +41,14 @@ import net.minecraftforge.event.AddReloadListenerEvent;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
+import net.minecraftforge.event.entity.EntityLeaveLevelEvent;
 import net.minecraftforge.event.entity.living.LivingAttackEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.living.LivingHurtEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.entity.PartEntity;
+import net.minecraftforge.event.server.ServerStoppedEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.network.PacketDistributor;
@@ -73,8 +77,8 @@ public final class CommonEvents {
      *
      * <p>区块读盘路径下 capability NBT 已在事件触发前完成反序列化；新建实体路径下
      * attachment 也已存在。墓碑命中时先执行共享清理，成功后才移除墓碑并发送清空后的
-     * 能力同步；失败保留墓碑，等下一次入世重试。未命中墓碑的已契约
-     * {@link TamableAnimal} 保持原有 AI 重建逻辑。</p>
+     * 能力同步；失败保留墓碑，等下一次入世重试。所有已契约 {@link LivingEntity} 都参与
+     * canonical / 重复登记；只有 {@link TamableAnimal} 还需要重建战斗 AI。</p>
      */
     @SubscribeEvent
     public static void onEntityJoinLevel(EntityJoinLevelEvent event) {
@@ -96,31 +100,97 @@ public final class CommonEvents {
             return;
         }
 
-        // M-04：实体重新入世时，旧属性 modifier 可能来自已删除或已改写的技能定义；
-        // 先按运行时技能树统一清理并重建，再应用战斗 AI。
-        if (data.isCompanion()) {
-            SkillRuntimeCalibrator.rebuild(living, data);
-        }
-
-        if (!(entity instanceof TamableAnimal tamable) || !data.isCompanion()) {
+        if (!data.isCompanion()) {
             return;
         }
 
-        // WP-02B：已召唤实体重新入世时刷新定向定位信息。
+        // M-04：实体重新入世时，旧属性 modifier 可能来自已删除或已改写的技能定义；
+        // 先按运行时技能树统一清理并重建。非 TamableAnimal 也执行技能校准。
+        SkillRuntimeCalibrator.rebuild(living, data);
+
+        // P1：登记所有已契约 LivingEntity，但只有 summoned=true 的 canonical UUID
+        // 才能刷新档案定位；档案未召唤时若仍有实体加载，是不能允许重建的孤儿冲突。
         FurkinArchiveData archive = FurkinArchiveData.get(serverLevel);
         FurkinArchiveEntry entry = data.getCompanionId() == null
                 ? null : archive.getEntry(data.getCompanionId());
-        if (entry != null && entry.isSummoned()
-                && (!entity.getUUID().equals(entry.getEntityUuid())
-                || !serverLevel.dimension().equals(entry.getEntityDimension()))) {
-            entry.setEntityLocation(entity);
-            archive.putEntry(entry);
+        if (entry != null && entry.isAlive()) {
+            FurkinDuplicateRegistry.onEntityJoin(living, entry);
+            if (entry.isSummoned()) {
+                if (entry.getEntityUuid() == null) {
+                    FurkinMod.LOGGER.warn(
+                            "Furkin companion join without canonical: companion={}, incoming={}, incoming_dimension={}, incoming_pos={}",
+                            data.getCompanionId(), living.getUUID(),
+                            serverLevel.dimension().location(), positionString(living));
+                } else if (entity.getUUID().equals(entry.getEntityUuid())) {
+                    entry.setEntityLocation(entity);
+                    archive.putEntry(entry);
+                } else {
+                    FurkinMod.LOGGER.warn(
+                            "Furkin duplicate companion join: companion={}, canonical={}, incoming={}, canonical_dimension={}, incoming_dimension={}, incoming_pos={}",
+                            data.getCompanionId(), uuidString(entry.getEntityUuid()), living.getUUID(),
+                            dimensionString(entry.getEntityDimension()),
+                            serverLevel.dimension().location(), positionString(living));
+                }
+            } else {
+                // 合法 rebuild 在 addFreshEntity 时也会走到这里，不能一律按异常刷 WARN；
+                // 真正会阻塞重建的冲突由 hasLoadedDuplicate(...) 在请求时告警。
+                FurkinMod.LOGGER.debug(
+                        "Furkin companion join while archive not summoned: companion={}, archived_canonical={}, incoming={}, incoming_dimension={}, incoming_pos={}",
+                        data.getCompanionId(), uuidString(entry.getEntityUuid()), living.getUUID(),
+                        serverLevel.dimension().location(), positionString(living));
+            }
         }
 
-        if (!data.getCombatMode().applyTo(tamable)) {
+        if (living instanceof TamableAnimal tamable
+                && !data.getCombatMode().applyTo(tamable)) {
             FurkinMod.LOGGER.warn("Furkin AI restore rejected on entity join: entity={} id={}",
                     tamable.getUUID(), data.getCompanionId());
         }
+    }
+
+    /** 实体离场或区块卸载时刷新 canonical 最后位置，并移除重复体诊断登记。 */
+    @SubscribeEvent
+    public static void onEntityLeaveLevel(EntityLeaveLevelEvent event) {
+        if (!(event.getLevel() instanceof ServerLevel serverLevel)
+                || !(event.getEntity() instanceof LivingEntity living)) {
+            return;
+        }
+
+        FurkinData data = living.getCapability(FurkinCapability.FURKIN_DATA).orElse(null);
+        if (data != null && data.isCompanion() && data.getCompanionId() != null) {
+            FurkinArchiveData archive = FurkinArchiveData.get(serverLevel);
+            FurkinArchiveEntry entry = archive.getEntry(data.getCompanionId());
+            if (entry != null && entry.isSummoned()
+                    && living.getUUID().equals(entry.getEntityUuid())) {
+                entry.setEntityLocation(living);
+                archive.putEntry(entry);
+            }
+        }
+        FurkinDuplicateRegistry.onEntityLeave(living);
+    }
+
+    /** 服务端停止时取消 pending 远召并清空只存在于内存的诊断注册表。 */
+    @SubscribeEvent
+    public static void onServerStopped(ServerStoppedEvent event) {
+        RemoteSummonService.stop(event.getServer());
+        FurkinDuplicateRegistry.clear(event.getServer());
+    }
+
+    /** 将可选 UUID 渲染为固定诊断文本，缺失字段写 none。 */
+    private static String uuidString(UUID value) {
+        return value == null ? "none" : value.toString();
+    }
+
+    /** 将可选维度渲染为固定诊断文本，缺失字段写 none。 */
+    private static String dimensionString(
+            net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> value) {
+        return value == null ? "none" : value.location().toString();
+    }
+
+    /** 实体坐标诊断文本；使用方块坐标，避免日志里出现浮点噪声。 */
+    private static String positionString(LivingEntity entity) {
+        var pos = entity.blockPosition();
+        return pos.getX() + "," + pos.getY() + "," + pos.getZ();
     }
 
     /**
@@ -185,6 +255,10 @@ public final class CommonEvents {
     @SubscribeEvent
     public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
         FurkinContractHandler.clearPendingContract(event.getEntity().getUUID());
+        if (event.getEntity() instanceof ServerPlayer player) {
+            RemoteSummonService.cancelForPlayerIfPresent(player.getServer(), player.getUUID(),
+                    RemoteSummonService.CancelReason.PLAYER_LOGOUT);
+        }
     }
 
     @SubscribeEvent
@@ -397,6 +471,10 @@ public final class CommonEvents {
         if (companionId == null) {
             return;
         }
+        RemoteSummonService.cancelIfPresent(serverLevel.getServer(), companionId,
+                RemoteSummonService.CancelReason.ENTITY_DEATH);
+        FurkinDuplicateRegistry.onCompanionCleared(companionId, target.getUUID());
+
         FurkinArchiveData archive = FurkinArchiveData.get(serverLevel);
         FurkinArchiveEntry entry = archive.getEntry(companionId);
         if (entry == null) {
@@ -466,6 +544,7 @@ public final class CommonEvents {
         // 周期被动（守夜者夜视 / 群猎战术叠层等）——分发器内部按 20 tick 节流。
         SkillPassiveDispatcher.onServerTick(event.getServer());
         SkillRuntimeCalibrator.onServerTick(event.getServer());
+        RemoteSummonService.tickIfPresent(event.getServer());
     }
 
     /**

@@ -37,10 +37,16 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 
 ---
 
-## [1.20.1-0.0.3.0] - 2026-09-25
+## [1.20.1-0.0.3.0] - 2026-09-27
 
 **新增 / Added**
 
+- **真正远距召唤 / True remote summon** —— 已召唤绒亲所在区块未加载时，按档案记录的最后已知维度与位置添加有界临时 chunk ticket，在后台加载完成后按 canonical UUID 重新定位并传送同一实体；加载失败、超时、重复实体或状态变化只安全失败，不重建、不复制档案、不清定位。默认半径 `1`（3x3）、超时 `600` tick，并按玩家 / 全服限制并发。
+  *When a summoned companion's chunk is unloaded, Furkin adds a bounded temporary chunk ticket at the recorded dimension and position, re-resolves the same entity by its canonical UUID after the chunks load, and teleports it. Load failure, timeout, duplicate entities, or state changes fail safely without rebuilding, copying the archive, or clearing the recorded location.*
+- **重复实体诊断与恢复 / Duplicate entity diagnostics and recovery** —— 新增 `/furkin repair list <pet_id>` 和 `/furkin repair choose <pet_id> <keep_entity_uuid>`；`choose` 默认只预演，追加 `confirm` 才执行。keeper 先获得缺失的核心数据、装备和行囊，槽位冲突的物品掉落在脚下，最后才删除重复实体。未召唤档案若仍能解析到已加载的 canonical 或同身份实体，会拒绝重建。
+  *Added `/furkin repair list <pet_id>` and `/furkin repair choose <pet_id> <keep_entity_uuid>`; `choose` only previews unless `confirm` is supplied. The keeper first receives missing core data, equipment and pouch items, slot conflicts drop at its feet, and only then are duplicates removed.*
+- **远召服务端配置 / Remote summon server config** —— 世界级 `serverconfig/furkin-server.toml` 新增 `remoteSummonEnabled`、`remoteSummonTicketRadius`、`remoteSummonTimeoutTicks`、`remoteSummonMaxPendingPerPlayer`、`remoteSummonMaxPendingGlobal`、`remoteSummonCooldownTicks`。`remoteSummonEnabled=false` 只关闭“已召唤但未加载”的临时加载路径，已加载传送和合法重建仍可用。
+  *The world-scoped `serverconfig/furkin-server.toml` now exposes six `remoteSummon*` keys. Disabling `remoteSummonEnabled` only rejects the unloaded-chunk path; loaded-entity teleport and legal rebuild remain available.*
 - **可配置的契约生命值门槛 / Configurable contract health gates** —— 已注册物种现在按 `Enemy > NeutralMob > 其他` 分类，每类均可配置“最高生命百分比”和“绝对生命值”，两者任一满足即可契约。默认 Enemy 为 `30%` 或 `4` 点，NeutralMob 为 `50%` 或 `8` 点（满血 8 点原版狼可直接契约），其他分类为 `100%` 且绝对分支禁用；六项配置位于服务端 `furkin-server.toml`。发起命名和确认命名都会重新校验，命名期间回血也会被拒绝。
   *Registered species now use `Enemy > NeutralMob > other` classification, with configurable percentage and absolute health gates. Either branch may pass: Enemy defaults to `30%` or `4` health and NeutralMob to `50%` or `8` health, letting a full-health vanilla wolf pass; other targets default to `100%` with the absolute branch disabled. Both the naming request and confirmation revalidate the gate, so regenerating above it before confirmation is rejected.*
 - **多部件实体契约兼容 / Multipart entity interaction compatibility** —— 实体交互目标为 Forge `PartEntity` 时，会通过公开 `getParent()` 解析到父实体。Twilight Forest Hydra 这类主实体不可拾取、只能点击部件的生物现在可以正常判断门槛、契约、收回和重新召唤。
@@ -48,6 +54,12 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 
 **说明 / Notes**
 
+- 绒亲录与 `/furkin summon` 共用服务端远召状态机；`PENDING` 显示“召唤中”并禁用按钮，非 pending 终态会刷新列表并给出失败原因，不再误报成功。
+  *The Furkin Record and `/furkin summon` share the server-side state machine; pending requests disable the record button and every terminal result refreshes the list with an explicit result.*
+- 不新增公开 API，`PROTOCOL_VERSION` 仍为 `2`；archive 数据版本推进到 `2`，旧档缺少 `entity_pos` 时读作 `null`。版本号为 `1.20.1-0.0.3.0`。
+  *No public API was added and `PROTOCOL_VERSION` remains `2`; the archive data version advances to `2`, and `entity_pos` is read as `null` when absent from legacy saves. The release version is `1.20.1-0.0.3.0`.*
+- 完整游戏内交互、故障注入和 1.20.1 性能矩阵仍待补证据；owner 换维度自动随行明确不在本功能包内。
+  *Full in-game interaction, fault-injection and 1.20.1 performance evidence are still pending; automatic companion following when the owner changes dimension is explicitly out of scope.*
 - 只有 `HEALTH_TOO_HIGH` 会显示生命值提示并取消原版右键；未注册、错误归属、超距等既有失败不扩大取消范围。
   *Only `HEALTH_TOO_HIGH` shows the health message and cancels the vanilla interaction; existing failures such as unregistered species, wrong ownership or being out of reach are not newly cancelled.*
 - 非 `TamableAnimal` Enemy 目前仅保证建档、收回和重新召唤，不保证跟随、停战、护主或主动索敌。
