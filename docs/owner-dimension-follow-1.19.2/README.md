@@ -1042,7 +1042,7 @@ $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 | 服务端空闲长跑 | 无夹具 `runServer` + RCON `debug start`，每 10 分钟采样 | 30 分钟全程 20 TPS；overall mean tick time `0.859-0.910 ms`；日志 `D:\frukin_dev\_research\odf_perf_30m_20260928.txt` |
 | 服务端压力夹具 | `FURKIN_FIXTURE_ODF_PERF=1`，FakePlayer + 受控实体；覆盖半径 16/64、`activeLimit=3/20`、80/150 野生、12 玩家同 tick | cold 半径16/20只 P95 `19.979 ms`；hot 同场景 P95 `4.854 ms`、max `6.538 ms`；默认3只 P95 `1.410 ms`；半径64 P95 `5.883 ms`；12x3 P95 `7.027 ms`；日志 `D:\frukin_dev\_research\odf_perf_stress_20260928.log`；夹具源码与临时世界已删除 |
 | 落点安全聚焦夹具 | 临时 `OdfLandingFixture` + `runServer`（JDK 17.0.2） | `FURKIN_FIXTURE_ODF_LANDING_OK checks=5 failures=0`；覆盖正常地面、向下超过 2 格无支撑、身体浸入熔岩、半砖支撑、身体浸入火；日志 `D:\frukin_dev\_research\odf_landing_fixture_20260928.log`；夹具源码已删除 |
-| 最终构建 | `gradlew.bat clean build --console=plain`（JDK 17.0.2，2026-09-28 20:32） | `BUILD SUCCESSFUL in 16s`；产物 `build/libs/furkin-1.19.2-0.0.4.0.jar`（401598 bytes，SHA-256 `06C6C18A305A8173C0053467997E8A855CD9191B45C9056D95011F05C6616EC8`）；`jar tf` 未发现 `internal/debug`、`OdfPerfProbe`、`OdfServerProbe` 或 `OdfClientProbe`；`git diff --check` 无空白错误 |
+| 最终构建 | `gradlew.bat clean build --console=plain`（JDK 17.0.2，2026-09-28 20:38） | `BUILD SUCCESSFUL in 16s`；产物 `build/libs/furkin-1.19.2-0.0.4.0.jar`（401598 bytes，SHA-256 `D71FB6FD05848CC589CDEB4F510D9980A701B007F03C3CF31EF8E0F3EB75D03B`）；`jar tf` 未发现 `internal/debug`、`OdfPerfProbe`、`OdfServerProbe` 或 `OdfClientProbe`；`git diff --check` 无空白错误 |
 
 ### 11.4 真实客户端补测记录（2026-09-28）
 
@@ -1074,7 +1074,7 @@ F-26 记录口径：服务端状态机与真实客户端失败反馈均已通过
 
 ### 11.6 状态
 
-- WP0-WP4 的代码与文档改动已完成；无夹具 `clean build` 已通过，产物为 `furkin-1.19.2-0.0.4.0.jar`（401598 bytes，SHA-256 `06C6C18A305A8173C0053467997E8A855CD9191B45C9056D95011F05C6616EC8`），且不含临时夹具；feature 提交 `215a70e` 与本次补测文档已提交并推送到 `origin/mc1.19.2`。
+- WP0-WP4 的代码与文档改动已完成；无夹具 `clean build` 已通过，产物为 `furkin-1.19.2-0.0.4.0.jar`（401598 bytes，SHA-256 `D71FB6FD05848CC589CDEB4F510D9980A701B007F03C3CF31EF8E0F3EB75D03B`），且不含临时夹具；feature 提交 `215a70e` 与本次补测文档已提交并推送到 `origin/mc1.19.2`。
 - 服务端性能已完成：30 分钟空闲 TPS、`activeLimit=20` 冷/热态、半径 64 密集野生、默认 3 只、12 玩家同 tick 均有测量记录；F-19 支撑搜索修复后又完成最终代码复测，默认 3 只 P95 `1.861 ms`、12×3 P95 `8.558 ms`、radius16/activeLimit20 cold P95 `23.352 ms`。真实客户端帧率与双客户端 fanout 已按 §11.4 补测。
 - F-19 验证状态：修复后的正常安全支撑与无支撑危险分支均已通过真实客户端复验。
 - F-26 验证状态：服务端状态机已通过；真实客户端失败反馈已在真实客户端独立复验。
