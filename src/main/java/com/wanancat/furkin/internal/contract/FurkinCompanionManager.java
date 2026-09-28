@@ -584,25 +584,41 @@ public final class FurkinCompanionManager {
      *
      * <p>立即传送与 P2 异步远召共用此方法。调用者负责档案归属、存活、召唤状态和
      * canonical UUID 校验；本方法只处理已解析实体，不重新查询区块。</p>
+     *
+     * <p>本入口固定使用“玩家朝向正前方 1.5 格”落点；需要显式落点的调用方（主人跨维度
+     * 随行的多只展开）走同包可见重载 {@link #teleportLoadedEntity(ServerPlayer,
+     * FurkinArchiveEntry, LivingEntity, double, double, double, float, float)}。</p>
      */
     public static TeleportResult teleportLoadedEntity(ServerPlayer player, FurkinArchiveEntry entry,
                                                        LivingEntity target) {
+        // 传送：绕到玩家朝向正前方 1.5 格（避免与玩家重叠）。
+        double dx = -Math.sin(Math.toRadians(player.getYRot())) * 1.5;
+        double dz = Math.cos(Math.toRadians(player.getYRot())) * 1.5;
+        return teleportLoadedEntity(player, entry, target,
+                player.getX() + dx, player.getY(), player.getZ() + dz,
+                player.getYRot(), player.getXRot());
+    }
+
+    /**
+     * 显式落点版本：把已解析的 canonical 实体迁到给定坐标，并完成档案刷新、清坐姿与客户端同步。
+     *
+     * <p>语义与单只入口完全一致，唯一区别是落点由调用方给出。跨维度时使用
+     * {@link FixedTeleporter} 让 {@code changeDimension(...)} 保留能力 NBT 与实体 UUID；
+     * 本方法不创建实体、不重建档案、不加载区块。</p>
+     */
+    static TeleportResult teleportLoadedEntity(ServerPlayer player, FurkinArchiveEntry entry,
+                                               LivingEntity target,
+                                               double targetX, double targetY, double targetZ,
+                                               float yRot, float xRot) {
         ServerLevel serverLevel = player.getLevel();
         UUID companionId = entry.getCompanionId();
 
-        // 传送：绕到玩家朝向正前方一格（避免与玩家重叠）。
-        double dx = -Math.sin(Math.toRadians(player.getYRot())) * 1.5;
-        double dz = Math.cos(Math.toRadians(player.getYRot())) * 1.5;
-        double targetX = player.getX() + dx;
-        double targetY = player.getY();
-        double targetZ = player.getZ() + dz;
         LivingEntity relocated = target;
         if (target.getLevel() != serverLevel) {
             // 1.19.2 的 Entity#changeDimension(ServerLevel, ITeleporter) 已核实为公开 API。
             // 用固定落点 teleporter，既完成跨维度实体迁移，也保留能力 NBT。
             Entity changed = target.changeDimension(serverLevel,
-                    new FixedTeleporter(targetX, targetY, targetZ,
-                            player.getYRot(), player.getXRot()));
+                    new FixedTeleporter(targetX, targetY, targetZ, yRot, xRot));
             if (!(changed instanceof LivingEntity living)) {
                 FurkinMod.LOGGER.warn(
                         "Furkin teleport failed: dimension change returned no living entity for id={}",

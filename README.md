@@ -24,6 +24,7 @@ included (because they're rather fluff~y~).
 - **Equipment** — companions wear vanilla armor (all 4 slots), third-party armor works with zero config.
 - **Travel pouch** — a carry-along inventory that grows with the `travel_pouch` skill level, with shrinking, reclaiming and death-drop handling built in. Finally, someone else carries the cobblestone.
 - **Revival** — a soulstone-based revive system that preserves all growth.
+- **Dimension follow** — when you cross dimensions, already-loaded companions within 16 blocks (default) come along; sitting companions stand up and follow. Cold-chunk pets are never force-loaded; the radius and toggle live in `furkin-server.toml`.
 
 ## Dependencies
 
@@ -59,6 +60,8 @@ included (because they're rather fluff~y~).
 
 - If your companion falls in battle, pick up the **Furkin Soulstone** it dropped and
   you can bring it back to the world of the living.
+
+- When you change dimensions, already-loaded companions nearby come along; pets that are out of range or in unloaded chunks stay behind and are never force-loaded. Tune `ownerDimensionFollowRadius` (default `16`) or disable the feature with `ownerDimensionFollowEnabled` in `furkin-server.toml`. The vanilla End "credits return" does not follow.
 
 ![Revival ritual](./docs/images/revive_ritual.png)
 
