@@ -53,21 +53,6 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 - 无破坏性 API 变更；公开 API 与网络包结构不变，`PROTOCOL_VERSION` 保持 `"2"`，不新增存档字段。
   *No breaking API changes; the public API and packet structure are unchanged, `PROTOCOL_VERSION` remains `"2"`, and no save schema field was added.*
 
-### Validation / 验证
-
-- `compileJava`、`build` 通过；产物 `build/libs/furkin-1.19.2-0.0.4.0.jar`，展开后的 `mods.toml` 版本为 `1.19.2-0.0.4.0` 且保持纯 ASCII，jar 内无 `internal.debug` / fixture 类。
-- `runServer` 启动到 `Done`；RCON `stop` 后完成 `Saving players`、`Saving worlds`、overworld/end/nether 三维度保存，Gradle 以 `BUILD SUCCESSFUL`、退出码 0 结束；日志无 `FATAL`，`ERROR` 仅为此前 `runServer` 日志同样存在的 vanilla/Forge `TagLoader` 标签噪声。
-- `runClient` 启动到资源加载/标题界面；客户端日志 `ERROR=0`、`FATAL=0`。
-- 静态审计：随行路径没有新增 `LivingTickEvent`、`getChunkFuture`、`addRegionTicket`、`setChunkForced`；`PROTOCOL_VERSION` 保持 `"2"`，公开 API、存档 schema 与网络包均未变更。
-- 一次性服务端夹具覆盖 F-04 至 F-29，最终输出 `FURKIN_FIXTURE_ODF_OK checks=52 failures=0`；覆盖半径边界、取消/第三维度/超时、冷/卸载实体、其他玩家/野生/已收回/死亡/重复体、坐姿、部分失败、旧版落点回退（历史夹具，已被 F-19 重新打开）、远召 pending 让路、pending 后失败、随行后显式远召复用 canonical、停机清理等。日志为 `D:\frukin_dev\_research\owner_dimension_follow_fixture_20260928.log`；夹具源码、临时运行世界与 fixture 标记已删除，最终 jar 不含 fixture。
-- 服务端性能：无夹具 30 分钟空闲长跑全程 20 TPS，overall mean tick time `0.859-0.910 ms`；临时压力夹具覆盖半径 16/64、`activeLimit=3/20`、80/150 只附近野生生物和 12 玩家同 tick。cold 半径16/20只 P95 `19.979 ms`，hot P95 `4.854 ms`、max `6.538 ms`；默认3只 P95 `1.410 ms`；半径64 P95 `5.883 ms`；12x3 P95 `7.027 ms`。这些数据采集于 F-19 支撑搜索修复前；修复只影响换维度落点选择的常数级方块读取/碰撞检查。
-- 服务端性能日志：`D:\frukin_dev\_research\odf_perf_30m_20260928.txt`、`D:\frukin_dev\_research\odf_perf_stress_20260928.log`。夹具源码与临时世界已删除；这些结果只代表服务端性能口径，真实客户端帧率和双客户端 fanout 的最终补测见下。
-- 落点安全聚焦夹具：临时 `OdfLandingFixture` 通过 `findSafeLanding(...)` 直接验证 5 个分支，输出 `FURKIN_FIXTURE_ODF_LANDING_OK checks=5 failures=0`；覆盖正常地面、向下超过 2 格无支撑、身体浸入熔岩、半砖支撑、身体浸入火。日志 `D:\frukin_dev\_research\odf_landing_fixture_20260928.log`，夹具源码已删除。
-- 真实客户端核心矩阵已执行：主世界 ↔ 地狱往返通过，三只全员两段均为 `moved=3 failed=0 skipped=0`；坐姿随行通过，显式远召 pending 联动已部分验证（无取消、无重复实体）；末地终章返回通过范围外负向口径。F-19 落点安全已重新打开并完成修复复验：2026-09-28 17:37 实机中，主人从地狱传送门高处坠落，三只 `moved=3` 后约 3 秒在熔岩区死亡，旧实现未校验脚下支撑。当前实现改为向下最多 2 格搜索支撑面并拒绝无支撑/危险体积；17:55 正常安全门测试 `moved=3` 且无死亡，17:57 跨维度 `/tp` 到地狱 `y=250` 的无支撑确定性场景记录三只 `NO_SAFE_LANDING`，最终 `moved=0 failed=3`，没有新的 `Furkin teleported`。
-- 最终代码补测：F-19 支撑搜索修复后，服务端压力复测默认 3 只 P95 `1.861 ms`、12×3 同 tick P95 `8.558 ms`、radius16/activeLimit20 cold P95 `23.352 ms`；默认 `activeLimit` 仍保持 3。
-- F-26 记录口径：服务端状态机和真实客户端失败反馈均已通过；`OdfAlpha` 实际收到“远距召唤已取消，档案状态未改变”。真实客户端稳定窗口 FPS p50/p95 均为 60；双客户端 fanout 为 3×207 bytes、`chunkTrackers=2`，显式同步与 `PlayerEvent.StartTracking` 合计每客户端 6 次处理记录。
-
-  *`compileJava` and `build` pass; the produced `build/libs/furkin-1.19.2-0.0.4.0.jar` expands `mods.toml` to version `1.19.2-0.0.4.0` (pure ASCII) and contains no `internal.debug` / fixture classes. `runServer` reached `Done`; an RCON `stop` completed `Saving players`, `Saving worlds`, and all three dimension saves, after which Gradle reported `BUILD SUCCESSFUL` and exited with code 0. No `FATAL` was logged; the only `ERROR` lines are the vanilla/Forge `TagLoader` tag noise already present in earlier `runServer` logs. `runClient` reached resource loading / the title screen with `ERROR=0` and `FATAL=0`. Static audit found no new `LivingTickEvent`, `getChunkFuture`, `addRegionTicket`, or `setChunkForced` on the follow path, and `PROTOCOL_VERSION` stays `"2"` with no public API, save-schema, or packet changes. A one-off server fixture covered F-04 through F-29 with `FURKIN_FIXTURE_ODF_OK checks=52 failures=0`, including radius boundaries, cancellation/third-dimension/timeout, cold/unloaded entities, other-owner/wild/recalled/dead/duplicate filtering, sitting pets, partial failure, the historical landing fallback (the old fixture assertion is obsolete after F-19 was reopened), remote-summon pending yielding, post-pending failure, canonical reuse for an explicit summon after follow, and shutdown cleanup. Fixed-prefix log: `D:\frukin_dev\_research\owner_dimension_follow_fixture_20260928.log`; fixture source, temporary run world, and fixture markers were removed, and the final jar contains no fixture classes. Server performance: a fixture-free 30-minute idle run stayed at 20 TPS with overall mean tick time 0.859-0.910 ms. Stress fixtures covered radius 16/64, `activeLimit=3/20`, 80/150 nearby wild entities, and 12 same-tick players: cold radius-16/20-companion P95 was 19.979 ms; hot P95 was 4.854 ms with a 6.538 ms max; default-three P95 was 1.410 ms; radius-64 P95 was 5.883 ms; 12x3 P95 was 7.027 ms. Logs: `D:\frukin_dev\_research\odf_perf_30m_20260928.txt` and `D:\frukin_dev\_research\odf_perf_stress_20260928.log`. Fixture source and temporary worlds were removed. These server metrics are separate from the real-client frame-rate and two-client fanout results reported below. Real-client portal matrix executed: Overworld <-> Nether round trips passed, including the all-three moved=3/failed=0/skipped=0 run; sitting-follow passed, and explicit remote-summon pending interplay was partially verified with no cancellation or duplicate entity. The End credits return passed the negative out-of-scope expectation. Focused landing checks cover normal ground, unsupported drop beyond 2 blocks, a body inside lava, slab support, and a body inside fire. F-19 is reopened: the 2026-09-28 17:37 real-client run logged `moved=3` and then all three pets died in lava because the old implementation did not validate support below the destination. The current implementation searches up to 2 blocks downward for support and rejects unsupported/hazardous destination volumes. Real-client revalidation passed: a normal safe landing moved all three pets without deaths, while a deterministic cross-dimension `/tp` to Nether `y=250` recorded `NO_SAFE_LANDING` for all three and finished with `moved=0 failed=3`, with no new `Furkin teleported` entries. F-26 is complete: the server state machine and real-client failure feedback both passed, and the final-code stress retest records default-three P95 1.861 ms, 12x3 P95 8.558 ms, and radius-16/activeLimit-20 cold P95 23.352 ms. Stable-window real-client FPS was 60/60 p50/p95, and the two-client fanout measured 3 x 207-byte packets with chunkTrackers=2. The alternate F-16/F-25 timing branch remains partially verified; production hardware/view-distance and long-run public-network traffic are not extrapolated from this environment.*
 ## [1.19.2-0.0.3.0] - 2026-09-27
 
 ### Added / 新增
@@ -95,13 +80,6 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 
 - 无破坏性 API 变更；公开 API 与网络包结构未变化，`PROTOCOL_VERSION`（`"2"`）保持不变。
   *No breaking API changes; packet structure and `PROTOCOL_VERSION` (`"2"`) are unchanged.*
-
-### Validation / 验证
-
-- 一次性服务端夹具在 1.19.2 / Forge 43.2.0 下覆盖 33 个场景，`pass=33 fail=0`；原版 EnderDragon 多部件事件目标解析、契约、喂食、面板与收回路径均通过。
-  *A one-off server fixture covered 33 scenarios with `pass=33 fail=0`; vanilla EnderDragon multipart event targets passed parent resolution, contract, feeding, panel, and recall paths under 1.19.2 / Forge 43.2.0.*
-- `clean build` 成功；无夹具 `runServer` 到达 `Done`，无夹具 `runClient` 完成资源加载并启动；最终 JAR 不含 `internal.debug` / fixture。
-  *`clean build` succeeded; a clean `runServer` reached `Done`, a clean `runClient` loaded resources and started, and the final JAR contains no `internal.debug` / fixture classes.*
 
 ## [1.19.2-0.0.2.0] - 2026-09-25
 
@@ -147,17 +125,6 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
   *The seven public API types and their signatures are unchanged; this is a Minecraft/Forge platform port, not a breaking public API change.*
 - `1.19.2-0.0.1.0` 与 `1.20.1-0.0.1.0` 是按 Minecraft 主线分开的构建产物；第三方应将 `MCVERSION` 视为加载兼容边界。
   *`1.19.2-0.0.1.0` and `1.20.1-0.0.1.0` are separate artifacts per Minecraft line; third parties should treat `MCVERSION` as the load-compatibility boundary.*
-
-### Validation
-
-- 使用 JDK 17.0.2 执行 `compileJava` 通过，javac 错误为 0。
-  *`compileJava` passed with JDK 17.0.2 and zero javac errors.*
-- 客户端可启动并进入单人世界；集成服务端可保存世界并正常退出，未产生崩溃报告。
-  *The client starts and enters a single-player world; the integrated server saves and exits cleanly without a crash report.*
-- WP9d GUI 回归 D1–D9 全部通过，覆盖契约命名、绒亲录、改名、技能、装备、行囊和复活流程。
-  *WP9d GUI regression D1–D9 passed, covering contract naming, the record, renaming, skills, equipment, the pouch, and revival flows.*
-- 专用服务端冒烟测试可启动至 `Done`；专用服务端正常关闭与保存验证仍待补做。
-  *The dedicated-server smoke test reaches `Done`; graceful shutdown and save verification for the dedicated server remain outstanding.*
 
 ### Known Issues
 
