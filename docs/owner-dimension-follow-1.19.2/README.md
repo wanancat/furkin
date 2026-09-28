@@ -3,7 +3,7 @@
 - 日期：2026-09-28
 - 分支：`mc1.19.2`
 - 基线：`3d3c8b2e6b3f9798facd49c96fce26bf11cc4064`
-- 状态：需求、冲突口径、实现与真实客户端核心矩阵均已于 2026-09-28 完成；当前未提交、未推送。
+- 状态：需求、冲突口径、实现、服务端压力与真实客户端核心矩阵均已于 2026-09-28 完成；最终补测记录见 §11.4，代码与文档已提交并推送到 `origin/mc1.19.2`。
 - 目标运行时：Minecraft 1.19.2 / Forge 43.2.0 / Java 17
 - 前置能力：`docs/remote-summon-1.19.2` 的 P0-P2 已收口；本项目复用其 canonical 定位、失败只读和跨维度传送原则
 - 关联但不同项：1.20.1 的 `NV-01` 记录的是原版 `FollowOwnerGoal` 同维度自动传送距离；本功能只处理主人发生真实跨维度变化时的随行
@@ -723,7 +723,7 @@ private boolean hasPendingFor(UUID playerUuid, UUID companionId) {
 - `activeLimit=20` 的 cold 场景首次出现过 `19.979 ms` 尖峰，但同场景 hot P95 降到 `4.854 ms`，说明该尖峰主要受 JVM/JIT 与首次路径初始化影响；不能把它写成生产常态。即便如此，当前仍不提高默认 `ACTIVE_LIMIT=3`。
 - `radius=64` 在 150 只野生生物的受控场景 P95 为 `5.883 ms`，未重现静态评估中的数量级失控，但该夹具不能替代真实密集农场和磁盘/网络条件。
 - 压力夹具日志：`D:\frukin_dev\_research\odf_perf_stress_20260928.log`。夹具源码和临时世界已在测量后删除，最终构建会再次确认 JAR 不含 fixture 类。
-- 仍未独立测量：真实客户端帧率、真实多客户端网络 fanout/带宽、不同硬件/视距下的客户端渲染成本。服务端 30 分钟 TPS 与高 `activeLimit` 已完成；上述测试仍必须区分“服务端已通过”与“客户端/生产网络未通过”。
+- 已完成补测：真实客户端帧率（vsync 60 上限；空场/三只宠物、Overworld/Nether）与真实双客户端 fanout（3 只 × 2 tracker，显式同步 + `StartTracking` 双路径）均无异常；详见 §11.4。不同硬件/视距下的渲染成本仍未被本次单一开发客户端环境覆盖，属于环境外推边界。
 
 ## 5. 配置与文档边界
 
@@ -1042,7 +1042,7 @@ $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 | 服务端空闲长跑 | 无夹具 `runServer` + RCON `debug start`，每 10 分钟采样 | 30 分钟全程 20 TPS；overall mean tick time `0.859-0.910 ms`；日志 `D:\frukin_dev\_research\odf_perf_30m_20260928.txt` |
 | 服务端压力夹具 | `FURKIN_FIXTURE_ODF_PERF=1`，FakePlayer + 受控实体；覆盖半径 16/64、`activeLimit=3/20`、80/150 野生、12 玩家同 tick | cold 半径16/20只 P95 `19.979 ms`；hot 同场景 P95 `4.854 ms`、max `6.538 ms`；默认3只 P95 `1.410 ms`；半径64 P95 `5.883 ms`；12x3 P95 `7.027 ms`；日志 `D:\frukin_dev\_research\odf_perf_stress_20260928.log`；夹具源码与临时世界已删除 |
 | 落点安全聚焦夹具 | 临时 `OdfLandingFixture` + `runServer`（JDK 17.0.2） | `FURKIN_FIXTURE_ODF_LANDING_OK checks=5 failures=0`；覆盖正常地面、向下超过 2 格无支撑、身体浸入熔岩、半砖支撑、身体浸入火；日志 `D:\frukin_dev\_research\odf_landing_fixture_20260928.log`；夹具源码已删除 |
-| 最终构建 | `gradlew.bat clean build --console=plain`（JDK 17.0.2，2026-09-28 18:00） | `BUILD SUCCESSFUL in 14s`；产物 `build/libs/furkin-1.19.2-0.0.4.0.jar`（401597 bytes，SHA-256 `EC3CE564C2E1DB35DCCC5FAE27683AB3FA2FD7B7472D8AE73A765D67328B5CCA`）；`tar -xOf` 展开 `mods.toml` 为 `version="1.19.2-0.0.4.0"` 且非 ASCII 字节数 0；`jar tf` 未发现 `internal/debug`、`OdfFpsProbe`、`OdfLandingFixture` 或 `OwnerDimensionFollowFixture`；`git diff --check` 无空白错误 |
+| 最终构建 | `gradlew.bat clean build --console=plain`（JDK 17.0.2，2026-09-28 20:32） | `BUILD SUCCESSFUL in 16s`；产物 `build/libs/furkin-1.19.2-0.0.4.0.jar`（401598 bytes，SHA-256 `06C6C18A305A8173C0053467997E8A855CD9191B45C9056D95011F05C6616EC8`）；`jar tf` 未发现 `internal/debug`、`OdfPerfProbe`、`OdfServerProbe` 或 `OdfClientProbe`；`git diff --check` 无空白错误 |
 
 ### 11.4 真实客户端补测记录（2026-09-28）
 
@@ -1057,22 +1057,25 @@ $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 | F-16/F-25 客户端远召联动 | 部分通过。真实客户端观察到 `ODF1` 发起远召后进入 pending；同 tick 玩家切到 Nether，`ODF3` 由随行移动到 Nether；随后 `ODF1` 由 `RemoteSummonService` 完成 `COMPLETED_TELEPORT`，没有取消或第二次传送/重复实体。 | 日志：`remote summon request=1 ... pending=1`、`owner dimension follow processed ... moved=1`、`remote summon completed ... COMPLETED_TELEPORT` |
 | F-01/F-02 三只全员往返 | 通过。最新构建中 `ODF1/ODF2/ODF3` 全部位于 16 格内，Overworld -> Nether 与 Nether -> Overworld 两段均为 `moved=3`；到达后三者位置不同，`Sitting=0`。 | `run/logs/latest.log`：`16:29:41`、`16:29:53` 两条 `owner dimension follow processed ... moved=3 failed=0 skipped=0 total=3` |
 | F-19 传送门/危险落点回归 | 通过（修复后真实客户端复验）。2026-09-28 17:37 旧构建在主人从地狱传送门高处坠落时出现 `moved=3` 后约 3 秒熔岩死亡；当前实现增加最多 2 格支撑搜索并拒绝无支撑/危险体积。17:55 正常安全门测试 `moved=3` 且无死亡；17:57 跨维度 `/tp` 到地狱 `y=250` 的确定性无支撑场景记录三只 `NO_SAFE_LANDING`，最终 `moved=0 failed=3`，没有新的 `Furkin teleported`。 | `odf_landing_client_20260928.log`：17:57:49 三条 `landing blocked` / `NO_SAFE_LANDING`、17:57:49 `processed ... moved=0 failed=3`；聚焦服务端夹具 `FURKIN_FIXTURE_ODF_LANDING_OK checks=5 failures=0` |
+| F-19 修复后最终代码压力复测 | 通过（服务端夹具）。最终代码、3 次热身、clean 日志口径：默认 3 只 P95 `1.861 ms`；12×3 同 tick P95 `8.558 ms`；radius16/activeLimit20 cold P95 `23.352 ms`。cold 尖峰属于首次路径/JIT 特征，未提高默认 `activeLimit=3`。 | `D:\frukin_dev\_research\odf_perf_final_clean_20260928.log` |
+| F-26 真实客户端失败反馈 | 通过（独立复验）。真实客户端 `OdfAlpha` 收到 `远距召唤已取消，档案状态未改变。`，服务端远召结果为 `CANCELLED reason=STATE_CHANGED`，玩家侧没有错误成功提示。 | `run/logs/latest.log` 中 `[CHAT] 远距召唤已取消，档案状态未改变。`；共享证据副本 `D:\frukin_dev\_research\odf_client_probe_shared_20260928.log` |
+| 最终代码真实客户端 FPS | 通过（有限口径）。稳定窗口 p50/p95 均为 60 FPS：空场 Overworld、三只 Nether、三只 Overworld、三只 Nether；只有启动/换维度瞬间出现低帧样本。 | `D:\frukin_dev\_research\odf_client_fps_final_20260928.txt` |
+| 真实双客户端网络 fanout | 通过（有限口径）。3 只宠物、2 个 tracking 客户端：服务端显式同步 3×207 bytes、`chunkTrackers=2`；每客户端各收到 6 次处理记录（显式同步 + `PlayerEvent.StartTracking` 各一次）。 | `D:\frukin_dev\_research\odf_fanout_final_20260928.txt` |
 
 旧构建曾把环形落点判为碰撞后回退到玩家脚下，随后被原版门弹回；当前实现取消玩家脚点回退。2026-09-28 17:37 的实机熔岩死亡进一步证明，仅拒绝落点所在方块的危险类型不够：主人从高空坠落时，宠物会被放到无支撑空中并随后坠入熔岩。现改为向下最多 2 格搜索非空碰撞支撑面，并要求落点体积不含 `NETHER_PORTAL`、`END_PORTAL`、`END_GATEWAY`、`LAVA`、`FIRE`、`SOUL_FIRE`；找不到时跳过该只并记录 `NO_SAFE_LANDING`。17:57 的跨维度 `/tp` 复验在无支撑场景中得到 `moved=0 failed=3`，证明危险分支不再把宠物投入空落点。这仍是 best-effort 安全筛选，不承诺在虚空、未加载区块或所有复杂地形中保证安全落点；相关边界仍按 §1.3 和 §8 记录。
 
-F-26 记录口径：服务端状态机已通过；真实客户端失败反馈未独立复验。服务端侧 30 分钟 TPS、高 `activeLimit`、半径 16/64 和 12 玩家同 tick 压力已完成；真实客户端帧率与真实多客户端网络 fanout 仍未独立测量。
+F-26 记录口径：服务端状态机与真实客户端失败反馈均已通过；服务端 30 分钟 TPS、高 `activeLimit`、半径 16/64、最终代码压力复测和 12 玩家同 tick 均已有记录；真实客户端帧率与双客户端 fanout 已补测，详见 §11.4。
 
-### 11.5 尚未执行（未完成项）
+### 11.5 残余边界
 
-- F-26 按 2026-09-28 确认口径记录：服务端状态机已通过；真实客户端失败反馈未独立复验，视为已明确记录的验证缺口而非通过项。
+- F-16/F-25：真实客户端 pending 让路联动已执行，当前记录为“部分通过”；剩余边界是另一时序分支的独立复验，未在本轮补测中重新打开。该口径不能扩展为所有远召竞态均已完整覆盖。
 - §7.3-C 的真实客户端核心矩阵已执行 F-01/F-02、F-03、F-14、F-16/F-25 与三只全员往返；F-19 旧真实客户端结论已被 17:37 熔岩死亡推翻，修复后安全支撑与无支撑危险分支均已通过真实客户端复验。
-- §4 的真实客户端帧率与真实多客户端网络 fanout 尚未执行；服务端 30 分钟空闲 TPS、高 `activeLimit`、半径 16/64 和 12 玩家同 tick 压力已完成，但不能据此宣称真实客户端或生产网络负荷已通过。
-- 无夹具 `runServer` 的启动、RCON `stop`、三维度保存与 Gradle 正常退出已通过；RCON 配置仅存在于忽略提交的 `run/server.properties`，不进入产品代码或 JAR。
+- §4 的真实客户端帧率与真实多客户端网络 fanout 已补测；不同硬件、不同视距和真实生产网络的长期流量仍未做矩阵化覆盖，不能把本机开发客户端数据外推为所有生产环境保证。
 
 ### 11.6 状态
 
-- WP0-WP4 的代码与文档改动已完成；无夹具 `clean build` 已通过，产物为 `furkin-1.19.2-0.0.4.0.jar`（401597 bytes），且不含临时夹具；**未提交、未推送到远程**。
-- 服务端性能已完成：30 分钟空闲 TPS、`activeLimit=20` 冷/热态、半径 64 密集野生、默认 3 只、12 玩家同 tick 均有测量记录；这些数据采集于 F-19 支撑搜索修复前，修复只影响换维度落点选择的常数级方块读取/碰撞检查，不改变空闲路径或协议。真实客户端帧率与真实多客户端网络 fanout 仍为验证缺口。
+- WP0-WP4 的代码与文档改动已完成；无夹具 `clean build` 已通过，产物为 `furkin-1.19.2-0.0.4.0.jar`（401598 bytes，SHA-256 `06C6C18A305A8173C0053467997E8A855CD9191B45C9056D95011F05C6616EC8`），且不含临时夹具；feature 提交 `215a70e` 与本次补测文档已提交并推送到 `origin/mc1.19.2`。
+- 服务端性能已完成：30 分钟空闲 TPS、`activeLimit=20` 冷/热态、半径 64 密集野生、默认 3 只、12 玩家同 tick 均有测量记录；F-19 支撑搜索修复后又完成最终代码复测，默认 3 只 P95 `1.861 ms`、12×3 P95 `8.558 ms`、radius16/activeLimit20 cold P95 `23.352 ms`。真实客户端帧率与双客户端 fanout 已按 §11.4 补测。
 - F-19 验证状态：修复后的正常安全支撑与无支撑危险分支均已通过真实客户端复验。
-- F-26 验证状态：服务端状态机已通过；真实客户端失败反馈未独立复验。
-- 版本号已推进到 `1.19.2-0.0.4.0`；是否提交与推送等待乌狸指示。
+- F-26 验证状态：服务端状态机已通过；真实客户端失败反馈已在真实客户端独立复验。
+- 版本号已推进到 `1.19.2-0.0.4.0`；已提交并推送。
