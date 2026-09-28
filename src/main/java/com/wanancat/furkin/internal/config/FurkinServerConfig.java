@@ -180,5 +180,26 @@ public class FurkinServerConfig {
                     "0 disables cooldown; design intent: 20 (1 second at 20 TPS).")
             .defineInRange("remoteSummonCooldownTicks", 20, 0, 200);
 
+    // ===== 主人跨维度随行 =====
+
+    /**
+     * 主人跨维度随行总开关。
+     *
+     * <p>开启后，主人发生真实跨维度切换时，出发维度内已加载、半径内、属于本人的
+     * canonical 绒亲会在到达目标维度后随行。不影响远距召唤的 pending/ticket/终态流程。</p>
+     */
+    public static final ForgeConfigSpec.BooleanValue OWNER_DIMENSION_FOLLOW_ENABLED = BUILDER
+            .comment("Enable nearby loaded companions to follow their owner through a dimension change.",
+                    "Only companions already loaded within ownerDimensionFollowRadius are considered.",
+                    "Design intent: true.")
+            .define("ownerDimensionFollowEnabled", true);
+
+    /** 跨维度随行的 3D 欧氏半径（格）：出发位置到绒亲中心的距离，<= 该值通过。 */
+    public static final ForgeConfigSpec.IntValue OWNER_DIMENSION_FOLLOW_RADIUS = BUILDER
+            .comment("3D Euclidean radius in blocks around the owner's departure position.",
+                    "Only loaded companions inside this radius are considered.",
+                    "Design intent: 16.")
+            .defineInRange("ownerDimensionFollowRadius", 16, 1, 64);
+
     public static final ForgeConfigSpec SPEC = BUILDER.build();
 }

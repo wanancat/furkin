@@ -23,6 +23,7 @@ included (because they're rather fluff~y~).
 - **Travel pouch** — a carry-along inventory that grows with the `travel_pouch` skill level, with shrinking, reclaiming and death-drop handling built in. Finally, someone else carries the cobblestone.
 - **Revival** — a soulstone-based revive system that preserves all growth.
 - **Remote summon** — calling a summoned companion teleports it when loaded; when its chunk is unloaded, Furkin uses the recorded dimension and position to load a bounded area temporarily, then resolves the same canonical UUID. Failures stay read-only and never create a second entity.
+- **Dimension follow** — when you cross dimensions, already-loaded companions within 16 blocks (default) come along; sitting companions stand up and follow. Cold-chunk pets are never force-loaded; the radius and toggle live in `furkin-server.toml`.
 
 ## Contract Health Gates
 
@@ -49,7 +50,8 @@ supported for archive, dismiss and resummon flows, but not for full follow/cease
 - Disabling `remoteSummonEnabled` only rejects that unloaded-chunk path; loaded-entity teleport and legal rebuild from a recalled/dead record keep working.
 - If duplicate loaded entities share one `companionId`, hot paths fail safely with `DUPLICATE_CONFLICT`. Use `/furkin repair list <companion_id>` to inspect candidates, then run `/furkin repair choose <companion_id> <keep_entity_uuid>` to preview. Add `confirm` to execute the repair after checking the plan.
 - Server config keys: `remoteSummonEnabled` (`true`), `remoteSummonTicketRadius` (`1`, 3x3), `remoteSummonTimeoutTicks` (`600`), `remoteSummonMaxPendingPerPlayer` (`1`), `remoteSummonMaxPendingGlobal` (`4`) and `remoteSummonCooldownTicks` (`20`).
-- This feature package does not automatically move companions when their owner changes dimension. Summon them explicitly if needed.
+- When the owner performs a real dimension change, nearby loaded canonical companions in the departure dimension follow to the target dimension; sitting companions stand up and follow on arrival. Pets outside the radius or in unloaded chunks stay behind and are never force-loaded. Tune `ownerDimensionFollowRadius` (default `16`) or disable the feature with `ownerDimensionFollowEnabled` in `furkin-server.toml`. The vanilla End "credits return" does not follow.
+- If the same companion already has an explicit remote-summon pending before the trip, owner-follow yields to it and leaves its loading, success, failure and cooldown feedback unchanged.
 
 ## Dependencies
 

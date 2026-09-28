@@ -37,6 +37,24 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 
 ---
 
+## [1.20.1-0.0.4.0] - 2026-09-28
+
+**新增 / Added**
+
+- **主人跨维度随行 / Owner dimension follow** —— 主人发生真实跨维度切换（地狱门、末地门、跨维度 `/tp` / `/execute in`）时，出发维度内、半径内、已加载、属于本人的 canonical 绒亲随行到目标维度；坐姿绒亲到达后清除坐姿并跟随。实现为「旅行前快照 + 到达后服务端 tick 完成校验」，不在旅行事件内提前移动实体，因此旅行被取消、玩家落到第三维度或快照超时都不会产生错误传送。只处理已加载实体：不申请 chunk ticket、不加载冷区、不重建实体、不复制档案。原版末地「终章返回」按范围外处理，不随行。落点只接受已加载、向下最多 2 格内有可站立支撑且体积不含危险方块的位置；主人悬空于深坑 / 熔岩上方时，该只留在原维度。
+  *When the owner performs a real dimension change (nether portal, End portal, cross-dimension `/tp` / `/execute in`), nearby loaded companions in the departure dimension follow to the target dimension; sitting companions stand up and follow on arrival. Implemented as a pre-travel snapshot plus a server-tick completion check, so pets are never moved inside the travel event itself. Only already-loaded entities are handled: no chunk tickets, no cold-chunk loading, no rebuilds, no archive copies. The vanilla End "credits return" is out of scope and does not follow.*
+- **跨维度随行服务端配置 / Owner dimension follow server config** —— `furkin-server.toml` 新增 `ownerDimensionFollowEnabled`（默认 `true`）与 `ownerDimensionFollowRadius`（默认 `16`，范围 1-64，出发位置到绒亲中心的 3D 欧氏半径）。
+  *`furkin-server.toml` now exposes `ownerDimensionFollowEnabled` (default `true`) and `ownerDimensionFollowRadius` (default `16`, range 1-64, 3D Euclidean radius from the departure position to the companion center).*
+- **显式远召优先 / Explicit remote summon takes priority** —— 同一绒亲在快照时或执行时存在同一玩家的活跃远召 pending 时，随行只读识别并让路：不移动、不取消 pending、不改写其终态；快照阶段记录 `remotePendingAtArm`，因此 pending 随后失败或取消也不会补做随行。
+  *If the same companion already has an active remote-summon pending for the same player at snapshot or execution time, owner-follow yields read-only: it never moves the pet, cancels the pending, or rewrites its terminal state. `remotePendingAtArm` also prevents a late catch-up follow after the pending fails or is cancelled.*
+
+**API Changes / API 变更**
+
+- 无破坏性 API 变更；公开 API 与网络包结构不变，`PROTOCOL_VERSION` 保持 `"2"`，不新增存档字段。版本号为 `1.20.1-0.0.4.0`。
+  *No breaking API changes; the public API and packet structure are unchanged, `PROTOCOL_VERSION` remains `"2"`, and no save schema field was added. The release version is `1.20.1-0.0.4.0`.*
+
+---
+
 ## [1.20.1-0.0.3.0] - 2026-09-28
 
 **新增 / Added**

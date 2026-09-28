@@ -9,6 +9,7 @@ import com.wanancat.furkin.internal.contract.FurkinCompanionManager;
 import com.wanancat.furkin.internal.contract.FurkinContractHandler;
 import com.wanancat.furkin.internal.contract.FurkinDuplicateRegistry;
 import com.wanancat.furkin.internal.contract.FurkinRecordActionHandler;
+import com.wanancat.furkin.internal.contract.OwnerDimensionFollowService;
 import com.wanancat.furkin.internal.contract.RemoteSummonService;
 import com.wanancat.furkin.internal.contract.FurkinUnbindCleanup;
 import com.wanancat.furkin.internal.equipment.EquipmentSlots;
@@ -42,6 +43,7 @@ import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
 import net.minecraftforge.event.entity.EntityLeaveLevelEvent;
+import net.minecraftforge.event.entity.EntityTravelToDimensionEvent;
 import net.minecraftforge.event.entity.living.LivingAttackEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.living.LivingHurtEvent;
@@ -173,6 +175,7 @@ public final class CommonEvents {
     /** 停止流程开始时取消 pending 远召，必须在区块调度器关闭前释放 ticket。 */
     @SubscribeEvent
     public static void onServerStopping(ServerStoppingEvent event) {
+        OwnerDimensionFollowService.stop(event.getServer());
         RemoteSummonService.stop(event.getServer());
     }
 
@@ -539,6 +542,21 @@ public final class CommonEvents {
                 companionId, target.getX(), target.getY(), target.getZ());
     }
 
+    /**
+     * 主人跨维度旅行的旅行前快照入口。
+     *
+     * <p>只在事件可取消窗口内做只读快照：此时玩家仍在出发维度、原始坐标有效。真正传送在
+     * {@link #onServerTick(TickEvent.ServerTickEvent)} 的 {@code Phase.END} 确认到达后进行，
+     * 避免旅行被取消或玩家落到第三维度时产生泄漏。</p>
+     */
+    @SubscribeEvent
+    public static void onEntityTravelToDimension(EntityTravelToDimensionEvent event) {
+        if (event.isCanceled() || !(event.getEntity() instanceof ServerPlayer player)) {
+            return;
+        }
+        OwnerDimensionFollowService.arm(player, event.getDimension());
+    }
+
     /** 服务端 tick 兜底：清理脱离战斗超时的追踪记录，防止残留；并驱动周期被动。 */
     @SubscribeEvent
     public static void onServerTick(TickEvent.ServerTickEvent event) {
@@ -550,6 +568,8 @@ public final class CommonEvents {
         // 周期被动（守夜者夜视 / 群猎战术叠层等）——分发器内部按 20 tick 节流。
         SkillPassiveDispatcher.onServerTick(event.getServer());
         SkillRuntimeCalibrator.onServerTick(event.getServer());
+        // 先随行、后远召：随行在同 tick 先读到 pending 并让路，随后由远召继续推进。
+        OwnerDimensionFollowService.tickIfPresent(event.getServer());
         RemoteSummonService.tickIfPresent(event.getServer());
     }
 

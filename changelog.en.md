@@ -29,6 +29,20 @@ MCVERSION-MAJORMOD.MAJORAPI.MINOR.PATCH
 
 ---
 
+## [1.20.1-0.0.4.0] - 2026-09-28
+
+**Added**
+
+- **Owner dimension follow** — When the owner performs a real dimension change (nether portal, End portal, cross-dimension `/tp` / `/execute in`), nearby loaded canonical companions in the departure dimension follow to the target dimension; sitting companions stand up and follow on arrival. Implemented as a pre-travel snapshot plus a server-tick completion check, so pets are never moved inside the travel event itself; a cancelled travel, a third destination, or an expired snapshot never produce a wrong teleport. Only already-loaded entities are handled: no chunk tickets, no cold-chunk loading, no rebuilds, no archive copies. The vanilla End "credits return" (End exit portal -> credits -> respawn) is out of scope and does not follow. Landing is best-effort safe: search up to 2 blocks downward for support and reject hazardous destination volumes.
+- **Owner dimension follow server config** — `furkin-server.toml` now exposes `ownerDimensionFollowEnabled` (default `true`) and `ownerDimensionFollowRadius` (default `16`, range 1-64, 3D Euclidean radius from the departure position to the companion center).
+- **Explicit remote summon takes priority** — If the same companion already has an active remote-summon pending for the same player at snapshot or execution time, owner-follow yields read-only: it never moves the pet, cancels the pending, or rewrites its terminal state. `remotePendingAtArm` also prevents a late catch-up follow after the pending fails or is cancelled.
+
+**API Changes**
+
+- No breaking API changes; the public API and packet structure are unchanged, `PROTOCOL_VERSION` remains `"2"`, and no save schema field was added. The release version is `1.20.1-0.0.4.0`.
+
+---
+
 ## [1.20.1-0.0.3.0] - 2026-09-28
 
 **Added**

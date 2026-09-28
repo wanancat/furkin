@@ -22,6 +22,7 @@
 - **随身行囊** — 随绒亲同行的背包，格数随 `travel_pouch` 技能等级派生，含缩容 / 回收 / 死亡掉落处理。终于有人替你搬圆石了。
 - **复活** — 魂石制复活，成长不丢失。
 - **远距召唤** — 召唤已加载绒亲时直接传送同一实体；所在区块未加载时，按最后已知维度与位置临时加载有界区块，再按 canonical UUID 定位。失败只安全返回，不会误建第二只。
+- **跨维度随行** — 主人过门或跨维度传送时，身边默认 16 格内**已加载**的绒亲会一起到新维度；坐姿绒亲到达后起身跟随。不加载冷区宠物，半径与开关见 `furkin-server.toml`。
 
 ## 契约生命值门槛
 
@@ -47,7 +48,8 @@
 - `remoteSummonEnabled=false` 只关闭“已召唤但未加载”的临时加载路径；已加载传送、收回后合法重建仍保持可用。
 - 若同一 `companionId` 出现多个已加载实体，热路径会安全返回 `DUPLICATE_CONFLICT`。用 `/furkin repair list <companion_id>` 查看候选，再用 `/furkin repair choose <companion_id> <keep_entity_uuid>` 预演；核对计划后追加 `confirm` 才执行修复。
 - 服务端配置：`remoteSummonEnabled`（`true`）、`remoteSummonTicketRadius`（`1`，3x3）、`remoteSummonTimeoutTicks`（`600`）、`remoteSummonMaxPendingPerPlayer`（`1`）、`remoteSummonMaxPendingGlobal`（`4`）、`remoteSummonCooldownTicks`（`20`）。
-- 本功能包不包含主人换维度时自动随行；需要时请显式召唤，后续可另立功能包。
+- 主人发生真实跨维度切换时，出发维度内、半径内、已加载、属于本人的 canonical 绒亲会随行到目标维度；超出半径或所在区块未加载的宠物留在原地，不会被强行加载。默认半径 16 格，可在 `furkin-server.toml` 用 `ownerDimensionFollowRadius` 调整，或用 `ownerDimensionFollowEnabled` 关闭。原版末地「终章返回」不随行。
+- 如果同一只绒亲在切换前已有显式远召 pending，随行会让路；远召的加载、成功、失败和冷却反馈保持原样。
 
 ## 依赖
 

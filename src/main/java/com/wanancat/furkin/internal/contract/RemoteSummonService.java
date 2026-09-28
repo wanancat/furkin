@@ -134,6 +134,23 @@ public final class RemoteSummonService {
     }
 
     /**
+     * 只读查询某玩家某 companion 当前是否有活跃 pending。
+     *
+     * <p>服务实例未创建时直接返回 false，不会为了查询创建 service。本方法只读取
+     * {@code byCompanion}，不遍历 pending、不加载区块、不增删 ticket、不记冷却、不触发反馈。</p>
+     */
+    static boolean isPendingFor(MinecraftServer server, UUID playerUuid, UUID companionId) {
+        if (server == null || playerUuid == null || companionId == null) {
+            return false;
+        }
+        RemoteSummonService service = SERVICES.get(server);
+        if (service == null) {
+            return false;
+        }
+        return service.hasPendingFor(playerUuid, companionId);
+    }
+
+    /**
      * 校验并请求远距召唤。
      *
      * @return {@link RemoteSummonResult#PENDING} 表示请求已受理；其它返回值均为即时终态
@@ -538,6 +555,14 @@ public final class RemoteSummonService {
             int remaining = count - 1;
             return remaining > 0 ? remaining : null;
         });
+    }
+
+    private boolean hasPendingFor(UUID playerUuid, UUID companionId) {
+        assertServerThread();
+        RemoteSummonRequest request = byCompanion.get(companionId);
+        return request != null
+                && request.playerUuid.equals(playerUuid)
+                && request.state != RemoteSummonRequest.State.TERMINAL;
     }
 
     private boolean isCurrent(RemoteSummonRequest request) {
